@@ -6,5 +6,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+# The arm's-length dependency on the themelios program tier, pinned to the
+# consolidated rev. themelios is a public repo, so this fetches over HTTPS with
+# no credentials. keryx never modifies themelios; gaps go to a themelios session
+# (docs/themelios-gaps.md).
+[dependencies]
+themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", rev = "86c7dfb", package = "themelios-program" }
+
 [lints]
 workspace = true

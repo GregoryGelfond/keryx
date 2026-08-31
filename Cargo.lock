@@ -3,17 +3,95 @@
 version = 4
 
 [[package]]
+name = "autocfg"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
+
+[[package]]
+name = "countme"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7704b5fdd17b18ae31c4c1da5a2e0305a2bf17b5249300a9ee9ed7b72114c636"
+
+[[package]]
+name = "hashbrown"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
+
+[[package]]
 name = "keryx-cli"
 version = "0.1.0"
 
 [[package]]
 name = "keryx-core"
 version = "0.1.0"
+dependencies = [
+ "themelios-program",
+]
 
 [[package]]
 name = "keryx-driver"
 version = "0.1.0"
 
 [[package]]
+name = "memoffset"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "protoc-gen-keryx"
 version = "0.1.0"
+
+[[package]]
+name = "rowan"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14b574c58582fa59fa43a2feb6608b8744184659f08a2e0117e4b8224d95ed61"
+dependencies = [
+ "countme",
+ "hashbrown",
+ "memoffset",
+ "rustc-hash",
+ "text-size",
+]
+
+[[package]]
+name = "rustc-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
+name = "text-size"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f18aa187839b2bdb1ad2fa35ead8c4c2976b64e4363c386d45ac0f7ee85c9233"
+
+[[package]]
+name = "themelios-base"
+version = "0.1.0"
+source = "git+https://github.com/GregoryGelfond/themelios.git?rev=86c7dfb#86c7dfb1c4cd52a8709d747da27a9a0e6acebc98"
+
+[[package]]
+name = "themelios-program"
+version = "0.1.0"
+source = "git+https://github.com/GregoryGelfond/themelios.git?rev=86c7dfb#86c7dfb1c4cd52a8709d747da27a9a0e6acebc98"
+dependencies = [
+ "themelios-base",
+ "themelios-syntax",
+]
+
+[[package]]
+name = "themelios-syntax"
+version = "0.1.0"
+source = "git+https://github.com/GregoryGelfond/themelios.git?rev=86c7dfb#86c7dfb1c4cd52a8709d747da27a9a0e6acebc98"
+dependencies = [
+ "rowan",
+ "themelios-base",
+]
