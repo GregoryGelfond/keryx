@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+
+# Denied workspace-wide: unused code is a defect or a false claim; missing
+# docs break the executable-claims posture. Mirrors themelios.
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "deny"
+unused = { level = "deny", priority = -1 }
+unused_must_use = "deny"
+dead_code = "deny"
+
+# The strictest coherent clippy setting is the baseline; each allow added
+# below (as it fires) is a named departure carrying its argument. Mirrors
+# themelios's philosophy.
+[workspace.lints.clippy]
+pedantic = { level = "deny", priority = -1 }

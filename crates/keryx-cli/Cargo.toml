@@ -1,0 +1,14 @@
+[package]
+name = "keryx-cli"
+version = "0.1.0"
+description = "The keryx command-line frontend: a thin satellite that composes keryx-core and keryx-driver."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "keryx"
+path = "src/main.rs"
+
+[lints]
+workspace = true
