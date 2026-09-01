@@ -180,6 +180,37 @@ fn level_enum_lowering_strips_the_shared_prefix() {
 }
 
 #[test]
+fn enum_strip_falls_back_when_it_would_open_a_constant_with_a_digit() {
+    // §7.4: stripping `Edition`'s `EDITION_` prefix would leave `2023`/`1_test_only`, neither a
+    // legal ASP constant (an identifier cannot open with a digit), so the strip falls back to
+    // the unstripped form for the *whole* enum. This is the shape descriptor.proto's own
+    // `Edition` carries — the §21.2 self-application dogfood surfaced it, and this fixture pins
+    // the behavior directly rather than only through that third-party schema.
+    let mapping = mapping("enum_digit_strip.proto");
+
+    let edition = enumeration(&mapping, "keryx.enumdigit.Edition");
+    assert_eq!(
+        enum_value(edition, "EDITION_UNKNOWN").constant().as_str(),
+        "edition_unknown"
+    );
+    assert_eq!(
+        enum_value(edition, "EDITION_2023").constant().as_str(),
+        "edition_2023"
+    );
+    assert_eq!(
+        enum_value(edition, "EDITION_1_TEST_ONLY")
+            .constant()
+            .as_str(),
+        "edition_1_test_only"
+    );
+
+    // The guard is per-enum, not blanket: a sibling whose remainder still opens with a letter
+    // strips as usual (`LEVEL_LOW` → `low`).
+    let level = enumeration(&mapping, "keryx.enumdigit.Level");
+    assert_eq!(enum_value(level, "LEVEL_LOW").constant().as_str(), "low");
+}
+
+#[test]
 fn proto2_enum_is_closed() {
     let mapping = mapping("proto2.proto");
     let grade = enumeration(&mapping, "keryx.p2.Grade");

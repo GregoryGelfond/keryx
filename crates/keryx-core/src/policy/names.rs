@@ -229,11 +229,12 @@ fn singular_value(
 /// The §7.4 prefix-strip length for an enum's value constants, **keyed to the enum name**
 /// (not to whatever prefix the values happen to share): the length of
 /// `<SCREAMING_SNAKE(enum short name)>_` iff every value name begins with it and leaves a
-/// non-empty, still-distinct remainder; else `0` (§7.4's fallback to unstripped on a
-/// collision or empty remainder). So `Level{LEVEL_LOW,…}` strips `LEVEL_` → `low`, but
-/// `Status{STATE_OK,…}` (values not sharing the *enum name* `STATUS_`) does not strip →
-/// `state_ok`. `SCREAMING_SNAKE` is `lower_snake` upper-cased, so the one word-split rule
-/// serves both (a multi-word enum `HttpStatus` → prefix `HTTP_STATUS_`).
+/// non-empty, identifier-opening, still-distinct remainder; else `0` (§7.4's fallback to
+/// unstripped on a collision, an empty remainder, or a remainder that could not open an ASP
+/// identifier). So `Level{LEVEL_LOW,…}` strips `LEVEL_` → `low`, but `Status{STATE_OK,…}`
+/// (values not sharing the *enum name* `STATUS_`) does not strip → `state_ok`.
+/// `SCREAMING_SNAKE` is `lower_snake` upper-cased, so the one word-split rule serves both (a
+/// multi-word enum `HttpStatus` → prefix `HTTP_STATUS_`).
 pub(super) fn enum_strip(enumeration: &Enum) -> usize {
     let prefix = format!(
         "{}_",
@@ -251,7 +252,19 @@ pub(super) fn enum_strip(enumeration: &Enum) -> usize {
         // Compare the *lowered* remainder: stripping that collapses two constants (e.g. a
         // case-only difference `FOO`/`Foo` → `foo`) must fall back to unstripped (§7.4) — a
         // pre-lowering comparison would miss it and keep a strip that produces a collision.
-        if !seen.insert(lower_snake(&value.name()[prefix.len()..])) {
+        let remainder = lower_snake(&value.name()[prefix.len()..]);
+        // …and stripping must not produce a constant that cannot open an ASP identifier. A
+        // digit-initial remainder is the case the §21.2 dogfood surfaced: descriptor.proto's
+        // own `Edition{EDITION_2023, EDITION_1_TEST_ONLY, …}` strips to `2023`/`1_test_only`,
+        // neither a legal identifier, so the strip falls back to unstripped for the whole enum
+        // (`edition_2023`, `edition_1_test_only`, …) — the same fallback §7.4 takes for an empty
+        // or colliding remainder. `lower_snake` yields a lowercase-letter or digit initial (it
+        // trims a leading `_`), so "opens with a lowercase letter" is exactly "opens an ASP
+        // identifier"; the per-value [`identifier`] check remains the backstop for the residual.
+        if !remainder.starts_with(|c: char| c.is_ascii_lowercase()) {
+            return 0;
+        }
+        if !seen.insert(remainder) {
             return 0;
         }
     }

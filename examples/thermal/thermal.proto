@@ -1,0 +1,14 @@
+syntax = "proto3";
+package thermal.v1;
+
+import "keryx/options.proto";
+
+// A single sensor reading.
+message Reading      { string sensor = 1; int32 temp_c = 2; }
+// A batch of readings — a sequence.
+message ReadingBatch { repeated Reading readings = 1; }
+
+// An alert raised for an overheating reading.
+message Alert    { string sensor = 1; int32 temp_c = 2; }
+// The set of alerts emitted for a batch.
+message AlertSet { repeated Alert alerts = 1 [(keryx.set) = true]; }

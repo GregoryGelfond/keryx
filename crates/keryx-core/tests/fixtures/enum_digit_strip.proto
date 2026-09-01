@@ -1,0 +1,19 @@
+syntax = "proto3";
+package keryx.enumdigit;
+
+// A version-style enum whose values, after the §7.4 `EDITION_` prefix strip, would open with
+// a digit (`2023`, `1_test_only`) — neither a legal ASP constant. §7.4 falls back to the
+// unstripped form for the whole enum (`edition_2023`, …). This is exactly the shape
+// descriptor.proto's own `Edition` carries, which the §21.2 self-application dogfood surfaced.
+enum Edition {
+  EDITION_UNKNOWN = 0;
+  EDITION_2023 = 1;
+  EDITION_1_TEST_ONLY = 2;
+}
+
+// A sibling whose stripped remainder still opens with a letter — it strips normally, proving
+// the digit guard is per-enum, not a blanket "never strip".
+enum Level {
+  LEVEL_UNSPECIFIED = 0;
+  LEVEL_LOW = 1;
+}
