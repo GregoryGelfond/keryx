@@ -1,0 +1,25 @@
+syntax = "proto3";
+package keryx.scalars;
+
+message Sample {
+  int32 count = 1;
+  int64 total = 2;
+  uint64 checksum = 3;
+  float ratio = 4;
+  bool active = 5;
+  bytes payload = 6;
+  string label = 7;
+  Kind kind = 8;
+  repeated Note notes = 9;
+  repeated Kind kinds = 10;
+  map<string, Kind> tags = 11;
+}
+
+message Note {
+  string text = 1;
+}
+
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  KIND_FIRST = 1;
+}

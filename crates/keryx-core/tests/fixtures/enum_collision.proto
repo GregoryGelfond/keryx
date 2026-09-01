@@ -1,0 +1,8 @@
+syntax = "proto3";
+package keryx.enumcoll;
+
+enum Mixed {
+  MIXED_UNSPECIFIED = 0;
+  FOO_BAR = 1;
+  FooBar = 2;
+}

@@ -74,6 +74,22 @@ pub enum DiagnosticKind {
     /// producer. The compiler's own message is composed into the detail (§6), never
     /// exposed as its type.
     SourceCompile,
+    /// Raised in either of two cases, both checked rather than assumed even though both
+    /// are near-impossible on a well-formed `Schema` (§6): (1) a schema element's lowered
+    /// name is not a themelios identifier — after §4.2/§7.4 lowering, a name that cannot be
+    /// an ASP predicate/constant symbol; or (2) a field's value type references a message
+    /// or enum path absent from the schema (unreachable from `ingest`, which never leaves a
+    /// dangling reference, but the lookup is checked, not assumed). Names the element's, or
+    /// the referencing field's, locus.
+    UnmappableName,
+    /// Two values of one enum lower to the same ASP constant (§7.4) — a within-enum
+    /// collision that survives the prefix-strip fallback (e.g. names differing only in
+    /// case, `X_FOO`/`X_Foo`, both `x_foo`; or names differing only in a separator run,
+    /// `FOO__BAR`/`FOO_BAR`, both `foo_bar`, since `lower_snake` collapses `_` runs). §7.4
+    /// resolves residual collisions by *qualification*, which is the codec increment's
+    /// (Increment 5); at M1 the collision is reported (loud, §6) rather than silently
+    /// producing a duplicate constant. Names the enum's locus.
+    AmbiguousConstant,
 }
 
 impl DiagnosticKind {
@@ -86,6 +102,8 @@ impl DiagnosticKind {
             DiagnosticKind::MalformedOption => "malformed_option",
             DiagnosticKind::UnrenderableFacts => "unrenderable_facts",
             DiagnosticKind::SourceCompile => "source_compile",
+            DiagnosticKind::UnmappableName => "unmappable_name",
+            DiagnosticKind::AmbiguousConstant => "ambiguous_constant",
         }
     }
 }
@@ -209,6 +227,11 @@ mod tests {
             "unrenderable_facts"
         );
         assert_eq!(DiagnosticKind::SourceCompile.as_str(), "source_compile");
+        assert_eq!(DiagnosticKind::UnmappableName.as_str(), "unmappable_name");
+        assert_eq!(
+            DiagnosticKind::AmbiguousConstant.as_str(),
+            "ambiguous_constant"
+        );
         // A new kind must be added above: this exhaustive match (no wildcard,
         // allowed in-crate despite #[non_exhaustive]) fails to compile otherwise.
         match DiagnosticKind::UnreadableDescriptorSet {
@@ -216,7 +239,9 @@ mod tests {
             | DiagnosticKind::MalformedDescriptor
             | DiagnosticKind::MalformedOption
             | DiagnosticKind::UnrenderableFacts
-            | DiagnosticKind::SourceCompile => {}
+            | DiagnosticKind::SourceCompile
+            | DiagnosticKind::UnmappableName
+            | DiagnosticKind::AmbiguousConstant => {}
         }
     }
 }
