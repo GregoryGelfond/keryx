@@ -1,0 +1,15 @@
+keryx-manifest v0
+keryx.p3.Detail  sort  detail/1
+keryx.p3.Detail.note #1 fn  note/2  string  total
+keryx.p3.Reading  sort  reading/1
+keryx.p3.Reading.sensor #1 fn  sensor/2  string  total
+keryx.p3.Reading.temp_c #2 fn  temp_c/2  int32  total
+keryx.p3.Reading.calibration #3 fn  calibration/2  int32  partial
+keryx.p3.Reading.level #4 fn  level/2  level  total
+keryx.p3.Reading.detail #5 fn  detail/2 -> detail  detail  partial  ; view detail/2
+keryx.p3.Reading.device #6 oneof  device/2  string  partial
+keryx.p3.Reading.gateway #7 oneof  gateway/2  string  partial
+keryx.p3.Level  enum  level/1  (open)
+LEVEL_UNSPECIFIED  #0  value  unspecified
+LEVEL_LOW  #1  value  low
+LEVEL_HIGH  #2  value  high

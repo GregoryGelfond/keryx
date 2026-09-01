@@ -12,3 +12,4 @@ pub mod descriptor;
 pub mod facts;
 pub mod policy;
 pub mod emit;
+pub mod manifest;
