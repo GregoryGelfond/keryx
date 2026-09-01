@@ -1,0 +1,6 @@
+syntax = "proto3";
+package keryx.smoke;
+
+message Ping {
+  string note = 1;
+}

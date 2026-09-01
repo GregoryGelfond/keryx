@@ -13,5 +13,17 @@ license.workspace = true
 [dependencies]
 themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", rev = "86c7dfb", package = "themelios-program" }
 
+# The dynamic protobuf-descriptor engine — the ingestion path (§20). Read only
+# through the `descriptor` module's private internals; no prost-reflect type
+# escapes into a keryx-core public signature (the descriptor-engine boundary).
+# The full patch is named; Cargo.lock (committed) is the exact-pin anchor.
+prost-reflect = "0.16.5"
+
+# protox — the pure-Rust `.proto` compiler — is a dev-dependency this increment:
+# it compiles fixtures to descriptor-set bytes in tests, nothing more. It
+# graduates to a regular dependency at Increment 2 (the `keryx gen` front door).
+[dev-dependencies]
+protox = "0.9.1"
+
 [lints]
 workspace = true

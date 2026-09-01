@@ -1,0 +1,7 @@
+edition = "2023";
+package keryx.editions_probe;
+
+message Sample {
+  int32 implicit_field = 1;
+  int32 explicit_field = 2 [features.field_presence = EXPLICIT];
+}
