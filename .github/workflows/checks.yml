@@ -41,6 +41,6 @@ jobs:
       - uses: taiki-e/install-action@51c9d223e46ef0189fd65bfe00a28e0de249282c # cargo-llvm-cov
         with:
           tool: cargo-llvm-cov@0.8.7
-      # Increment 1 sets the floor by themelios's method (measure line coverage,
-      # round down to a multiple of five, minus five). Raise it only deliberately.
-      - run: cargo llvm-cov --workspace --locked --fail-under-lines 80
+      # The floor follows themelios's method (measure line coverage, round down to
+      # a multiple of five, minus five), raised only deliberately and never lowered.
+      - run: cargo llvm-cov --workspace --locked --fail-under-lines 85
