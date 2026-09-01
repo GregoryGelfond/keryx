@@ -10,3 +10,4 @@
 pub mod diagnostics;
 pub mod descriptor;
 pub mod facts;
+pub mod policy;
