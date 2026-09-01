@@ -8,11 +8,13 @@
 //! [`Diagnostics`]: crate::diagnostics::Diagnostics
 
 pub mod model;
+pub mod source;
 
 pub use model::{
     Annotation, AnnotationValue, Enum, EnumValue, Field, FieldShape, File, FqName, MapKey, Message,
     Oneof, Openness, Presence, Scalar, Schema, SchemaVersion, ValueType,
 };
+pub use source::compile;
 
 mod desugar;
 mod docs;
@@ -53,20 +55,47 @@ pub fn ingest(bytes: &[u8]) -> Result<Schema, Diagnostics> {
             error.to_string(),
         )
     })?;
-    build_schema(&pool)
+    build_schema(&pool, |name| !desugar::is_dependency_file(name))
+}
+
+/// Ingest a serialized `FileDescriptorSet`, treating exactly the files named in
+/// `subjects` (by their descriptor `name`) as subjects — the front door's entry, where the
+/// opened (root) files are known, so a subject *named* like a well-known type (the §21.2
+/// self-application on `google/protobuf/descriptor.proto`) is ingested, not skipped. Total
+/// (§6), as [`ingest`].
+///
+/// # Errors
+///
+/// As [`ingest`].
+pub(crate) fn ingest_subjects(bytes: &[u8], subjects: &[String]) -> Result<Schema, Diagnostics> {
+    let pool = DescriptorPool::decode(bytes).map_err(|error| {
+        Diagnostic::new(
+            DiagnosticKind::UnreadableDescriptorSet,
+            Locus::whole(),
+            error.to_string(),
+        )
+    })?;
+    build_schema(&pool, |name| subjects.iter().any(|subject| subject == name))
 }
 
 /// Assemble the schema from the pool, over the subject files only (dependencies —
 /// well-known types, the option registry — stay in the pool but are not subjects).
-/// The per-file message walk is computed once and shared by the message and enum
-/// passes. Deterministically ordered (P3).
-fn build_schema(pool: &DescriptorPool) -> Result<Schema, Diagnostics> {
+/// `is_subject` decides which pool files are subjects — the bytes-only `ingest` path
+/// uses the well-known-name heuristic (`desugar::is_dependency_file`); the front door
+/// (`ingest_subjects`) instead carries the real, explicitly-opened subject set across
+/// the `compile → ingest` seam, so a subject named like a well-known type is not
+/// silently dropped (§21.2). The per-file message walk is computed once and shared by
+/// the message and enum passes. Deterministically ordered (P3).
+fn build_schema(
+    pool: &DescriptorPool,
+    is_subject: impl Fn(&str) -> bool,
+) -> Result<Schema, Diagnostics> {
     let mut files = Vec::new();
     let mut messages = Vec::new();
     let mut enums = Vec::new();
 
     for file in pool.files() {
-        if desugar::is_dependency_file(file.name()) {
+        if !is_subject(file.name()) {
             continue;
         }
         let version = desugar::version(&file);

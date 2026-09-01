@@ -1,0 +1,6 @@
+syntax = "proto3";
+package keryx.broken;
+
+message Bad {
+  string  = 1;   // missing field name — a parse error protox rejects
+}

@@ -66,6 +66,14 @@ pub enum DiagnosticKind {
     /// themelios `Unspellable` composed here. Near-impossible for constructed
     /// facts; total rather than a panic (§6).
     UnrenderableFacts,
+    /// A `.proto` source could not be compiled to a descriptor set by the front-door
+    /// compiler (protox) — a parse, type, or import error, or a file whose edition the
+    /// compiler does not yet cover (`docs/proto-support.md`). A front-door capability
+    /// limit, not a translation error: keryx branches on resolved features, so an
+    /// editions file is ingestible once a descriptor set for it is supplied by another
+    /// producer. The compiler's own message is composed into the detail (§6), never
+    /// exposed as its type.
+    SourceCompile,
 }
 
 impl DiagnosticKind {
@@ -77,6 +85,7 @@ impl DiagnosticKind {
             DiagnosticKind::MalformedDescriptor => "malformed_descriptor",
             DiagnosticKind::MalformedOption => "malformed_option",
             DiagnosticKind::UnrenderableFacts => "unrenderable_facts",
+            DiagnosticKind::SourceCompile => "source_compile",
         }
     }
 }
@@ -199,13 +208,15 @@ mod tests {
             DiagnosticKind::UnrenderableFacts.as_str(),
             "unrenderable_facts"
         );
+        assert_eq!(DiagnosticKind::SourceCompile.as_str(), "source_compile");
         // A new kind must be added above: this exhaustive match (no wildcard,
         // allowed in-crate despite #[non_exhaustive]) fails to compile otherwise.
         match DiagnosticKind::UnreadableDescriptorSet {
             DiagnosticKind::UnreadableDescriptorSet
             | DiagnosticKind::MalformedDescriptor
             | DiagnosticKind::MalformedOption
-            | DiagnosticKind::UnrenderableFacts => {}
+            | DiagnosticKind::UnrenderableFacts
+            | DiagnosticKind::SourceCompile => {}
         }
     }
 }

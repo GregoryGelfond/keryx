@@ -19,10 +19,10 @@ themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", r
 # The full patch is named; Cargo.lock (committed) is the exact-pin anchor.
 prost-reflect = "0.16.5"
 
-# protox — the pure-Rust `.proto` compiler — is a dev-dependency this increment:
-# it compiles fixtures to descriptor-set bytes in tests, nothing more. It
-# graduates to a regular dependency at Increment 2 (the `keryx gen` front door).
-[dev-dependencies]
+# The pure-Rust `.proto` compiler — the `keryx gen` front door (§20, spec §31 M1).
+# Read only through `descriptor::source`'s private internals; bytes are the seam to
+# `ingest`, so protox's prost and keryx's prost-reflect never couple, and no protox
+# type reaches a keryx-core public signature (the descriptor-engine boundary).
 protox = "0.9.1"
 
 [lints]
