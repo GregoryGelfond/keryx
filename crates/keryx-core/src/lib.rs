@@ -9,3 +9,4 @@
 
 pub mod diagnostics;
 pub mod descriptor;
+pub mod facts;

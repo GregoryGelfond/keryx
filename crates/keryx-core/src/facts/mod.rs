@@ -1,0 +1,244 @@
+//! Descriptor facts (spec Appendix C, §21.1): the hand-written stage 0 — the
+//! de-sugared [`Schema`] lowered to a flat fact base and rendered to ASP text
+//! through themelios `construct`/`render`. A rendered artifact for `explain` and
+//! the §21.2 self-application (whose cross-check against `keryx(descriptor.proto)`
+//! lands with `gen`, Increment 2); not a policy input under the Rust policy.
+//! Plain (canonical) `render`: proto docs are `doc/2` facts, so no `%!` annotation
+//! or free-standing comment is needed (themelios gap #2 untouched). Deterministic,
+//! de-duplicated (themelios's canonical statement order) — golden-comparable (P3).
+//!
+//! [`Schema`]: crate::descriptor::model::Schema
+
+mod terms;
+
+use themelios_program::prelude::*;
+use themelios_program::render::render as render_ast;
+
+use crate::descriptor::model::{
+    Annotation, AnnotationValue, Enum, Field, FieldShape, Message, Oneof, Openness, Presence,
+    Scalar, Schema, ValueType,
+};
+use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
+
+/// Render `schema` to its descriptor facts as clingo-dialect ASP text (Appendix C).
+/// The fact vocabulary is provably spellable, so this effectively never fails;
+/// totality is kept honest for arbitrary doc and option text all the same.
+///
+/// # Errors
+///
+/// Returns [`Diagnostics`] (`UnrenderableFacts`) if themelios cannot spell a symbol
+/// — composed from an `Unspellable`, never exposed or panicked (§6).
+pub fn render(schema: &Schema) -> Result<String, Diagnostics> {
+    let program = Program::of(statements(schema));
+    render_ast(&program, Dialect::Clingo).map_err(|unspellable| {
+        Diagnostics::from(Diagnostic::new(
+            DiagnosticKind::UnrenderableFacts,
+            Locus::whole(),
+            format!("{unspellable}"),
+        ))
+    })
+}
+
+fn statements(schema: &Schema) -> Vec<WithProvenance<Statement>> {
+    let mut out = Vec::new();
+    for file in schema.files() {
+        out.push(terms::fact(
+            "file",
+            vec![terms::text(file.name()), terms::text(file.package())],
+        ));
+    }
+    for message in schema.messages() {
+        message_facts(message, &mut out);
+    }
+    for enumeration in schema.enums() {
+        enum_facts(enumeration, &mut out);
+    }
+    out
+}
+
+fn message_facts(message: &Message, out: &mut Vec<WithProvenance<Statement>>) {
+    let path = message.path().as_str();
+    out.push(terms::fact(
+        "message",
+        vec![terms::text(path), terms::text(message.file())],
+    ));
+    if let Some(outer) = message.outer() {
+        out.push(terms::fact(
+            "nested",
+            vec![terms::text(path), terms::text(outer.as_str())],
+        ));
+    }
+    if message.is_recursive() {
+        out.push(terms::fact("recursive", vec![terms::text(path)]));
+    }
+    for field in message.fields() {
+        field_facts(path, field, out);
+    }
+    for oneof in message.oneofs() {
+        oneof_facts(path, oneof, out);
+    }
+    annotation_facts(path, message.options(), out);
+    doc_fact(path, message.doc(), out);
+}
+
+fn field_facts(message_path: &str, field: &Field, out: &mut Vec<WithProvenance<Statement>>) {
+    let (type_term, presence, cardinality) = shape_terms(field.shape());
+    out.push(terms::fact(
+        "field",
+        vec![
+            terms::text(message_path),
+            terms::int(field.number()),
+            terms::text(field.name()),
+            type_term,
+            terms::konst(presence),
+            terms::konst(cardinality),
+        ],
+    ));
+    annotation_facts(field.path().as_str(), field.options(), out);
+    doc_fact(field.path().as_str(), field.doc(), out);
+}
+
+/// The `field/6` type term, presence, and cardinality for a shape. Repeated and
+/// map fields carry `implicit` collection presence (§5); the value type of a map
+/// rides inside the `map(K, V)` term.
+fn shape_terms(shape: &FieldShape) -> (Term, &'static str, &'static str) {
+    match shape {
+        FieldShape::Singular { value, presence } => {
+            (value_term(value), presence_name(*presence), "singular")
+        }
+        FieldShape::Repeated { value } => (value_term(value), "implicit", "repeated"),
+        FieldShape::Map { key, value } => (
+            terms::function(
+                "map",
+                vec![
+                    terms::konst(scalar_name(Scalar::from(*key))),
+                    value_term(value),
+                ],
+            ),
+            "implicit",
+            "map",
+        ),
+    }
+}
+
+fn value_term(value: &ValueType) -> Term {
+    match value {
+        ValueType::Scalar(scalar) => terms::konst(scalar_name(*scalar)),
+        ValueType::Message(name) => terms::function("msg", vec![terms::text(name.as_str())]),
+        ValueType::Enum(name) => terms::function("enum", vec![terms::text(name.as_str())]),
+    }
+}
+
+fn oneof_facts(message_path: &str, oneof: &Oneof, out: &mut Vec<WithProvenance<Statement>>) {
+    for arm in oneof.arms() {
+        out.push(terms::fact(
+            "oneof",
+            vec![
+                terms::text(message_path),
+                terms::text(oneof.name()),
+                terms::int(*arm),
+            ],
+        ));
+    }
+    doc_fact(oneof.path().as_str(), oneof.doc(), out);
+}
+
+fn enum_facts(enumeration: &Enum, out: &mut Vec<WithProvenance<Statement>>) {
+    let path = enumeration.path().as_str();
+    out.push(terms::fact(
+        "enum_t",
+        vec![
+            terms::text(path),
+            terms::text(enumeration.file()),
+            terms::konst(openness_name(enumeration.openness())),
+        ],
+    ));
+    if let Some(outer) = enumeration.outer() {
+        out.push(terms::fact(
+            "nested",
+            vec![terms::text(path), terms::text(outer.as_str())],
+        ));
+    }
+    for value in enumeration.values() {
+        out.push(terms::fact(
+            "enum_value",
+            vec![
+                terms::text(path),
+                terms::text(value.name()),
+                terms::int(value.number()),
+            ],
+        ));
+        annotation_facts(value.path().as_str(), value.options(), out);
+        doc_fact(value.path().as_str(), value.doc(), out);
+    }
+    annotation_facts(path, enumeration.options(), out);
+    doc_fact(path, enumeration.doc(), out);
+}
+
+fn annotation_facts(path: &str, options: &[Annotation], out: &mut Vec<WithProvenance<Statement>>) {
+    for annotation in options {
+        out.push(terms::fact(
+            "opt",
+            vec![
+                terms::text(path),
+                terms::konst(annotation.key()),
+                annotation_value_term(annotation.value()),
+            ],
+        ));
+    }
+}
+
+fn annotation_value_term(value: &AnnotationValue) -> Term {
+    match value {
+        AnnotationValue::Bool(flag) => terms::konst(if *flag { "true" } else { "false" }),
+        AnnotationValue::Int(number) => match i32::try_from(*number) {
+            Ok(small) => terms::int(small),
+            Err(_) => terms::text(&number.to_string()), // decimal-string when out of i32 range (§6)
+        },
+        AnnotationValue::Text(text) | AnnotationValue::Enum(text) => terms::text(text),
+    }
+}
+
+fn doc_fact(path: &str, doc: Option<&str>, out: &mut Vec<WithProvenance<Statement>>) {
+    if let Some(text) = doc {
+        out.push(terms::fact(
+            "doc",
+            vec![terms::text(path), terms::text(text)],
+        ));
+    }
+}
+
+fn presence_name(presence: Presence) -> &'static str {
+    match presence {
+        Presence::Implicit => "implicit",
+        Presence::Explicit => "explicit",
+        Presence::LegacyRequired => "legacy_required",
+    }
+}
+
+fn openness_name(openness: Openness) -> &'static str {
+    match openness {
+        Openness::Open => "open",
+        Openness::Closed => "closed",
+    }
+}
+
+fn scalar_name(scalar: Scalar) -> &'static str {
+    match scalar {
+        Scalar::Int32 => "int32",
+        Scalar::Int64 => "int64",
+        Scalar::Uint32 => "uint32",
+        Scalar::Uint64 => "uint64",
+        Scalar::Sint32 => "sint32",
+        Scalar::Sint64 => "sint64",
+        Scalar::Fixed32 => "fixed32",
+        Scalar::Fixed64 => "fixed64",
+        Scalar::Sfixed32 => "sfixed32",
+        Scalar::Sfixed64 => "sfixed64",
+        Scalar::Bool => "bool",
+        Scalar::Float => "float",
+        Scalar::Double => "double",
+        Scalar::String => "string",
+        Scalar::Bytes => "bytes",
+    }
+}
