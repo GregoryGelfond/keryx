@@ -33,6 +33,19 @@ pub fn write(unit: &Unit, schema_hash: &str) -> String {
         unit.package(),
         env!("CARGO_PKG_VERSION"),
     );
+    out.push_str(&records(unit));
+    out
+}
+
+/// The manifest's record lines for one unit — the per-sort/field and per-enum/value bindings
+/// (spec §13.4) *without* the header. [`write()`] is the header (schema hash, target, profile,
+/// shape, keryx version) followed by these records; `explain` (spec §21.3, human lore) renders
+/// the records alone, since the §13.4 manifest — an evolution contract, header included — is a
+/// distinct artifact, and a null `schema-hash -` in an explanation would misrepresent it as
+/// computed. A pure, deterministic function of the unit (P3).
+#[must_use]
+pub fn records(unit: &Unit) -> String {
+    let mut out = String::new();
     for sort in unit.sorts() {
         sort_lines(&mut out, sort);
     }

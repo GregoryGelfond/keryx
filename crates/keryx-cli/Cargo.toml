@@ -12,6 +12,8 @@ path = "src/main.rs"
 
 [dependencies]
 keryx-core = { path = "../keryx-core" }
+# The command-line surface (§25). Derive-based; pinned by the committed Cargo.lock.
+clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
 protox = "0.9.1"
