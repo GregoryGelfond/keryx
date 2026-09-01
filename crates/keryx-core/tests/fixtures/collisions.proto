@@ -1,0 +1,20 @@
+syntax = "proto3";
+package keryx.coll;
+
+message Dispatch {
+  message Status { int32 code = 1; }   // keryx.coll.Dispatch.Status -> base sort `status`
+  Status status = 1;
+}
+
+message Logistics {
+  message Status { int32 code = 1; }   // keryx.coll.Logistics.Status -> base sort `status` (message/message collision)
+  Status status = 1;
+}
+
+message Carrier {
+  enum Mode { MODE_UNSPECIFIED = 0; MODE_AIR = 1; }   // keryx.coll.Carrier.Mode (enum) -> base sort `mode`
+}
+message Mode { int32 n = 1; }          // keryx.coll.Mode (message) -> base sort `mode` (message/enum collision)
+
+enum Grade  { GRADE_UNSPECIFIED = 0; GRADE_LOW = 1; }
+enum Rating { RATING_UNSPECIFIED = 0; RATING_LOW = 1; }   // `unspecified`/`low` shared, NOT qualified

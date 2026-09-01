@@ -1,0 +1,17 @@
+syntax = "proto3";
+package keryx.deep;
+
+// Depth-2 pairwise collision: `P.M.X` and `Q.M.X` share the base sort `x` AND the depth-1
+// qualifier `m__x` (same intermediate message `M`); they separate only at depth 2, as
+// `p__m__x` / `q__m__x`. (Their intermediates `P.M` / `Q.M` also collide on `m`, resolved
+// one segment up.)
+message P { message M { message X { int32 a = 1; } } }
+message Q { message M { message X { int32 a = 1; } } }
+
+// Three-member collision with asymmetric depths: `U.K.Y`, `V.K.Y`, `W.N.Y` all share base
+// `y`. `W.N.Y` becomes unique at depth 1 (`n__y`) and stops there, while `{U.K.Y, V.K.Y}`
+// still collide at `k__y` and advance to depth 2 (`u__k__y` / `v__k__y`) — each member
+// qualified only as deep as it needs.
+message U { message K { message Y { int32 a = 1; } } }
+message V { message K { message Y { int32 a = 1; } } }
+message W { message N { message Y { int32 a = 1; } } }

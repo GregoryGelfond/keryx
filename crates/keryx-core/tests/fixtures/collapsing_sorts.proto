@@ -1,0 +1,9 @@
+syntax = "proto3";
+package keryx.collapse;
+
+// `Bar` and `Bar_` are distinct proto messages, but `lower_snake` trims the trailing
+// underscore so both lower to the base sort `bar`. Being siblings, they share every proto-
+// path qualifier too, so qualification cannot separate them — the injectivity backstop must
+// diagnose (a non-injective map would silently conflate two types onto one predicate).
+message Bar { int32 a = 1; }
+message Bar_ { int32 b = 1; }

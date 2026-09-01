@@ -293,7 +293,7 @@ fn final_segment(path: &str) -> &str {
 /// starts from an empty `out`, so nothing is pushed) and surfaces the digit as the new
 /// leading character: `_2foo` → `2foo`, `_2Foo` → `2_foo`, both real leading-digit results.
 /// Deterministic; see [`identifier`] for how that rare shape is handled, not assumed away.
-fn lower_snake(name: &str) -> String {
+pub(super) fn lower_snake(name: &str) -> String {
     let mut out = String::with_capacity(name.len() + 4);
     let mut prev_lower_or_digit = false;
     for ch in name.chars() {
@@ -324,7 +324,7 @@ fn lower_snake(name: &str) -> String {
 /// checked, not `expect`ed: the input is schema-derived (the estate posture: the one
 /// runtime-derived string that reaches a `Name::new` door is checked, cf.
 /// `facts::terms::try_konst`).
-fn identifier(text: &str, locus: &FqName) -> Result<Name, Diagnostics> {
+pub(super) fn identifier(text: &str, locus: &FqName) -> Result<Name, Diagnostics> {
     Name::new(text).map_err(|_: NotAnIdentifier| {
         Diagnostics::from(Diagnostic::new(
             DiagnosticKind::UnmappableName,

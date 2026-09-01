@@ -13,6 +13,7 @@
 
 pub mod model;
 mod names;
+mod qualify;
 
 pub use model::{
     EmitForm, EnumMapping, EnumValueMapping, FieldMapping, Mapping, ScalarTreatment, SortMapping,
@@ -37,9 +38,11 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 ///
 /// [`Diagnostics`] when a lowered name is not a valid ASP identifier, or a field's value
 /// type references a message/enum path absent from the schema (both near-impossible on a
-/// well-formed `Schema`; checked rather than assumed, §6).
+/// well-formed `Schema`; checked rather than assumed, §6) — and, reachably from valid input,
+/// when two distinct sorts collapse to one predicate qualification cannot separate (§4.2), or
+/// two values of one enum lower to a single constant (§7.4).
 pub fn map(schema: &Schema) -> Result<Mapping, Diagnostics> {
-    let sorts = qualify::resolve(names::sort_table(schema)?)?; // path -> final sort Name
+    let sorts = qualify::resolve(&names::sort_table(schema)?)?; // path -> final sort Name
     let sort_of = |path: &FqName| {
         sorts
             .get(path.as_str())
@@ -168,31 +171,4 @@ fn unresolved_reference(path: &FqName) -> Diagnostics {
         Locus::at(path.as_str()),
         format!("`{}` references a type not in the schema", path.as_str()),
     ))
-}
-
-/// The sort-collision qualification stub (spec §4.2): resolves the base sort table into
-/// the final `path → Name` map `assemble` reads — the table's entries already carry
-/// `names`' reserved-word escapes, so only injectivity is this module's concern. This
-/// stage's fixtures are collision-free by construction, so the identity map is correct
-/// here; the real injectivity algorithm (§4.2) replaces this stub once collision
-/// resolution lands.
-mod qualify {
-    use std::collections::BTreeMap;
-
-    use themelios_program::Name;
-
-    use super::names::SortEntry;
-    use crate::diagnostics::Diagnostics;
-
-    /// Resolve the base sort table to its final `path → Name` map. Stage-1 stub: the
-    /// identity map — base names, no collision resolution yet.
-    // The stub never fails; `Result` stays because it is the stable signature the real
-    // injectivity algorithm (which does fail, on exhaustion) replaces this stub under.
-    #[allow(clippy::unnecessary_wraps)]
-    pub(super) fn resolve(table: Vec<SortEntry>) -> Result<BTreeMap<String, Name>, Diagnostics> {
-        Ok(table
-            .into_iter()
-            .map(|entry| (entry.path.as_str().to_owned(), entry.base))
-            .collect())
-    }
 }

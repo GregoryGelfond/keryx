@@ -74,13 +74,18 @@ pub enum DiagnosticKind {
     /// producer. The compiler's own message is composed into the detail (§6), never
     /// exposed as its type.
     SourceCompile,
-    /// Raised in either of two cases, both checked rather than assumed even though both
-    /// are near-impossible on a well-formed `Schema` (§6): (1) a schema element's lowered
-    /// name is not a themelios identifier — after §4.2/§7.4 lowering, a name that cannot be
-    /// an ASP predicate/constant symbol; or (2) a field's value type references a message
-    /// or enum path absent from the schema (unreachable from `ingest`, which never leaves a
-    /// dangling reference, but the lookup is checked, not assumed). Names the element's, or
-    /// the referencing field's, locus.
+    /// Raised in three cases (§6). Two are near-impossible on a well-formed `Schema` but
+    /// checked rather than assumed: (1) a schema element's lowered name is not a themelios
+    /// identifier — after §4.2/§7.4 lowering, a name that cannot be an ASP predicate/constant
+    /// symbol; and (2) a field's value type references a message or enum path absent from the
+    /// schema (unreachable from `ingest`, which never leaves a dangling reference, but the
+    /// lookup is checked, not assumed). The third is genuinely reachable: (3) two distinct
+    /// sorts collapse to one predicate that qualification (§4.2) cannot separate — their base
+    /// names and every proto-path qualifier `lower_snake`-collapse to the same string (e.g.
+    /// sibling messages `Bar` and `Bar_`, both `bar`, since `lower_snake` trims a trailing
+    /// `_` and collapses `_`-runs). Qualification is the injectivity backstop: rather than
+    /// emit a non-injective map it diagnoses. Names the offending (or first offending)
+    /// element's, or the referencing field's, locus.
     UnmappableName,
     /// Two values of one enum lower to the same ASP constant (§7.4) — a within-enum
     /// collision that survives the prefix-strip fallback (e.g. names differing only in
