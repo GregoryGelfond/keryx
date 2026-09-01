@@ -120,6 +120,31 @@ pub enum Scalar {
     Bytes,
 }
 
+impl Scalar {
+    /// The proto type name (`int32`, `sfixed64`, …) — the one home of the scalar-name
+    /// table, read by the emitted signature (spec §13.1) and any later consumer.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Scalar::Int32 => "int32",
+            Scalar::Int64 => "int64",
+            Scalar::Uint32 => "uint32",
+            Scalar::Uint64 => "uint64",
+            Scalar::Sint32 => "sint32",
+            Scalar::Sint64 => "sint64",
+            Scalar::Fixed32 => "fixed32",
+            Scalar::Fixed64 => "fixed64",
+            Scalar::Sfixed32 => "sfixed32",
+            Scalar::Sfixed64 => "sfixed64",
+            Scalar::Bool => "bool",
+            Scalar::Float => "float",
+            Scalar::Double => "double",
+            Scalar::String => "string",
+            Scalar::Bytes => "bytes",
+        }
+    }
+}
+
 /// A map key kind (§7.2): the proto-restricted subset — integral, bool, or
 /// string; never float, double, bytes, message, or enum. Illegal keys are
 /// unrepresentable.
@@ -152,8 +177,8 @@ pub enum MapKey {
 }
 
 /// A map key is a [`Scalar`] restricted to the legal key subset (§7.2). The subset
-/// relation lives here, so the scalar-kind name table has one home (`facts`) and a
-/// scalar that is also a legal key does not fan out to a second table.
+/// relation lives here, so the scalar-kind name table has one home ([`Scalar::as_str`])
+/// and a scalar that is also a legal key does not fan out to a second table.
 impl From<MapKey> for Scalar {
     fn from(key: MapKey) -> Scalar {
         match key {

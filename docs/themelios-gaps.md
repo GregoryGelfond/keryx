@@ -25,3 +25,24 @@ change, and the status (open / fixed-in `<rev>` / adopted).
   block, and the worked stories show inline `%` prose in generated `.lp`. Needed:
   a rendering path for plain `%` comments. Status: open (surfaced at the founding
   design review; the emit shape is decided at the `emit` increment).
+
+  **Increment 2 resolution (`gen`'s `emit::core`/`emit::views`).** The
+  §13.1 honorary signature now ships as one documented `#defined name/arity.`
+  per sort and field predicate: the signature line (and the proto doc, if any)
+  rides as a single `%!` doc string on the declaration, through
+  `render_documented`. This is the accepted divergence from §13.1's literal
+  free-standing `%` comment block — themelios `86c7dfb` has no comment-only
+  `Statement` variant, so the block form stays unemittable — and it renders in
+  themelios's canonical `Ord` order (alphabetical by `name/arity`), not §28's
+  sort-grouped block. It sidesteps this gap for the one shape `core.lp` needed,
+  rather than closing it: what remains genuinely unemittable, unchanged, is (a)
+  the exact free-standing `%` block spelling of §13.1's own worked example (the
+  `% dispatch.v1.core — signature` block), and (b) the inline `%` prose the
+  worked stories show inside generated `.lp` (e.g. §14's `keryx scaffold`
+  example). **morphe** (the estate ASP-formatting library over
+  themelios-syntax) is a candidate provider to *evaluate* if/when that inline-
+  prose need is pursued — not adopted at M1 (R2's one-provider posture; its
+  capability for this is unverified). No dependency taken on morphe or on any
+  themelios change this increment. Status: open, narrowed (the `core.lp`
+  signature need is met a different way; free-standing/inline `%` emission
+  itself is still absent from themelios).

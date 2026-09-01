@@ -259,24 +259,11 @@ fn openness_name(openness: Openness) -> &'static str {
     }
 }
 
+/// Delegates to [`Scalar::as_str`] — the one home of the scalar-name table (§13.1); kept as
+/// a local wrapper so `facts`'s other `xxx_name` helpers (`presence_name`, `openness_name`)
+/// read uniformly.
 fn scalar_name(scalar: Scalar) -> &'static str {
-    match scalar {
-        Scalar::Int32 => "int32",
-        Scalar::Int64 => "int64",
-        Scalar::Uint32 => "uint32",
-        Scalar::Uint64 => "uint64",
-        Scalar::Sint32 => "sint32",
-        Scalar::Sint64 => "sint64",
-        Scalar::Fixed32 => "fixed32",
-        Scalar::Fixed64 => "fixed64",
-        Scalar::Sfixed32 => "sfixed32",
-        Scalar::Sfixed64 => "sfixed64",
-        Scalar::Bool => "bool",
-        Scalar::Float => "float",
-        Scalar::Double => "double",
-        Scalar::String => "string",
-        Scalar::Bytes => "bytes",
-    }
+    scalar.as_str()
 }
 
 #[cfg(test)]

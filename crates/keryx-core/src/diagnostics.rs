@@ -62,9 +62,9 @@ pub enum DiagnosticKind {
     /// A keryx custom option carried a value keryx could not lower to a fact
     /// term (§15) — e.g. an integer outside the term range.
     MalformedOption,
-    /// The descriptor-facts program could not be rendered to ASP text — a
-    /// themelios `Unspellable` composed here. Near-impossible for constructed
-    /// facts; total rather than a panic (§6).
+    /// A keryx-constructed program — the descriptor facts (§21.1) or the generated
+    /// vocabulary (§21.4) — could not be rendered to ASP text: a themelios `Unspellable`
+    /// composed here. Near-impossible for constructed output; total rather than a panic (§6).
     UnrenderableFacts,
     /// A `.proto` source could not be compiled to a descriptor set by the front-door
     /// compiler (protox) — a parse, type, or import error, or a file whose edition the
