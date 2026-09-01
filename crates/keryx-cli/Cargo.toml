@@ -10,5 +10,11 @@ license.workspace = true
 name = "keryx"
 path = "src/main.rs"
 
+[dependencies]
+keryx-core = { path = "../keryx-core" }
+
+[dev-dependencies]
+protox = "0.9.1"
+
 [lints]
 workspace = true

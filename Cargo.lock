@@ -77,6 +77,10 @@ dependencies = [
 [[package]]
 name = "keryx-cli"
 version = "0.1.0"
+dependencies = [
+ "keryx-core",
+ "protox",
+]
 
 [[package]]
 name = "keryx-core"
