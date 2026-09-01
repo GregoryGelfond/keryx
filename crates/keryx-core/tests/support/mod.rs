@@ -11,15 +11,20 @@
 
 use std::path::Path;
 
-// protox re-exports prost, so no separate prost dev-dependency is needed.
-use protox::prost::Message;
+use protox::Compiler;
 
 /// Compile `tests/fixtures/<name>` — with its imports resolved against the
 /// fixtures dir, the crate's vendored `proto/` dir (for `keryx/options.proto`,
 /// vendored with the fixture corpus at a later step), and protox's bundled
 /// well-known types (`google/protobuf/*`) — to a serialized `FileDescriptorSet`.
-/// `include_imports`/`include_source_info` are on by default in
-/// `protox::compile`, so the set is self-contained and carries doc comments.
+/// Built through `Compiler::encode_file_descriptor_set`, not the `protox::compile`
+/// convenience function: that function returns a *typed* `FileDescriptorSet`, and
+/// going through it re-encodes every options submessage through prost-types'
+/// typed `*Options` structs, which — the same trap §20 names for keryx's own
+/// ingestion — silently drops the custom-option extension bytes protox already
+/// resolved. `encode_file_descriptor_set` encodes straight from the pool and keeps
+/// them. `include_imports`/`include_source_info` are on, so the set is
+/// self-contained and carries doc comments.
 /// Panics on failure: a broken fixture is a test bug, surfaced loudly (this is
 /// test support, not library code).
 pub fn compile_fixture(name: &str) -> Vec<u8> {
@@ -32,7 +37,10 @@ pub fn try_compile_fixture(name: &str) -> Result<Vec<u8>, String> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let fixtures = manifest.join("tests/fixtures");
     let vendored = manifest.join("proto");
-    protox::compile([name], [&fixtures, &vendored])
-        .map(|set| set.encode_to_vec())
-        .map_err(|error| error.to_string())
+    let mut compiler = Compiler::new([&fixtures, &vendored]).map_err(|error| error.to_string())?;
+    compiler.include_source_info(true).include_imports(true);
+    compiler
+        .open_file(name)
+        .map_err(|error| error.to_string())?;
+    Ok(compiler.encode_file_descriptor_set())
 }

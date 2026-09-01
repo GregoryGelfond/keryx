@@ -1,0 +1,21 @@
+syntax = "proto3";
+package keryx.docs;
+
+// A leading comment on the message.
+message Note {
+  // A leading comment on the field.
+  string text = 1;
+
+  // A leading comment on the oneof.
+  oneof pick {
+    string first = 2;
+    string second = 3;
+  }
+}
+
+// A leading comment on the enum.
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  // A leading comment on the enum value.
+  STATUS_ACTIVE = 1;
+}

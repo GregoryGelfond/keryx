@@ -15,10 +15,13 @@ pub use model::{
 };
 
 mod desugar;
+mod docs;
+mod options;
+mod recursion;
 
 use prost_reflect::{
-    DescriptorPool, EnumDescriptor, FieldDescriptor, FileDescriptor, Kind, MessageDescriptor,
-    OneofDescriptor,
+    DescriptorPool, EnumDescriptor, EnumValueDescriptor, FieldDescriptor, FileDescriptor, Kind,
+    MessageDescriptor, OneofDescriptor,
 };
 
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
@@ -27,16 +30,18 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// sole public entry of the descriptor-engine boundary: bytes in, keryx types out,
 /// total on foreign input — a set that does not decode, or that decodes but carries
 /// a structurally-malformed element, yields diagnostics, never a panic and never a
-/// partial schema; the first structural diagnosis short-circuits the walk. This
-/// step ingests structure, de-sugaring, presence, and enum openness; annotations,
-/// doc comments, and the containment-cycle flag are populated by a later step.
-/// Near-linear in the descriptor's size: one walk to build the model, then the sorts.
+/// partial schema; the first structural diagnosis short-circuits the walk. Custom
+/// options are read only through the dynamic layer, so no annotation is ever
+/// silently dropped (§20). The model is assembled in one walk over the set —
+/// resolving options and doc comments per element — then ordered deterministically
+/// and analysed for containment cycles.
 ///
 /// # Errors
 ///
 /// Returns [`Diagnostics`] when the bytes do not decode as a `FileDescriptorSet` or
-/// an import is unresolved (`UnreadableDescriptorSet`), or when a decodable descriptor
-/// violates a protobuf structural invariant (`MalformedDescriptor`).
+/// an import is unresolved (`UnreadableDescriptorSet`), when a decodable descriptor
+/// violates a protobuf structural invariant (`MalformedDescriptor`), or when a
+/// custom option carries an unlowerable value (`MalformedOption`).
 ///
 /// [`Schema`]: model::Schema
 /// [`Diagnostics`]: crate::diagnostics::Diagnostics
@@ -77,13 +82,14 @@ fn build_schema(pool: &DescriptorPool) -> Result<Schema, Diagnostics> {
             messages.push(build_message(message, file.name())?);
         }
         for enumeration in subject_enums(&file, &file_messages) {
-            enums.push(build_enum(&enumeration, file.name(), version));
+            enums.push(build_enum(&enumeration, file.name(), version)?);
         }
     }
 
     files.sort_by(|a, b| a.name.cmp(&b.name));
     messages.sort_by(|a, b| a.path.cmp(&b.path));
     enums.sort_by(|a, b| a.path.cmp(&b.path));
+    recursion::mark(&mut messages);
     Ok(Schema {
         files,
         messages,
@@ -139,8 +145,8 @@ fn build_message(message: &MessageDescriptor, file: &str) -> Result<Message, Dia
         outer: message.parent_message().map(|p| FqName::new(p.full_name())),
         fields,
         oneofs,
-        options: Vec::new(),
-        doc: None,
+        options: options::read(&message.options(), message.full_name())?,
+        doc: docs::for_path(&message.parent_file(), message.path()),
         recursive: false,
     })
 }
@@ -163,8 +169,8 @@ fn build_field(field: &FieldDescriptor) -> Result<Field, Diagnostics> {
         name: field.name().to_owned(),
         path: FqName::new(field.full_name()),
         shape,
-        options: Vec::new(),
-        doc: None,
+        options: options::read(&field.options(), field.full_name())?,
+        doc: docs::for_path(&field.parent_file(), field.path()),
     })
 }
 
@@ -220,23 +226,21 @@ fn build_oneof(oneof: &OneofDescriptor) -> Result<Oneof, Diagnostics> {
         name: oneof.name().to_owned(),
         path: FqName::new(oneof.full_name()),
         arms,
-        doc: None,
+        doc: docs::for_path(&oneof.parent_file(), oneof.path()),
     })
 }
 
-fn build_enum(enumeration: &EnumDescriptor, file: &str, version: SchemaVersion) -> Enum {
-    let mut values: Vec<EnumValue> = enumeration
+fn build_enum(
+    enumeration: &EnumDescriptor,
+    file: &str,
+    version: SchemaVersion,
+) -> Result<Enum, Diagnostics> {
+    let mut values = enumeration
         .values()
-        .map(|value| EnumValue {
-            name: value.name().to_owned(),
-            number: value.number(),
-            path: FqName::new(value.full_name()),
-            options: Vec::new(),
-            doc: None,
-        })
-        .collect();
+        .map(|value| build_enum_value(&value))
+        .collect::<Result<Vec<EnumValue>, Diagnostics>>()?;
     values.sort_by_key(|value| value.number);
-    Enum {
+    Ok(Enum {
         path: FqName::new(enumeration.full_name()),
         file: file.to_owned(),
         outer: enumeration
@@ -244,7 +248,17 @@ fn build_enum(enumeration: &EnumDescriptor, file: &str, version: SchemaVersion) 
             .map(|p| FqName::new(p.full_name())),
         openness: desugar::openness(version),
         values,
-        options: Vec::new(),
-        doc: None,
-    }
+        options: options::read(&enumeration.options(), enumeration.full_name())?,
+        doc: docs::for_path(&enumeration.parent_file(), enumeration.path()),
+    })
+}
+
+fn build_enum_value(value: &EnumValueDescriptor) -> Result<EnumValue, Diagnostics> {
+    Ok(EnumValue {
+        name: value.name().to_owned(),
+        number: value.number(),
+        path: FqName::new(value.full_name()),
+        options: options::read(&value.options(), value.full_name())?,
+        doc: docs::for_path(&value.parent_file(), value.path()),
+    })
 }
