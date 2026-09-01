@@ -1,0 +1,16 @@
+syntax = "proto3";
+package keryx.rec;
+
+// Self-recursive through a repeated field of its own type.
+message Tree {
+  string label = 1;
+  repeated Tree children = 2;
+}
+
+// A mutual A <-> B containment cycle.
+message A {
+  B b = 1;
+}
+message B {
+  A a = 1;
+}

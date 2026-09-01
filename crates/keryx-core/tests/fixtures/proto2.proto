@@ -1,0 +1,16 @@
+syntax = "proto2";
+package keryx.p2;
+
+// A purchase order — proto2 presence across the three labels.
+message Order {
+  required string id = 1;       // LEGACY_REQUIRED
+  optional int32 quantity = 2;  // EXPLICIT
+  repeated string tags = 3;     // Implicit (collection presence)
+}
+
+// A proto2 enum — a closed sort (§7.4).
+enum Grade {
+  GRADE_UNSPECIFIED = 0;
+  GRADE_A = 1;
+  GRADE_B = 2;
+}

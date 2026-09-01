@@ -1,0 +1,11 @@
+syntax = "proto3";
+package keryx.maps;
+
+message Inventory {
+  map<string, int32> counts = 1;  // map, scalar value
+  map<int64, Item> items = 2;     // map, message value, int64 key
+}
+
+message Item {
+  string sku = 1;
+}

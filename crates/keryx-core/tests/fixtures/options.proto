@@ -1,0 +1,23 @@
+syntax = "proto3";
+package keryx.opt;
+
+import "keryx/options.proto";
+
+// Exercises every AnnotationValue kind and both option targets (§20).
+message Sample {
+  option (keryx.value) = true;      // Bool
+  option (keryx.any_types) = "a.B"; // repeated -> two Annotations
+  option (keryx.any_types) = "c.D";
+
+  repeated string tags = 1 [(keryx.set) = true];         // Bool
+  int64 tick = 2 [(keryx.numeric) = NATIVE_CHECKED];     // Enum
+  float ratio = 3 [(keryx.scale) = 3];                   // Int
+  int32 priority = 4 [(keryx.default) = "3"];            // Text
+}
+
+enum Signal {
+  option (keryx.zero) = ABSENT;     // Enum (enum-target option)
+  SIGNAL_UNSPECIFIED = 0;
+  SIGNAL_LOW = 1;
+  SIGNAL_HIGH = 2;
+}

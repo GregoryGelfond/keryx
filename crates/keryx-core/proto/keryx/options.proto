@@ -1,0 +1,53 @@
+// The keryx annotation vocabulary (spec Appendix A) — the canonical
+// extension-identity registry: custom-option field numbers live here alone (§6).
+// proto2 syntax so the extensions compile under any toolchain. The numbers and
+// policy enums are verbatim from Appendix A; the names are too, save one — the
+// field-level `zero` (50105) is vendored as `zero_field`. Appendix A declares
+// `zero` on both FieldOptions (50105) and EnumOptions (50141) in package `keryx`,
+// and a top-level extension's name is package-scoped, so both resolve to the one
+// symbol `keryx.zero` — a duplicate-symbol error (protox and protoc both reject
+// it). The enum-level `zero` (50141) is kept; the field-level one is renamed.
+// Reconciling this collision in Appendix A itself is pending. Annotation
+// *semantics* land at Increment 5 — Increment 1 ingests these as opaque opt/3
+// facts (§20).
+syntax = "proto2";
+package keryx;
+
+import "google/protobuf/descriptor.proto";
+
+enum NumericPolicy {
+  NUMERIC_POLICY_UNSPECIFIED = 0;
+  NATIVE_CHECKED = 1;
+  DECIMAL_STRING = 2;
+  CLINGCON = 3;
+}
+enum ZeroPolicy {
+  ZERO_POLICY_UNSPECIFIED = 0;
+  VALUE = 1;
+  ABSENT = 2;
+}
+enum UnknownPolicy {
+  UNKNOWN_POLICY_UNSPECIFIED = 0;
+  REJECT = 1;
+  PRESERVE = 2;
+}
+
+extend google.protobuf.FieldOptions {
+  optional bool          set       = 50101;  // repeated: order/multiplicity not meaningful
+  optional NumericPolicy numeric   = 50102;  // integral fields & map keys (§6, §7.2)
+  optional int32         scale     = 50103;  // float/double: fixed-point x10^scale
+  optional bool          opaque    = 50104;  // float/double/bytes: decimal-/hex-string constant
+  optional ZeroPolicy    zero_field = 50105; // IMPLICIT fields: is the zero value a value? (Appendix A `zero`; renamed — see header)
+  optional string        default   = 50106;  // rendered per field type; editions default preferred
+  optional string        mirror    = 50107;  // reserved (§14, open)
+}
+extend google.protobuf.MessageOptions {
+  optional bool          value     = 50121;  // value-like: same_t view; hashing where §9 allows
+  optional string        key       = 50122;  // documents the domain key field (§9)
+  repeated string any_types = 50123;  // Any registry (§10)
+  optional bool          reify     = 50124;  // reserved (§8, open)
+}
+extend google.protobuf.EnumOptions {
+  optional ZeroPolicy    zero      = 50141;
+  optional UnknownPolicy unknown   = 50142;
+}

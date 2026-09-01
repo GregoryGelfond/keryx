@@ -1,0 +1,25 @@
+syntax = "proto3";
+package keryx.p3;
+
+message Reading {
+  string sensor = 1;              // Implicit
+  int32 temp_c = 2;               // Implicit
+  optional int32 calibration = 3; // proto3-optional: EXPLICIT, synthetic oneof de-sugared
+  Level level = 4;                // enum, Implicit
+  Detail detail = 5;              // message field: EXPLICIT
+  oneof source {                  // a real oneof (§7.3)
+    string device = 6;
+    string gateway = 7;
+  }
+}
+
+message Detail {
+  string note = 1;
+}
+
+// A proto3 enum — an open sort (§7.4).
+enum Level {
+  LEVEL_UNSPECIFIED = 0;
+  LEVEL_LOW = 1;
+  LEVEL_HIGH = 2;
+}
