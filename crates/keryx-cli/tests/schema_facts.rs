@@ -5,6 +5,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+// `protox::compile`'s typed `FileDescriptorSet` drops custom-option bytes
+// (§20) — harmless here since every fixture this helper compiles is option-free.
 fn compile(name: &str) -> Vec<u8> {
     use protox::prost::Message;
     let core = Path::new(env!("CARGO_MANIFEST_DIR")).join("../keryx-core");

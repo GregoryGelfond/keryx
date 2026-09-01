@@ -11,22 +11,26 @@ use super::model::{Annotation, AnnotationValue};
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 
 /// The keryx annotations set on an options message (a field's, message's, enum's,
-/// or enum value's `.options()`), read dynamically (§20). A keryx option is
-/// resolved by *extension identity* — declared in the vendored
-/// `keryx/options.proto` (architecture §6) — never by a `keryx.`-prefixed name
-/// alone: a foreign schema can declare its own extension under `package keryx`
-/// with a field name that is not a themelios identifier (e.g. `Evil`), and
-/// admitting it by name would carry that foreign text into `facts::render`'s
-/// vocabulary-only `Name::new` door, breaking totality (§6). Non-keryx and
-/// non-vendored extensions and base fields are ignored; a repeated option
-/// expands to one [`Annotation`] per element; the result is key-ordered (stable,
-/// so repeated elements keep order), so the schema is deterministic (P3).
-/// `locus` names the element for any malformed-value diagnostic.
+/// or enum value's `.options()`), read dynamically (§20). An option is admitted
+/// when its extension's declaring file is *named* `keryx/options.proto` — a
+/// best-effort FILE-NAME heuristic that cheaply excludes most foreign
+/// `keryx.`-prefixed extensions, but is NOT true extension identity: a crafted
+/// descriptor set can self-declare a file under that exact name, carrying an
+/// extension whose field name is not a themelios identifier (e.g. `Evil`). This
+/// filter is therefore not what keeps `facts::render` total — that totality is
+/// guaranteed downstream by `facts`'s option-key lowering (`terms::try_konst`),
+/// which diagnoses a non-identifier key instead of panicking (§6). Non-matching
+/// extensions and base fields are ignored here; a repeated option expands to one
+/// [`Annotation`] per element; the result is key-ordered (stable, so repeated
+/// elements keep order), so the schema is deterministic (P3). `locus` names the
+/// element for any malformed-value diagnostic.
 pub(super) fn read(options: &DynamicMessage, locus: &str) -> Result<Vec<Annotation>, Diagnostics> {
     let mut out = Vec::new();
     for (extension, value) in options.extensions() {
-        // Resolve by extension identity (§6): a keryx option is one declared in the
-        // vendored registry, not merely a `keryx.`-prefixed name a foreign schema coined.
+        // A best-effort FILE-NAME heuristic, not true extension identity (a
+        // crafted set can name a file `keryx/options.proto`): it narrows out
+        // most foreign `keryx.`-prefixed extensions before their key ever
+        // reaches `facts`. §6 totality does not rest on it — see the doc above.
         if extension.parent_file().name() != "keryx/options.proto" {
             continue;
         }
