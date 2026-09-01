@@ -7,9 +7,10 @@
 // and a top-level extension's name is package-scoped, so both resolve to the one
 // symbol `keryx.zero` — a duplicate-symbol error (protox and protoc both reject
 // it). The enum-level `zero` (50141) is kept; the field-level one is renamed.
-// Reconciling this collision in Appendix A itself is pending. Annotation
-// *semantics* land at Increment 5 — Increment 1 ingests these as opaque opt/3
-// facts (§20).
+// Appendix A is reconciled to this registry: it declares the field-level
+// extension as `zero_field` (50105) and keeps the enum-level `zero` (50141).
+// Annotation *semantics* land at Increment 5 — Increment 1 ingests these as
+// opaque opt/3 facts (§20).
 syntax = "proto2";
 package keryx;
 

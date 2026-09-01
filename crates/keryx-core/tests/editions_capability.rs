@@ -1,4 +1,4 @@
-//! Editions capability, verified up front (spec §32's editions gate). Green either
+//! Editions capability, verified up front (spec §31's (M1) editions gate). Green either
 //! way: if the toolchain compiles edition 2023, prost-reflect must resolve its
 //! presence features correctly; if not, editions is a documented, crate-gated
 //! upgrade — keryx branches on resolved features, so it is a fixture add, not a

@@ -117,7 +117,7 @@ Term shapes are type-directed (P5). Range violations are structured translation-
 | proto type | default mapping | notes / annotations |
 |---|---|---|
 | `int32`, `sint32`, `sfixed32` | native clingo integer | always fits; clingo integers are machine-bounded (32-bit signed) |
-| `uint32` | native, **range-checked** (must fit in signed 31 bits… i.e. ≤ 2³¹−1) | `(keryx.numeric) = DECIMAL_STRING` for fields that genuinely use the top bit |
+| `uint32`, `fixed32` | native, **range-checked** (must fit in signed 31 bits… i.e. ≤ 2³¹−1) | `(keryx.numeric) = DECIMAL_STRING` for fields that genuinely use the top bit |
 | `int64`, `uint64`, `fixed64`, `sfixed64`, `sint64` | **decimal-string constant** (opaque; e.g. `"9007199254740993"`) | `(keryx.numeric) = NATIVE_CHECKED` (small-count fields) or `= CLINGCON` (constraint-participating fields; clingcon profile only, lowered to `&dom`/`&sum` variables) |
 | `float`, `double` | **no default — annotation required** | `(keryx.scale) = n` → fixed-point integer (value × 10ⁿ, range-checked), or `(keryx.opaque) = true` → decimal-string constant. Unannotated float fields are a translation error with a two-choice fix-it message. |
 | `bool` | constants `true` / `false` as term | under `(keryx.zero)=ABSENT`: unary predicate, atom iff true (§5) |
@@ -369,7 +369,7 @@ Background, condensed to what the implementation needs:
 
 - **protoc** is protobuf's reference *front end*: it parses `.proto`, resolves imports, type-checks, and produces **descriptors** — the AST, itself defined in protobuf (`descriptor.proto`: `FileDescriptorSet ⊃ FileDescriptorProto ⊃ DescriptorProto/EnumDescriptorProto`, fields as `FieldDescriptorProto` with name, number, label, type or fully-qualified `type_name` string reference, and options). Cross-references are qualified-name strings, so the descriptor graph is already relational. `SourceCodeInfo` carries doc comments keyed by path into the tree.
 - **Producers.** `FileDescriptorSet` is keryx's interface (P9); its producers are: (a) embedded **protox** — the default UX: `keryx gen foo.proto` works with no protoc installed; (b) a serialized set from `protoc --descriptor_set_out=… --include_imports --include_source_info` or from **buf** (whose compiler emits the same descriptors and whose breaking-change detection complements the manifest); (c) the **plugin protocol**: `protoc --keryx_out=… ` spawns `protoc-gen-keryx`, writing a `CodeGeneratorRequest` (files to generate, parameter string, full transitive descriptor closure) to stdin and expecting a `CodeGeneratorResponse` (files or error) on stdout — a pure bytes→bytes function, trivially golden-testable.
-- **Editions.** Modern protobuf replaces the proto2/proto3 syntax split with *editions* (2023, 2024 released; more coming): per-file/message/field **features** with per-edition defaults. keryx branches on **resolved features** only — `field_presence` (§5), `enum_type` (§7.4) — never on syntax era; legacy files arrive as fixed feature bundles. The plugin shim must advertise editions support (`FEATURE_SUPPORTS_EDITIONS` + `minimum_edition`/`maximum_edition` in its response) or protoc rejects editions inputs. protox's editions coverage is a **verification gate** at M1 (§32); the fallback is requiring descriptor sets from protoc/buf until it clears.
+- **Editions.** Modern protobuf replaces the proto2/proto3 syntax split with *editions* (2023, 2024 released; more coming): per-file/message/field **features** with per-edition defaults. keryx branches on **resolved features** only — `field_presence` (§5), `enum_type` (§7.4) — never on syntax era; legacy files arrive as fixed feature bundles. The plugin shim must advertise editions support (`FEATURE_SUPPORTS_EDITIONS` + `minimum_edition`/`maximum_edition` in its response) or protoc rejects editions inputs. protox's editions coverage is a **verification gate** at M1 (§31); the fallback is requiring descriptor sets from protoc/buf until it clears.
 - **The dynamic-layer rule.** Custom options surface inside descriptors as *extension fields* of the options submessages. `prost`-generated typed structs do not retain unknown fields, so routing descriptors through `prost-types` silently **drops the bytes carrying keryx's annotations**. Therefore: descriptor ingestion is `prost_reflect::DescriptorPool::decode` over the raw serialized set, options read dynamically; typed structs only downstream of the schema model, never on the ingestion path. This rule is load-bearing; violating it produces a tool that appears to work and ignores every annotation.
 - **De-sugaring.** Descriptors are a compiler IR with historical warts. Ingestion normalizes them into a clean **schema model** so nothing downstream reasons about encoding artifacts: `map<K,V>`'s synthetic `*Entry` nested message (flagged `map_entry`) → a map field; proto3 `optional`'s synthetic single-field oneof → an EXPLICIT singular field; delimited/group encoding → ordinary message field; feature resolution applied; well-known types passed through structurally (§10).
 
@@ -692,7 +692,7 @@ Networking/transport/service (Pythia); function-free targets; non-protobuf IDLs;
 
 Flagged for first-pass review, since these regularize or pin choices the design conversation left as sketches:
 
-1. **Option namespace and consolidation.** All annotations live under `(keryx.*)`; the sketched `(asp.int64)=CHECKED_NATIVE` and `(asp.enum_zero)=ABSENT` are consolidated into the general `(keryx.numeric)` (all integral types, three policies) and `(keryx.zero)` (all zero-defaultable IMPLICIT fields incl. bool and enums). The unary-bool encoding is recovered as `(keryx.zero)=ABSENT` on a bool.
+1. **Option namespace and consolidation.** All annotations live under `(keryx.*)`; the sketched `(asp.int64)=CHECKED_NATIVE` and `(asp.enum_zero)=ABSENT` are consolidated into the general `(keryx.numeric)` (all integral types, three policies) and `(keryx.zero)` (all zero-defaultable IMPLICIT fields incl. bool and enums). Protobuf's flat extension-symbol namespace cannot carry two `keryx.zero` extensions, so the *field*-targeted extension is encoded `zero_field` (FieldOptions, 50105) and the *enum*-targeted one stays `zero` (EnumOptions, 50141); the conceptual annotation and the overlay-TOML key remain `zero`, and the field-site inline spelling `(keryx.zero_field)` and its semantics are settled with annotation reading at M4. The unary-bool encoding is recovered as `(keryx.zero)=ABSENT` on a bool.
 2. **Float policy pinned** to annotation-mandatory with a two-choice fix-it error (scale vs. opaque) — the one deliberate exception to G4.
 3. **Set honesty clause** (§7.1): `(keryx.set)` changes relation shape and serialization order only; identity collapse for message elements additionally requires `(keryx.value)`. The conversation's stories implied but never stated this.
 4. **Episodic guards pinned** to backend-registered externals with release-to-retire; the guard-as-choice-atom + negative-assumption encoding is noted as an equivalent alternative (§23).
@@ -700,6 +700,7 @@ Flagged for first-pass review, since these regularize or pin choices the design 
 6. **Overlay format pinned** to TOML keyed by fully-qualified paths, overlay-wins precedence, unmatched-key errors.
 7. **Bytes canonical form pinned** to lowercase hex (base64 rejected for case/padding ambiguity).
 8. **Milestone order** (§31) is a proposal, shaped so every milestone is demonstrable and the P10 principle lands at M5 without vocabulary change.
+9. **Qualifier rule pinned** (§4.2). "Minimize total qualifier segments" is realized as the unique, symmetric rule §4.2's own example shows — every member of a name collision is qualified to the shortest common path-suffix depth that separates them — because leaving one member bare is non-unique and would violate P3 (a deterministic vocabulary). The prose objective and the example are reconciled in favour of the example.
 
 ---
 
@@ -720,7 +721,7 @@ extend google.protobuf.FieldOptions {
   NumericPolicy numeric  = 50102;   // integral fields & map keys (§6, §7.2)
   int32         scale    = 50103;   // float/double: fixed-point ×10^scale
   bool          opaque   = 50104;   // float/double/bytes: decimal-/hex-string constant
-  ZeroPolicy    zero     = 50105;   // IMPLICIT fields: is the zero value a value?
+  ZeroPolicy    zero_field = 50105; // IMPLICIT fields: is the zero value a value? (proto symbol-namespace forces the field-level rename from `zero`; enum-level `zero` = 50141 below is kept)
   string        default  = 50106;   // rendered per field type; editions `default` preferred
   string        mirror   = 50107;   // reserved (§14, open)
 }
@@ -736,7 +737,7 @@ extend google.protobuf.EnumOptions {
 }
 ```
 
-Overlay TOML keys mirror these names exactly (`set`, `numeric`, `scale`, `opaque`, `zero`, `default`, `value`, `key`, `any_types`, `unknown`), applied by fully-qualified path (§16).
+Overlay TOML keys mirror these names exactly (`set`, `numeric`, `scale`, `opaque`, `zero`, `default`, `value`, `key`, `any_types`, `unknown`), applied by fully-qualified path (§16) (`zero` is the overlay/conceptual key for both the field- and enum-level extensions; see §34.1).
 
 ## Appendix B — Manifest and envelope sketches
 

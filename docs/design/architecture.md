@@ -3,7 +3,7 @@
 **Date:** 2026-08-31
 **Status:** Founding design. Converged in the founding design session; pending principal review before its implementation plan is written. This document is the architecture of record; the keryx specification is the design of record beneath it.
 **Provenance:** Founding build session (`~/Projects/keryx`, empty at start).
-**Design of record:** the keryx specification — `~/Projects/archeion/keryx/keryx-spec.md`, sha256 `d6f0472b…`, 791 lines. Imported into the repo as `docs/specification.md` at Increment 0.
+**Design of record:** the keryx specification — `~/Projects/archeion/keryx/keryx-spec.md`, sha256 `11a6bf11…`, 792 lines. Imported into the repo as `docs/specification.md` at Increment 0. Revised at Increment 2 (§6 `fixed32`; §20 editions-gate citation; Appendix A `zero`→`zero_field`; §34 qualifier-rule note).
 **Dependency:** themelios @ `86c7dfb` (public: `https://github.com/GregoryGelfond/themelios`) — program + analysis tiers built, validated, and consolidated for keryx.
 **North star:** pythia requirements v0.3 (`~/Desktop/pythia-requirements-v0.3.md`).
 

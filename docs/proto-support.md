@@ -15,6 +15,6 @@ any single commit along the way.
 | proto3        | supported (golden-tested)                                                                                                                                       |
 | edition 2023+ | DEFERRED: protox 0.9.1 does not compile editions — revisit when it does. `SchemaVersion` is `#[non_exhaustive]`, so a distinct `Edition` variant and the enum_type override are a later add, not a redesign |
 
-Editions verification follows spec §32's gate: the front-loaded editions capability
+Editions verification follows spec §31's (M1) gate: the front-loaded editions capability
 test is the tripwire; when it flips to SUPPORTED, add the editions fixture and
 golden and update this row.
