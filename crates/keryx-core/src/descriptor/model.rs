@@ -17,9 +17,6 @@
 pub struct FqName(String);
 
 impl FqName {
-    // The ingest door is this constructor's production caller and lands with
-    // ingestion; until then it is exercised only by this module's own tests.
-    #[allow(dead_code)]
     pub(crate) fn new(path: impl Into<String>) -> FqName {
         FqName(path.into())
     }
