@@ -14,6 +14,7 @@
 %!note : detail -> string  (total)
 #defined note/2.
 %!sort reading/1
+%!detail : reading -> detail  (partial)
 #defined reading/1.
 %!sensor : reading -> string  (total)
 #defined sensor/2.

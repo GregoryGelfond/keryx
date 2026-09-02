@@ -6,7 +6,7 @@ keryx.p3.Reading.sensor #1 fn  sensor/2  string  total
 keryx.p3.Reading.temp_c #2 fn  temp_c/2  int32  total
 keryx.p3.Reading.calibration #3 fn  calibration/2  int32  partial
 keryx.p3.Reading.level #4 fn  level/2  level  total
-keryx.p3.Reading.detail #5 fn  detail/2 -> detail  detail  partial
+keryx.p3.Reading.detail #5 fn  detail/1 -> detail  detail  partial ; view detail/2
 keryx.p3.Reading.device #6 oneof  device/2  string  partial
 keryx.p3.Reading.gateway #7 oneof  gateway/2  string  partial
 keryx.p3.Level  enum  level/1  (open)

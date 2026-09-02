@@ -1,13 +1,15 @@
 //! `views.lp` (spec §13.2): the relational views — one rule per message-typed field with an
 //! access-path occupant, so a model author reaches the field by the anonymous-variable
-//! projection idiom (`readings(B, _, E)`) rather than the occupant term. A pure function of the
-//! `Mapping`; the field's signature/doc rides as the rule's `%!` doc. Scalar fields and set
-//! membership need no view.
+//! projection idiom (`readings(B, _, E)`) rather than the occupant term. A client of `core.lp`:
+//! it opens with `#include "<pkg>.core.lp".` — it joins on the sorts and access-path terms
+//! `core.lp` declares, so it is loadable on its own — and each rule carries its one-line
+//! signature as its `%!` doc (the proto prose and the functional canon are `core.lp`'s, §13.1).
+//! Scalar fields and set membership need no view.
 
 use themelios_program::prelude::*;
 
 use crate::diagnostics::Diagnostics;
-use crate::emit::{build, doc_line, render, signature};
+use crate::emit::{build, render, signature};
 use crate::policy::model::{FieldMapping, SortMapping, Unit, ValueMapping, ViewKind};
 
 /// Render one generation unit's `views.lp` (spec §13.2). Total (§6).
@@ -28,7 +30,14 @@ pub fn views(unit: &Unit) -> Result<String, Diagnostics> {
             }
         }
     }
-    render(statements)
+    // Open as a client of `core.lp` (§13.2): the include makes `views.lp` loadable on its own,
+    // resolving the sorts and access-path terms its rules join on. Emitted as a raw clingo
+    // directive — `#include` is a loader meta-statement themelios does not model.
+    Ok(format!(
+        "#include \"{}.core.lp\".\n{}",
+        unit.package(),
+        render(statements)?,
+    ))
 }
 
 /// The relational view rule for one message-typed field (spec §13.2's table): the referent
@@ -41,7 +50,9 @@ fn view(
     referent: Name,
 ) -> WithProvenance<Statement> {
     let f = field.predicate().clone();
-    let doc = doc_line(field.doc(), &signature::field(parent, field));
+    // The rule's `%!` doc is the one-line signature only; the field's proto prose lives on the
+    // parent sort's `#defined` in `core.lp` (§13.1), which this file includes.
+    let doc = signature::field(parent, field);
     let p = build::var("P");
     match kind {
         ViewKind::Singular => build::view_rule(

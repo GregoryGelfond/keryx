@@ -2,8 +2,9 @@
 //! `core.lp` and `views.lp` directly over themelios `construct` + `render_documented` — no
 //! builder/printer trait. A pure function of the `Mapping` (P3 → golden-comparable). The
 //! honorary signature (§13.1) rides as `%!` docs on the statement carrying each line — a
-//! base-fact field's line on its `#defined`, a message-typed field's on its `views.lp` view
-//! rule (architecture §4 gap #2 — themelios has no free-standing `%` block at `86c7dfb`). This
+//! base-fact field's line on its own `#defined`, a message-typed field's on its parent sort's
+//! `#defined` in `core.lp` (its `views.lp` rule carries the same line for a standalone reader;
+//! architecture §4 gap #2 — themelios has no free-standing `%` block at `86c7dfb`). This
 //! module emits
 //! `core.lp` (§13.1) and `views.lp` (§13.2); the other §13 outputs — `shape.lp` (§13.3,
 //! Increment 4) and the manifest (§13.4) — are generated elsewhere.

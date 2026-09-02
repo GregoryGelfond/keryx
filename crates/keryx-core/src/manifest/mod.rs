@@ -111,8 +111,10 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 ///   referent sort only for a message-typed occupant (an enum referent shows only in
 ///   `<declared>` — §13.4's occupant-vs-declared distinction).
 ///
-/// `<name>/<arity>` for a message field is its relational view (§13.2), the predicate a model
-/// author joins on. `<declared>` is the proto-declared type regardless of `kind`/target
+/// `<name>/<arity>` for a message field is its occupant access-path term (§4.1) — the
+/// functional constructor, arity one less than its relational view — with ` ; view <name>/<v>`
+/// noting the view predicate (`views.lp`, §13.2) a model author joins on. `<declared>` is the
+/// proto-declared type regardless of `kind`/target
 /// (`declared`). `<descriptor>` is the family's shape — `seq` (sequence), `map<key>` (map), or
 /// `set` (a `(keryx.set)` membership relation, reserved at M1) — or, for a singular field or
 /// oneof arm, its `Totality` (§5), not the finer presence (the M1 fidelity the `Mapping`
@@ -134,8 +136,6 @@ fn field_line(out: &mut String, field: &FieldMapping) {
     // The trailing descriptor: a family names its shape — a sequence's contiguous 0-based index,
     // or a map's typed key, the KR distinction §4.1 draws (and which two message families would
     // otherwise be indistinguishable by); a singular field or oneof arm names its presence (§5).
-    // A message field's `name/arity` is its relational view (§13.2), the predicate a model author
-    // joins on.
     let descriptor = match field.form() {
         EmitForm::Sequence => "seq".to_owned(),
         EmitForm::Map { key } => format!("map<{}>", Scalar::from(*key).as_str()),
@@ -144,17 +144,32 @@ fn field_line(out: &mut String, field: &FieldMapping) {
             totality_word(field.presence()).to_owned()
         }
     };
+    // A message field is named by its occupant access-path term — the functional constructor,
+    // arity one less than the relational view it carries (`FieldMapping::arity` is the view
+    // arity) — with the view predicate noted (`; view <name>/<v>`), the additive join surface in
+    // `views.lp`. A base-fact field (scalar/enum) is named directly, with no view.
+    let (name_arity, view) = if field.view().is_some() {
+        (
+            format!("{}/{}", field.predicate().as_str(), field.arity() - 1),
+            format!(" ; view {}/{}", field.predicate().as_str(), field.arity()),
+        )
+    } else {
+        (
+            format!("{}/{}", field.predicate().as_str(), field.arity()),
+            String::new(),
+        )
+    };
     let _ = writeln!(
         out,
-        "{} #{} {}  {}/{}{}  {}  {}{}",
+        "{} #{} {}  {}{}  {}  {}{}{}",
         field.proto().as_str(),
         field.number(),
         kind,
-        field.predicate().as_str(),
-        field.arity(),
+        name_arity,
         target,
         declared(field.value()),
         descriptor,
+        view,
         decision_note(&[], field.escaped()),
     );
 }
@@ -408,7 +423,11 @@ mod tests {
         };
 
         let text = write(&unit, "sha256:PLACEHOLDER");
-        assert!(text.contains("keryx.t.Choice.arm #1 oneof  arm/2 -> y  y  partial\n"));
+        // A message-typed arm is also a message field: named by its occupant term `arm/1`, with
+        // its view `arm/2` noted — and the `kind` stays `oneof`, the property under test.
+        assert!(
+            text.contains("keryx.t.Choice.arm #1 oneof  arm/1 -> y  y  partial ; view arm/2\n")
+        );
     }
 
     #[test]
