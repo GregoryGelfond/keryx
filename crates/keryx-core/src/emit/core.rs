@@ -1,7 +1,8 @@
 //! `core.lp` (spec §13.1): the honorary signature as one documented `#defined` per sort and
-//! per field predicate. Rendered in themelios's canonical Ord order (P3); a
-//! field predicate shared across sorts de-duplicates to one `#defined`, its `%!` docs
-//! unioned across the sorts that share it (themelios's content-equal provenance merge).
+//! per base-fact (scalar or enum) field predicate — a message field's predicate is its
+//! relational view, declared in `views.lp` (§13.2), not here. Rendered in themelios's canonical
+//! Ord order (P3); a field predicate shared across sorts de-duplicates to one `#defined`, its
+//! `%!` docs unioned across the sorts that share it (themelios's content-equal provenance merge).
 
 use crate::diagnostics::Diagnostics;
 use crate::emit::{build, doc_line, render, signature};
@@ -22,11 +23,17 @@ pub fn core(unit: &Unit) -> Result<String, Diagnostics> {
             doc_line(sort.doc(), &signature::sort(sort)),
         ));
         for field in sort.fields() {
-            statements.push(build::defined(
-                field.predicate().clone(),
-                field.arity(),
-                doc_line(field.doc(), &signature::field(sort, field)),
-            ));
+            // A message-typed field's predicate is its relational view (§13.2), declared and
+            // defined in `views.lp`; `core.lp` declares only the sorts and the base-fact
+            // predicates (scalar and enum fields), so excluding `views.lp` cannot leave a
+            // declaration here with no rule to populate it.
+            if field.view().is_none() {
+                statements.push(build::defined(
+                    field.predicate().clone(),
+                    field.arity(),
+                    doc_line(field.doc(), &signature::field(sort, field)),
+                ));
+            }
         }
     }
     for enumeration in unit.enums() {

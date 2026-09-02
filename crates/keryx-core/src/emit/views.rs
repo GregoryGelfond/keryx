@@ -1,7 +1,8 @@
 //! `views.lp` (spec §13.2): the relational views — one rule per message-typed field with an
-//! access-path occupant. A pure function of the `Mapping`; the field's
-//! signature/doc rides as the rule's `%!` doc. Scalar fields and set membership need no
-//! view.
+//! access-path occupant, so a model author reaches the field by the anonymous-variable
+//! projection idiom (`readings(B, _, E)`) rather than the occupant term. A pure function of the
+//! `Mapping`; the field's signature/doc rides as the rule's `%!` doc. Scalar fields and set
+//! membership need no view.
 
 use themelios_program::prelude::*;
 

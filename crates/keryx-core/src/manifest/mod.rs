@@ -10,7 +10,7 @@
 
 use std::fmt::Write as _;
 
-use crate::descriptor::model::Openness;
+use crate::descriptor::model::{Openness, Scalar};
 use crate::policy::model::{
     EmitForm, EnumMapping, FieldMapping, SortMapping, Totality, Unit, ValueMapping,
 };
@@ -80,10 +80,10 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 }
 
 /// One field's manifest record (spec §13.4, §4.1, §7):
-/// `<path> #<number> <kind>  <name>/<arity>[ -> <target>]  <declared>  <total|partial>[  ;
-/// view <name>/<arity>]`. `kind` and `target` are two independent axes, each a pure function
-/// of one dimension of the field — never conflated, so a field's oneof-arm-ness and its
-/// value's message-ness compose freely instead of one silently overriding the other:
+/// `<path> #<number> <kind>  <name>/<arity>[ -> <target>]  <declared>  <descriptor>`. `kind`
+/// and `target` are two independent axes, each a pure function of one dimension of the field —
+/// never conflated, so a field's oneof-arm-ness and its value's message-ness compose freely
+/// instead of one silently overriding the other:
 /// - `kind` is a function of the field's `EmitForm` alone: `fn` (singular), `fam` (repeated
 ///   or map), `oneof` (an oneof arm, regardless of what its value is — a message-typed arm is
 ///   still `oneof`, never demoted to `fn`), `rel` (a `(keryx.set)` membership relation,
@@ -93,11 +93,12 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 ///   referent sort only for a message-typed occupant (an enum referent shows only in
 ///   `<declared>` — §13.4's occupant-vs-declared distinction).
 ///
-/// `<declared>` is the proto-declared type regardless of `kind`/target (`declared`); the
-/// totality word reflects `Totality` (§5), not the finer presence — the M1 fidelity the
-/// `Mapping` carries (`LEGACY_REQUIRED`'s distinct outbound obligation is a shape concern,
-/// Increment 4). A trailing `; view` note names the relational view the field gets, when one
-/// exists (§13.2).
+/// `<name>/<arity>` for a message field is its relational view (§13.2), the predicate a model
+/// author joins on. `<declared>` is the proto-declared type regardless of `kind`/target
+/// (`declared`). `<descriptor>` is the family's shape — `seq` or `map<key>` — or, for a
+/// singular field or oneof arm, its `Totality` (§5), not the finer presence (the M1 fidelity
+/// the `Mapping` carries; `LEGACY_REQUIRED`'s distinct outbound obligation is a shape concern,
+/// Increment 4).
 fn field_line(out: &mut String, field: &FieldMapping) {
     let kind = match field.form() {
         EmitForm::Function => "fn",
@@ -109,14 +110,22 @@ fn field_line(out: &mut String, field: &FieldMapping) {
         ValueMapping::Message(name) => format!(" -> {}", name.as_str()),
         ValueMapping::Scalar { .. } | ValueMapping::Enum(_) => String::new(),
     };
-    let view = if field.view().is_some() {
-        format!("  ; view {}/{}", field.predicate().as_str(), field.arity())
-    } else {
-        String::new()
+    // The trailing descriptor: a family names its shape — a sequence's contiguous 0-based index,
+    // or a map's typed key, the KR distinction §4.1 draws (and which two message families would
+    // otherwise be indistinguishable by); a singular field or oneof arm names its presence (§5).
+    // A message field's `name/arity` is its relational view (§13.2), the predicate a model author
+    // joins on.
+    let descriptor = match field.form() {
+        EmitForm::Sequence => "seq".to_owned(),
+        EmitForm::Map { key } => format!("map<{}>", Scalar::from(*key).as_str()),
+        EmitForm::Set => "set".to_owned(),
+        EmitForm::Function | EmitForm::OneofArm { .. } => {
+            totality_word(field.presence()).to_owned()
+        }
     };
     let _ = writeln!(
         out,
-        "{} #{} {}  {}/{}{}  {}  {}{}",
+        "{} #{} {}  {}/{}{}  {}  {}",
         field.proto().as_str(),
         field.number(),
         kind,
@@ -124,8 +133,7 @@ fn field_line(out: &mut String, field: &FieldMapping) {
         field.arity(),
         target,
         declared(field.value()),
-        totality_word(field.presence()),
-        view,
+        descriptor,
     );
 }
 
@@ -371,9 +379,7 @@ mod tests {
         };
 
         let text = write(&unit, "sha256:PLACEHOLDER");
-        assert!(
-            text.contains("keryx.t.Choice.arm #1 oneof  arm/2 -> y  y  partial  ; view arm/2\n")
-        );
+        assert!(text.contains("keryx.t.Choice.arm #1 oneof  arm/2 -> y  y  partial\n"));
     }
 
     #[test]
@@ -397,7 +403,7 @@ mod tests {
         };
         let mut out = String::new();
         field_line(&mut out, &field);
-        assert!(out.contains("keryx.t.Tags.name #1 rel  name/2  string  total\n"));
+        assert!(out.contains("keryx.t.Tags.name #1 rel  name/2  string  set\n"));
     }
 
     #[test]

@@ -2,8 +2,6 @@
 #defined calibration/2.
 %!sort detail/1
 #defined detail/1.
-%!detail : reading -> detail  (partial)
-#defined detail/2.
 %!device : reading -> string  (oneof source, partial)
 #defined device/2.
 %!gateway : reading -> string  (oneof source, partial)

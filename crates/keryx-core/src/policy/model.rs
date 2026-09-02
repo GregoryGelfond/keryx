@@ -103,7 +103,10 @@ pub enum Totality {
 /// Which relational view (if any) `emit::views` generates for a field (spec §13.2).
 /// Only message-typed fields with an access-path occupant get one; scalar fields are
 /// already relational, and set membership (Increment 5) needs none. The variant selects
-/// the rule form.
+/// the rule form. The view is the predicate a model author joins on, and it is what makes the
+/// anonymous-variable projection idiom an ASP author reaches for available — `readings(B, _, E)`
+/// to range over a batch's elements, `readings(B, _, _)` for existence — rather than reaching
+/// for the occupant term (`readings(B, I)`) directly.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ViewKind {
     /// `f(P, A) :- t(A), A = f(P).` — a singular message field.

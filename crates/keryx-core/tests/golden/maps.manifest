@@ -1,6 +1,6 @@
 keryx-manifest v0
 keryx.maps.Inventory  sort  inventory/1
-keryx.maps.Inventory.counts #1 fam  counts/3  int32  total
-keryx.maps.Inventory.items #2 fam  items/3 -> item  item  total  ; view items/3
+keryx.maps.Inventory.counts #1 fam  counts/3  int32  map<string>
+keryx.maps.Inventory.items #2 fam  items/3 -> item  item  map<int64>
 keryx.maps.Item  sort  item/1
 keryx.maps.Item.sku #1 fn  sku/2  string  total
