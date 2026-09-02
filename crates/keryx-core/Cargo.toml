@@ -29,6 +29,9 @@ protox = "0.9.1"
 # Fixture compilation shared across the suites lives in one dev-only crate, so no
 # suite carries a dead-code allow for a helper it does not use.
 keryx-test-support = { path = "../keryx-test-support" }
+# Property tests for the stage-1 lowering laws (idempotence, injectivity) — the
+# invariants the docs assert, made executable over generated input.
+proptest = "1"
 
 [lints]
 workspace = true

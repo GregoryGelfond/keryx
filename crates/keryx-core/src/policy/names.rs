@@ -327,7 +327,7 @@ pub(super) fn lower_snake(name: &str) -> String {
 /// [`lower_snake`]) — a real, if rare, *live* rejection, which is exactly why this is
 /// checked, not `expect`ed: the input is schema-derived (the estate posture: the one
 /// runtime-derived string that reaches a `Name::new` door is checked, cf.
-/// `facts::terms::try_konst`).
+/// `facts::terms::try_constant`).
 pub(super) fn identifier(text: &str, locus: &FqName) -> Result<Name, Diagnostics> {
     Name::new(text).map_err(|_: NotAnIdentifier| {
         Diagnostics::from(Diagnostic::new(
@@ -336,4 +336,47 @@ pub(super) fn identifier(text: &str, locus: &FqName) -> Result<Name, Diagnostics
             format!("`{text}` is not a valid ASP identifier"),
         ))
     })
+}
+
+#[cfg(test)]
+mod laws {
+    use proptest::prelude::*;
+
+    use super::{escape_reserved, lower_snake};
+
+    proptest! {
+        // `lower_snake` is a normal form (§4.2): its output is already lowered, so lowering it
+        // again is the identity. A mutant that failed to collapse a `_` run or trim an edge `_`
+        // would not be idempotent, and this catches it over the whole identifier domain.
+        #[test]
+        fn lower_snake_is_idempotent(name in "[A-Za-z0-9_]{0,24}") {
+            let once = lower_snake(&name);
+            let twice = lower_snake(&once);
+            prop_assert_eq!(twice, once);
+        }
+
+        // The output is a well-formed snake-identifier body: no doubled underscore (runs
+        // collapse to one) and no leading or trailing underscore (trimmed). Downstream
+        // `identifier` still validates the first character; these are the shape guarantees
+        // `lower_snake` itself owns.
+        #[test]
+        fn lower_snake_has_no_double_or_edge_underscore(name in "[A-Za-z0-9_]{0,24}") {
+            let out = lower_snake(&name);
+            prop_assert!(!out.contains("__"), "no doubled underscore: {:?}", out);
+            prop_assert!(
+                !out.starts_with('_') && !out.ends_with('_'),
+                "no edge underscore: {:?}",
+                out
+            );
+        }
+
+        // `escape_reserved` reaches its fixed point in one step: the suffix `_` is not itself a
+        // reserved word, so escaping an already-escaped name leaves the string unchanged.
+        #[test]
+        fn escape_reserved_string_is_idempotent(name in "[A-Za-z0-9_]{0,24}") {
+            let once = escape_reserved(&name).0;
+            let twice = escape_reserved(&once).0;
+            prop_assert_eq!(twice, once);
+        }
+    }
 }

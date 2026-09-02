@@ -154,9 +154,12 @@ fn duplicate(table: &[SortEntry], names: &[String], i: usize) -> Diagnostics {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use proptest::prelude::*;
     use themelios_program::Name;
 
-    use super::resolve;
+    use super::{Qualified, resolve};
     use crate::descriptor::model::FqName;
     use crate::diagnostics::DiagnosticKind;
     use crate::policy::names::SortEntry;
@@ -187,5 +190,45 @@ mod tests {
         let diagnostic = error.iter().next().expect("one diagnostic");
         assert_eq!(diagnostic.kind(), DiagnosticKind::UnmappableName);
         assert_eq!(diagnostic.locus().path(), Some("keryx.coll.Dup"));
+    }
+
+    proptest! {
+        // `resolve` is order-independent and injective (P3, §4.2): a set of distinct paths that
+        // all lower to one base predicate resolves to distinct qualified names, and the result
+        // does not depend on the table's order (resolve sorts its input internally). A mutant
+        // that dropped that internal sort, or a qualifier that collapsed two paths, fails here.
+        #[test]
+        fn resolve_is_order_independent_and_injective(
+            segments in prop::collection::hash_set("[a-z]{1,6}", 1..6)
+        ) {
+            let base = Name::new("msg").expect("`msg` is valid");
+            let mut table: Vec<SortEntry> = segments
+                .iter()
+                .map(|seg| SortEntry {
+                    path: FqName::new(format!("keryx.{seg}.Msg")),
+                    base: base.clone(),
+                    escaped: false,
+                })
+                .collect();
+
+            let forward = resolve(&table).expect("resolves");
+            table.reverse();
+            let reversed = resolve(&table).expect("resolves");
+
+            // Compare the resolved decisions by value (Qualified is not `PartialEq`): equal
+            // regardless of input order.
+            let project = |m: &BTreeMap<String, Qualified>| -> BTreeMap<String, (String, Vec<String>, bool)> {
+                m.iter()
+                    .map(|(k, q)| {
+                        (k.clone(), (q.name.as_str().to_owned(), q.qualifier.clone(), q.escaped))
+                    })
+                    .collect()
+            };
+            prop_assert_eq!(project(&forward), project(&reversed));
+
+            // Injective: distinct paths resolve to distinct predicate names.
+            let names: BTreeSet<&str> = forward.values().map(|q| q.name.as_str()).collect();
+            prop_assert_eq!(names.len(), forward.len());
+        }
     }
 }
