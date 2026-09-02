@@ -4,10 +4,11 @@
 //! away (maps, proto3-optional, groups; §20), presence is resolved (§5), and
 //! identity is the fully-qualified proto path plus field number (§4.2, §13.4). No
 //! `prost_reflect` type appears here — this is the far side of the
-//! descriptor-engine boundary. Built only at the ingest door (`pub(crate)`
-//! constructors), read through accessors; deterministically ordered (messages by
-//! path, fields by number, enums by path, values by number) so the whole model is
-//! a pure, golden-comparable function of the input (P3).
+//! descriptor-engine boundary. A `Schema`'s element lists are `pub(crate)`, so a
+//! foreign leaf cannot enter an assembled schema — the model is built only at the
+//! ingest door; deterministically ordered (messages by path, fields by number,
+//! enums by path, values by number) so the whole model is a pure, golden-comparable
+//! function of the input (P3).
 
 /// A fully-qualified proto name — a dotted path (`dispatch.v1.Shipment.tags`), the
 /// machine-checked identity of a vocabulary element (§4.2, §13.4). A validated
@@ -239,8 +240,9 @@ pub enum AnnotationValue {
 
 /// A source file: its name and package (Appendix C `file/2`). The file's version is
 /// resolved transiently for feature resolution (openness) and is not stored — a `version`
-/// field is added when a consumer (e.g. `explain` showing the era) needs it. Plain data,
-/// reached through [`Schema::files`] and built only at the ingest door.
+/// field is added when a consumer (e.g. `explain` showing the era) needs it. Plain data with
+/// public fields, reached through [`Schema::files`]; a `Schema`'s file list is `pub(crate)`, so
+/// a foreign `File` cannot enter an assembled schema.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct File {
     /// The file's name (Appendix C `file/2`).

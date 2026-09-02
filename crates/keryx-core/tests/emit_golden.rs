@@ -50,3 +50,11 @@ golden!(
     emit::core,
     "golden/shared_field.core.lp"
 );
+// Field-name lowering and a reserved-word field escape (§4.2), pinned in emitted `core.lp`:
+// `camelField`/`PascalField` lower, `reach` escapes to `reach_`, each with its signature doc.
+golden!(
+    field_lowering_core,
+    "field_lowering.proto",
+    emit::core,
+    "golden/field_lowering.core.lp"
+);

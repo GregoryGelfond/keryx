@@ -23,7 +23,9 @@ pub enum Locus {
     #[default]
     Whole,
     /// A fully-qualified proto path (e.g. `dispatch.v1.Shipment.tags`), or a file
-    /// path for a source-compile failure.
+    /// path for a source-compile failure. The path may be empty — a caller that
+    /// opened an empty spec path (`keryx gen ""`) locates the failure at that path;
+    /// it is still a located diagnostic, distinct from `Whole`.
     At(String),
 }
 
@@ -268,10 +270,13 @@ impl From<Diagnostic> for Diagnostics {
     }
 }
 
-/// Escape a string for a JSON string literal ([`Diagnostics::wire`]): `"`, `\`, and
-/// the C0 controls (`\n`/`\t`/`\r` by name, the rest as `\u00NN`). Non-UTF-8 is
-/// impossible in a proto path or a composed detail, so no byte fallback is needed.
-fn escape(text: &str) -> String {
+/// Escape a string for a JSON string literal ([`Diagnostics::wire`]): `"`, `\`, and the C0
+/// controls (`\n`/`\t`/`\r` by name, the rest as `\u00NN`). Non-UTF-8 is impossible in a proto
+/// path or a composed detail, so no byte fallback is needed. Public so the CLI renders its own
+/// adapter-error JSON (a file-I/O or usage failure, with no library `DiagnosticKind`) in the
+/// same wire shape — one home for the escape rule.
+#[must_use]
+pub fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
         match ch {

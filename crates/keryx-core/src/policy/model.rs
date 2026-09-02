@@ -410,6 +410,50 @@ impl Mapping {
     pub fn units(&self) -> &[Unit] {
         &self.units
     }
+
+    /// The one element named by its fully-qualified proto `path` — a sort, a field, an enum, or
+    /// an enum value (spec §25's `explain [fq.path]`) — looked up on the model itself, so an enum
+    /// value is addressable by its full name (`pkg.Enum.VALUE`) like every other element. `None`
+    /// when no element has that path.
+    #[must_use]
+    pub fn element(&self, path: &str) -> Option<Element<'_>> {
+        for unit in &self.units {
+            for sort in &unit.sorts {
+                if sort.proto.as_str() == path {
+                    return Some(Element::Sort(sort));
+                }
+                if let Some(field) = sort.fields.iter().find(|f| f.proto.as_str() == path) {
+                    return Some(Element::Field(field));
+                }
+            }
+            for enumeration in &unit.enums {
+                if enumeration.proto.as_str() == path {
+                    return Some(Element::Enum(enumeration));
+                }
+                if let Some(value) = enumeration
+                    .values
+                    .iter()
+                    .find(|v| format!("{}.{}", enumeration.proto.as_str(), v.proto_name) == path)
+                {
+                    return Some(Element::Value(value));
+                }
+            }
+        }
+        None
+    }
+}
+
+/// A reference to one element of a [`Mapping`] (`Mapping::element`): a sort, a field, an enum,
+/// or an enum value, each carrying what the manifest renders for that one record (spec §25).
+pub enum Element<'a> {
+    /// A message sort.
+    Sort(&'a SortMapping),
+    /// A field of a sort.
+    Field(&'a FieldMapping),
+    /// An enum sort.
+    Enum(&'a EnumMapping),
+    /// One value of an enum.
+    Value(&'a EnumValueMapping),
 }
 
 #[cfg(test)]

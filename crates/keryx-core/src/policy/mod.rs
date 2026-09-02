@@ -16,8 +16,8 @@ mod names;
 mod qualify;
 
 pub use model::{
-    EmitForm, EnumMapping, EnumValueMapping, FieldMapping, Mapping, ScalarTreatment, SortMapping,
-    Totality, Unit, ValueMapping, ViewKind,
+    Element, EmitForm, EnumMapping, EnumValueMapping, FieldMapping, Mapping, ScalarTreatment,
+    SortMapping, Totality, Unit, ValueMapping, ViewKind,
 };
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -77,7 +77,7 @@ fn assemble(
     }
     for enumeration in schema.enums() {
         let package = package_of.get(enumeration.file()).copied().unwrap_or("");
-        let mapping = build_enum(enumeration, &sort_of, sorts)?;
+        let mapping = build_enum(enumeration, sorts)?;
         units.entry(package).or_default().1.push(mapping);
     }
     Ok(Mapping {
@@ -116,12 +116,17 @@ fn build_sort(
     if let Some(collision) = first_field_collision(&fields) {
         return Err(field_collision(collision));
     }
-    let resolved = sorts.get(message.path().as_str());
+    // One lookup, one failure posture: a missing entry is `unresolved_reference` (§6), never a
+    // silent default that could drop a real qualifier/escape decision. The `sort_of` closure
+    // stays for this message's field referents, which resolve *other* sorts' paths.
+    let resolved = sorts
+        .get(message.path().as_str())
+        .ok_or_else(|| unresolved_reference(message.path()))?;
     Ok(SortMapping {
         proto: message.path().clone(),
-        predicate: sort_of(message.path())?,
-        qualifier: resolved.map(|q| q.qualifier.clone()).unwrap_or_default(),
-        escaped: resolved.is_some_and(|q| q.escaped),
+        predicate: resolved.name.clone(),
+        qualifier: resolved.qualifier.clone(),
+        escaped: resolved.escaped,
         recursive: message.is_recursive(),
         doc: message.doc().map(str::to_owned),
         fields,
@@ -154,11 +159,11 @@ fn field_collision(field: &FieldMapping) -> Diagnostics {
 }
 
 /// One enum's `EnumMapping`: its **qualified** sort predicate (from `sort_of`, so a
-/// message/enum base-name collision qualifies the enum too — *not* `names::enum_name`, which
-/// is the pre-qualification base), and its value constants under the §7.4 strip.
+/// message/enum base-name collision qualifies the enum too), and its value constants under the
+/// §7.4 strip. Its sort has no field referents, so — unlike `build_sort` — it needs no `sort_of`
+/// closure: the one lookup on the resolved table gives predicate, qualifier, and escape together.
 fn build_enum(
     enumeration: &Enum,
-    sort_of: &impl Fn(&FqName) -> Result<Name, Diagnostics>,
     sorts: &BTreeMap<String, qualify::Qualified>,
 ) -> Result<EnumMapping, Diagnostics> {
     let strip = names::enum_strip(enumeration);
@@ -185,12 +190,14 @@ fn build_enum(
             )));
         }
     }
-    let resolved = sorts.get(enumeration.path().as_str());
+    let resolved = sorts
+        .get(enumeration.path().as_str())
+        .ok_or_else(|| unresolved_reference(enumeration.path()))?;
     Ok(EnumMapping {
         proto: enumeration.path().clone(),
-        predicate: sort_of(enumeration.path())?,
-        qualifier: resolved.map(|q| q.qualifier.clone()).unwrap_or_default(),
-        escaped: resolved.is_some_and(|q| q.escaped),
+        predicate: resolved.name.clone(),
+        qualifier: resolved.qualifier.clone(),
+        escaped: resolved.escaped,
         openness: enumeration.openness(),
         doc: enumeration.doc().map(str::to_owned),
         values,

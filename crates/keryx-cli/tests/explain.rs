@@ -83,6 +83,61 @@ fn a_fq_path_restricts_the_explanation_to_one_element() {
 }
 
 #[test]
+fn an_enum_value_is_addressable_by_its_full_path() {
+    // §25: an enum value's manifest line begins with its short name (`LEVEL_LOW  #1  value
+    // low`), so a text search for its fully-qualified path found nothing. The element is now
+    // looked up on the mapping model, so `pkg.Enum.VALUE` addresses it like any other element.
+    let out = Command::new(env!("CARGO_BIN_EXE_keryx"))
+        .arg("explain")
+        .arg("proto3.proto")
+        .args(["-I".as_ref(), fixtures().as_os_str()])
+        .args(["-I".as_ref(), vendored().as_os_str()])
+        .arg("keryx.p3.Level.LEVEL_LOW")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "explain exits 0 for a matching enum value"
+    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        stdout.contains("LEVEL_LOW  #1  value  low"),
+        "the one enum value's verdict: {stdout}"
+    );
+    // Only that value — its siblings and the enum line itself are absent.
+    assert!(
+        !stdout.contains("LEVEL_HIGH") && !stdout.contains("  enum  "),
+        "the filter excludes sibling values and the enum line: {stdout}"
+    );
+}
+
+#[test]
+fn a_message_path_explains_the_sort_and_its_fields() {
+    // A message path names the sort; its record is the `sort` line and every field of it (the
+    // full per-message record), distinct from a single field path (which is just that field).
+    let out = Command::new(env!("CARGO_BIN_EXE_keryx"))
+        .arg("explain")
+        .arg("proto3.proto")
+        .args(["-I".as_ref(), fixtures().as_os_str()])
+        .args(["-I".as_ref(), vendored().as_os_str()])
+        .arg("keryx.p3.Detail")
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "explain exits 0 for a message path");
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        stdout.contains("keryx.p3.Detail  sort  detail/1")
+            && stdout.contains("keryx.p3.Detail.note #1 fn  note/2  string  total"),
+        "the sort and its field: {stdout}"
+    );
+    // Not a different message's record.
+    assert!(
+        !stdout.contains("keryx.p3.Reading"),
+        "the filter excludes other messages: {stdout}"
+    );
+}
+
+#[test]
 fn an_unknown_fq_path_is_a_usage_error() {
     let out = Command::new(env!("CARGO_BIN_EXE_keryx"))
         .arg("explain")

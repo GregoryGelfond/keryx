@@ -24,7 +24,7 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// [`Schema`], treating the opened files as the subjects. Built through
 /// `encode_file_descriptor_set`, **not** `protox::compile` — the convenience re-encodes
 /// options through prost-types' typed structs and drops keryx's custom-option bytes (the
-/// §20 trap; see `tests/support/mod.rs`). Total (§6): any compile failure composes a
+/// §20 trap). Total (§6): any compile failure composes a
 /// `UncompilableSource` diagnostic, never a panic.
 ///
 /// # Errors

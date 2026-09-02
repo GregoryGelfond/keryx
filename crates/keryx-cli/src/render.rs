@@ -1,14 +1,15 @@
 //! Rendering the library's typed diagnostics at the CLI boundary (architecture §6): human
 //! prose (default when stderr is a terminal) or structured JSON (`--format json`, or when
-//! stderr is not a terminal). stdout carries the product; a broken pipe on stdout exits
-//! cleanly rather than panicking with EPIPE. `NO_COLOR` is honored by construction — the
-//! human form is uncolored at M1. The JSON view is the library's own
-//! ([`keryx_core::diagnostics::Diagnostics::wire`]), rendered here, not reinvented.
+//! stderr — the stream diagnostics travel on — is not a terminal). stdout carries the product;
+//! a broken pipe on either stream exits/continues cleanly rather than panicking with EPIPE.
+//! `NO_COLOR` is honored by construction — the human form is uncolored at M1. The JSON view of a
+//! library `Diagnostic` is the library's own ([`keryx_core::diagnostics::Diagnostics::wire`]); a
+//! CLI-adapter error (file I/O, usage) renders in the same shape with the exit class as its kind.
 
-use std::io::{ErrorKind, IsTerminal};
+use std::io::{ErrorKind, IsTerminal, Write as _};
 
 use clap::ValueEnum;
-use keryx_core::diagnostics::Diagnostics;
+use keryx_core::diagnostics::{Diagnostics, escape};
 
 use crate::exit::Exit;
 
@@ -21,6 +22,31 @@ pub enum Format {
     Human,
     /// Structured JSON (Appendix B `Diagnostic`: `field_path`, `kind`, `detail`).
     Json,
+}
+
+impl Format {
+    /// Whether diagnostics render as JSON: forced by `json`/`human`, else resolved by whether
+    /// stderr — the stream the diagnostics travel on, so a `| jq` consumer of stdout still sees
+    /// human errors on its terminal — is not a terminal (architecture §6).
+    fn is_json(self) -> bool {
+        match self {
+            Format::Json => true,
+            Format::Human => false,
+            Format::Auto => !std::io::stderr().is_terminal(),
+        }
+    }
+}
+
+/// Write one line to stderr, swallowing a broken pipe (a closed `2>&1 | head`) and any other
+/// stderr-write failure — there is nowhere left to report it, and a diagnostic must never
+/// double-panic into an abort (§6, the stderr counterpart of [`write_product`]'s stdout guard).
+fn line(text: &str) {
+    let _ = writeln!(std::io::stderr(), "{text}");
+}
+
+/// A progress line to stderr (`keryx: <message>`); stdout stays the product (§6).
+pub fn progress(message: &str) {
+    line(&format!("keryx: {message}"));
 }
 
 /// Write the product to stdout; a broken pipe (a closed downstream, e.g. `| head`) exits
@@ -38,35 +64,42 @@ fn write_product<W: std::io::Write>(out: &mut W, text: &str) -> Exit {
     match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
         Ok(()) => Exit::Success,
         Err(error) if error.kind() == ErrorKind::BrokenPipe => Exit::Success,
-        Err(error) => note(Exit::Internal, &format!("write failed: {error}")),
+        Err(error) => {
+            line(&format!("keryx: write failed: {error}"));
+            Exit::Internal
+        }
     }
 }
 
-/// Render diagnostics to stderr in the resolved format, and return `exit` (the caller's
-/// error class). `Auto` resolves by whether stderr is a terminal — the stream the
-/// diagnostics travel on, so a `| jq` consumer of stdout still sees human errors on its
-/// terminal (architecture §6).
+/// Render library diagnostics to stderr in the resolved format, and return `exit` (the caller's
+/// error class).
 #[must_use]
 pub fn report(format: Format, exit: Exit, diagnostics: &Diagnostics) -> Exit {
-    let json = match format {
-        Format::Json => true,
-        Format::Human => false,
-        Format::Auto => !std::io::stderr().is_terminal(),
-    };
-    if json {
-        eprintln!("{}", diagnostics.wire());
+    if format.is_json() {
+        line(&diagnostics.wire());
     } else {
         for diagnostic in diagnostics.iter() {
-            eprintln!("keryx: {diagnostic}");
+            line(&format!("keryx: {diagnostic}"));
         }
     }
     exit
 }
 
-/// A single-line message to stderr (progress or a non-diagnostic error), returning `exit`.
+/// Render one CLI-adapter error to stderr (a file-I/O or usage failure — not a library
+/// `Diagnostic`), returning `exit`. Under `--format json` it renders as a one-element wire array
+/// with the exit class as its `kind`, so structured stderr is uniform across every error class
+/// (§6, §26); otherwise a `keryx:` line.
 #[must_use]
-pub fn note(exit: Exit, message: &str) -> Exit {
-    eprintln!("keryx: {message}");
+pub fn note(format: Format, exit: Exit, message: &str) -> Exit {
+    if format.is_json() {
+        line(&format!(
+            r#"[{{"field_path":"","kind":"{}","detail":"{}"}}]"#,
+            exit.slug(),
+            escape(message),
+        ));
+    } else {
+        line(&format!("keryx: {message}"));
+    }
     exit
 }
 

@@ -153,7 +153,7 @@ pub(super) fn field_mapping(
     })
 }
 
-/// The (form, arity, value, view) for a field shape (spec §4.1, §7, §13.2). Repeated is always a
+/// The (form, arity, value) for a field shape (spec §4.1, §7). Repeated is always a
 /// `Sequence` at M1; `Set` waits for `(keryx.set)` semantics (Increment 5).
 fn shape(
     shape: &FieldShape,

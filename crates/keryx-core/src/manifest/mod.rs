@@ -12,7 +12,8 @@ use std::fmt::Write as _;
 
 use crate::descriptor::model::{Openness, Scalar};
 use crate::policy::model::{
-    EmitForm, EnumMapping, FieldMapping, SortMapping, Totality, Unit, ValueMapping,
+    Element, EmitForm, EnumMapping, EnumValueMapping, FieldMapping, SortMapping, Totality, Unit,
+    ValueMapping,
 };
 
 /// The manifest text for one generation unit — a package (spec §13.4, `<pkg>.keryx-manifest`).
@@ -51,6 +52,23 @@ pub fn records(unit: &Unit) -> String {
     }
     for enumeration in unit.enums() {
         enum_lines(&mut out, enumeration);
+    }
+    out
+}
+
+/// The manifest record for one schema element (spec §25's `explain [fq.path]`): a message's
+/// `sort` line and its fields, one field's line, an enum's line and its values, or one enum
+/// value's line — rendered through the very writers [`records`] uses, so a one-element
+/// explanation is a byte-for-byte slice of the full manifest, never a divergent second
+/// rendering. A pure, deterministic function of the element (P3).
+#[must_use]
+pub fn element_record(element: &Element) -> String {
+    let mut out = String::new();
+    match element {
+        Element::Sort(sort) => sort_lines(&mut out, sort),
+        Element::Field(field) => field_line(&mut out, field),
+        Element::Enum(enumeration) => enum_lines(&mut out, enumeration),
+        Element::Value(value) => value_line(&mut out, value),
     }
     out
 }
@@ -95,10 +113,13 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 ///
 /// `<name>/<arity>` for a message field is its relational view (§13.2), the predicate a model
 /// author joins on. `<declared>` is the proto-declared type regardless of `kind`/target
-/// (`declared`). `<descriptor>` is the family's shape — `seq` or `map<key>` — or, for a
-/// singular field or oneof arm, its `Totality` (§5), not the finer presence (the M1 fidelity
-/// the `Mapping` carries; `LEGACY_REQUIRED`'s distinct outbound obligation is a shape concern,
-/// Increment 4).
+/// (`declared`). `<descriptor>` is the family's shape — `seq` (sequence), `map<key>` (map), or
+/// `set` (a `(keryx.set)` membership relation, reserved at M1) — or, for a singular field or
+/// oneof arm, its `Totality` (§5), not the finer presence (the M1 fidelity the `Mapping`
+/// carries; `LEGACY_REQUIRED`'s distinct outbound obligation is a shape concern, Increment 4).
+/// A map's `<key>` is the *declared* key type (§13.4): the default-string treatment of an
+/// integer key (§7.2) is classified, not enforced, until the codec (Increment 5), so
+/// `map<int64>` names the declared key, never an emitted string key.
 fn field_line(out: &mut String, field: &FieldMapping) {
     let kind = match field.form() {
         EmitForm::Function => "fn",
@@ -125,7 +146,7 @@ fn field_line(out: &mut String, field: &FieldMapping) {
     };
     let _ = writeln!(
         out,
-        "{} #{} {}  {}/{}{}  {}  {}",
+        "{} #{} {}  {}/{}{}  {}  {}{}",
         field.proto().as_str(),
         field.number(),
         kind,
@@ -134,6 +155,7 @@ fn field_line(out: &mut String, field: &FieldMapping) {
         target,
         declared(field.value()),
         descriptor,
+        decision_note(&[], field.escaped()),
     );
 }
 
@@ -154,15 +176,22 @@ fn enum_lines(out: &mut String, e: &EnumMapping) {
         decision_note(e.qualifier(), e.escaped()),
     );
     for value in e.values() {
-        let _ = writeln!(
-            out,
-            "{}  #{}  value  {}{}",
-            value.proto_name(),
-            value.number(),
-            value.constant().as_str(),
-            decision_note(&[], value.escaped()),
-        );
+        value_line(out, value);
     }
+}
+
+/// One enum value's manifest record (spec §13.4): `<proto_name>  #<number>  value  <constant>`,
+/// with its own carried escape decision (`decision_note`). Split from [`enum_lines`] so a single
+/// value renders through the same writer for `explain <enum>.<VALUE>` (spec §25).
+fn value_line(out: &mut String, value: &EnumValueMapping) {
+    let _ = writeln!(
+        out,
+        "{}  #{}  value  {}{}",
+        value.proto_name(),
+        value.number(),
+        value.constant().as_str(),
+        decision_note(&[], value.escaped()),
+    );
 }
 
 /// The proto-declared type of a field's value (spec §13.4's `<declared>` column), regardless

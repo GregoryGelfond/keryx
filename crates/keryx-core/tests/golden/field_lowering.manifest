@@ -1,0 +1,5 @@
+keryx-manifest v0
+keryx.fieldlower.Sample  sort  sample/1
+keryx.fieldlower.Sample.camelField #1 fn  camel_field/2  string  total
+keryx.fieldlower.Sample.PascalField #2 fn  pascal_field/2  string  total
+keryx.fieldlower.Sample.reach #3 fn  reach_/2  int32  total [escaped]

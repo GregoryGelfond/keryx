@@ -36,3 +36,10 @@ macro_rules! golden {
 
 golden!(proto3_manifest, "proto3.proto", "golden/proto3.manifest");
 golden!(maps_manifest, "maps.proto", "golden/maps.manifest");
+// The `[escaped]` note on a reserved-word-escaped field, pinned where it is seen (§13.4): the
+// `reach` -> `reach_` escape renders `... reach_/2  int32  total [escaped]`, the sort/enum form.
+golden!(
+    field_lowering_manifest,
+    "field_lowering.proto",
+    "golden/field_lowering.manifest"
+);
