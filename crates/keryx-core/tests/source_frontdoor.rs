@@ -59,6 +59,24 @@ fn editions_source_is_gated_by_the_compiler_verdict() {
     }
 }
 
+// keryx's own option registry resolves from the embedded copy — no `-I` for the vendored
+// `proto/` dir (architecture §11, D6), the way `google/protobuf/*` does. Only the fixtures dir
+// is on the include path, and it holds no `keryx/options.proto`, so the import can resolve only
+// through the embedded registry.
+#[test]
+fn keryx_options_import_resolves_without_an_include() {
+    let (fixtures, _) = dirs();
+    let schema = compile(&["options.proto"], &[&fixtures])
+        .expect("options.proto compiles against the embedded keryx/options.proto");
+    assert!(
+        schema
+            .messages()
+            .iter()
+            .any(|m| m.path().as_str() == "keryx.opt.Sample"),
+        "the schema importing keryx/options.proto ingested"
+    );
+}
+
 // A subject whose name matches `is_dependency_file`'s heuristic (a well-known type) is
 // still ingested when it is the file opened — the subject-carry fix (the §21.2 self-
 // application depends on it). protox bundles google/protobuf/descriptor.proto.

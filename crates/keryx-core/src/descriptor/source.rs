@@ -14,14 +14,39 @@
 use std::path::Path;
 
 use protox::Compiler;
+use protox::file::{
+    ChainFileResolver, File, FileResolver, GoogleFileResolver, IncludeFileResolver,
+};
 
 use crate::descriptor::ingest_subjects;
 use crate::descriptor::model::Schema;
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 
-/// Compile `files` (imports resolved against `includes` plus protox's bundled well-known
-/// types, incl. `google/protobuf/descriptor.proto`) to a descriptor set and ingest it to a
-/// [`Schema`], treating the opened files as the subjects. Built through
+/// keryx's vendored option registry (`keryx/options.proto`, spec Appendix A), embedded at
+/// compile time so a user's `import "keryx/options.proto"` resolves with no `-I` — the way
+/// protox resolves the well-known types (architecture §11). This is the same file the
+/// file-name heuristic (`descriptor::options::read`) recognizes to admit keryx's own options.
+const OPTIONS_REGISTRY: &str = include_str!("../../proto/keryx/options.proto");
+
+/// A protox resolver serving keryx's embedded option registry and nothing else. Chained after
+/// the user includes (so a project's own `keryx/options.proto` still wins, if it has one) and
+/// before the well-known types (so everything else falls through to `GoogleFileResolver`).
+struct OptionsRegistry;
+
+impl FileResolver for OptionsRegistry {
+    fn open_file(&self, name: &str) -> Result<File, protox::Error> {
+        if name == "keryx/options.proto" {
+            File::from_source(name, OPTIONS_REGISTRY)
+        } else {
+            Err(protox::Error::file_not_found(name))
+        }
+    }
+}
+
+/// Compile `files` (imports resolved against `includes`, then keryx's embedded option registry
+/// `keryx/options.proto`, then protox's bundled well-known types incl.
+/// `google/protobuf/descriptor.proto`) to a descriptor set and ingest it to a [`Schema`],
+/// treating the opened files as the subjects. Built through
 /// `encode_file_descriptor_set`, **not** `protox::compile` — the convenience re-encodes
 /// options through prost-types' typed structs and drops keryx's custom-option bytes (the
 /// §20 trap). Total (§6): any compile failure composes a
@@ -35,8 +60,17 @@ pub fn compile(
     files: &[impl AsRef<Path>],
     includes: &[impl AsRef<Path>],
 ) -> Result<Schema, Diagnostics> {
-    let mut compiler =
-        Compiler::new(includes).map_err(|error| source_error(&error, Locus::whole()))?;
+    // Replicate `Compiler::new`'s resolver chain, inserting keryx's embedded option registry
+    // between the user includes and the well-known types (architecture §11): a user's own
+    // `keryx/options.proto` on an include path still wins; otherwise the vendored copy resolves
+    // with no `-I`, the way `google/protobuf/*` does.
+    let mut resolver = ChainFileResolver::new();
+    for include in includes {
+        resolver.add(IncludeFileResolver::new(include.as_ref().to_owned()));
+    }
+    resolver.add(OptionsRegistry);
+    resolver.add(GoogleFileResolver::new());
+    let mut compiler = Compiler::with_file_resolver(resolver);
     compiler.include_source_info(true).include_imports(true);
     for file in files {
         compiler
