@@ -9,7 +9,7 @@
 use std::io::{ErrorKind, IsTerminal, Write as _};
 
 use clap::ValueEnum;
-use keryx_core::diagnostics::{Diagnostics, escape};
+use keryx_core::diagnostics::{Diagnostics, wire_object};
 
 use crate::exit::Exit;
 
@@ -92,11 +92,10 @@ pub fn report(format: Format, exit: Exit, diagnostics: &Diagnostics) -> Exit {
 #[must_use]
 pub fn note(format: Format, exit: Exit, message: &str) -> Exit {
     if format.is_json() {
-        line(&format!(
-            r#"[{{"field_path":"","kind":"{}","detail":"{}"}}]"#,
-            exit.slug(),
-            escape(message),
-        ));
+        // The same wire-object serializer the library uses (`diagnostics::wire_object`), framed
+        // as a one-element array — so a CLI-adapter error is byte-shaped exactly like a library
+        // diagnostic. The exit class is the `kind`; a CLI-adapter error has an empty field path.
+        line(&format!("[{}]", wire_object("", exit.slug(), message)));
     } else {
         line(&format!("keryx: {message}"));
     }

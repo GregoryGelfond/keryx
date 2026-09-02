@@ -233,13 +233,11 @@ impl Diagnostics {
             if i > 0 {
                 out.push(',');
             }
-            let _ = write!(
-                out,
-                r#"{{"field_path":"{}","kind":"{}","detail":"{}"}}"#,
-                escape(diagnostic.locus.path().unwrap_or("")),
+            out.push_str(&wire_object(
+                diagnostic.locus.path().unwrap_or(""),
                 diagnostic.kind.as_str(),
-                escape(&diagnostic.detail),
-            );
+                &diagnostic.detail,
+            ));
         }
         out.push(']');
         out
@@ -270,13 +268,27 @@ impl From<Diagnostic> for Diagnostics {
     }
 }
 
-/// Escape a string for a JSON string literal ([`Diagnostics::wire`]): `"`, `\`, and the C0
-/// controls (`\n`/`\t`/`\r` by name, the rest as `\u00NN`). Non-UTF-8 is impossible in a proto
-/// path or a composed detail, so no byte fallback is needed. Public so the CLI renders its own
-/// adapter-error JSON (a file-I/O or usage failure, with no library `DiagnosticKind`) in the
-/// same wire shape — one home for the escape rule.
+/// One wire `Diagnostic` object — `{"field_path":..,"kind":..,"detail":..}` (Appendix B), each
+/// value JSON-escaped. The single home of the object's shape: [`Diagnostics::wire`] frames a JSON
+/// array of these for library diagnostics, and the CLI renders a one-element array of one for an
+/// adapter error (a file-I/O or usage failure, with no library `DiagnosticKind`), so the two
+/// structured-stderr forms (§26) cannot spell the object differently.
 #[must_use]
-pub fn escape(text: &str) -> String {
+pub fn wire_object(field_path: &str, kind: &str, detail: &str) -> String {
+    format!(
+        r#"{{"field_path":"{}","kind":"{}","detail":"{}"}}"#,
+        escape(field_path),
+        escape(kind),
+        escape(detail),
+    )
+}
+
+/// Escape a string for a JSON string literal: `"`, `\`, and the C0 controls (`\n`/`\t`/`\r` by
+/// name, the rest as `\u00NN`). Non-UTF-8 is impossible in a proto path or a composed detail, so
+/// no byte fallback is needed. Internal to the wire serializers ([`wire_object`], and through it
+/// [`Diagnostics::wire`]).
+#[must_use]
+fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
         match ch {
