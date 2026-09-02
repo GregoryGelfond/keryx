@@ -243,7 +243,7 @@ pub(super) fn enum_strip(enumeration: &Enum) -> usize {
     let all_prefixed = enumeration
         .values()
         .iter()
-        .all(|value| value.name().len() > prefix.len() && value.name().starts_with(&prefix));
+        .all(|value| value.name.len() > prefix.len() && value.name.starts_with(&prefix));
     if !all_prefixed {
         return 0;
     }
@@ -252,7 +252,7 @@ pub(super) fn enum_strip(enumeration: &Enum) -> usize {
         // Compare the *lowered* remainder: stripping that collapses two constants (e.g. a
         // case-only difference `FOO`/`Foo` → `foo`) must fall back to unstripped (§7.4) — a
         // pre-lowering comparison would miss it and keep a strip that produces a collision.
-        let remainder = lower_snake(&value.name()[prefix.len()..]);
+        let remainder = lower_snake(&value.name[prefix.len()..]);
         // …and stripping must not produce a constant that cannot open an ASP identifier. A
         // digit-initial remainder is the case the §21.2 dogfood surfaced: descriptor.proto's
         // own `Edition{EDITION_2023, EDITION_1_TEST_ONLY, …}` strips to `2023`/`1_test_only`,
@@ -281,12 +281,12 @@ pub(super) fn enum_constant(
     // `strip` is `enum_strip`'s result for this same enum: 0, or an ASCII-prefix byte
     // length it confirmed is a valid char boundary strictly less than every sibling
     // value's name length — never a panic here.
-    let lowered = escape_reserved(&lower_snake(&value.name()[strip..]));
+    let lowered = escape_reserved(&lower_snake(&value.name[strip..]));
     Ok(EnumValueMapping {
-        proto_name: value.name().to_owned(),
-        number: value.number(),
-        constant: identifier(&lowered, value.path())?,
-        doc: value.doc().map(str::to_owned),
+        proto_name: value.name.clone(),
+        number: value.number,
+        constant: identifier(&lowered, &value.path)?,
+        doc: value.doc.clone(),
     })
 }
 

@@ -9,8 +9,8 @@ use keryx_core::descriptor::model::{Annotation, AnnotationValue};
 
 fn annotations<'a>(list: &'a [Annotation], key: &str) -> Vec<&'a AnnotationValue> {
     list.iter()
-        .filter(|a| a.key() == key)
-        .map(Annotation::value)
+        .filter(|a| a.key == key)
+        .map(|a| &a.value)
         .collect()
 }
 

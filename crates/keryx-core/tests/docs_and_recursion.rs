@@ -50,9 +50,12 @@ fn doc_comments_ride_from_source_info() {
     let oneof = note
         .oneofs()
         .iter()
-        .find(|o| o.name() == "pick")
+        .find(|o| o.name == "pick")
         .expect("pick present");
-    assert_eq!(oneof.doc(), Some("A leading comment on the oneof."));
+    assert_eq!(
+        oneof.doc.as_deref(),
+        Some("A leading comment on the oneof.")
+    );
 
     let status = schema
         .enums()
@@ -64,7 +67,10 @@ fn doc_comments_ride_from_source_info() {
     let active = status
         .values()
         .iter()
-        .find(|v| v.name() == "STATUS_ACTIVE")
+        .find(|v| v.name == "STATUS_ACTIVE")
         .expect("STATUS_ACTIVE present");
-    assert_eq!(active.doc(), Some("A leading comment on the enum value."));
+    assert_eq!(
+        active.doc.as_deref(),
+        Some("A leading comment on the enum value.")
+    );
 }

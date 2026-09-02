@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use themelios_program::Name;
 
-use crate::descriptor::model::{Enum, FqName, Message, Oneof, Schema};
+use crate::descriptor::model::{Enum, FqName, Message, Schema};
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 
 /// Compute the [`Mapping`] for a schema (spec §21.3) — a pure, deterministic, unique
@@ -67,7 +67,7 @@ fn assemble(
     let package_of: BTreeMap<&str, &str> = schema
         .files()
         .iter()
-        .map(|file| (file.name(), file.package()))
+        .map(|file| (file.name.as_str(), file.package.as_str()))
         .collect();
     let mut units: BTreeMap<&str, (Vec<SortMapping>, Vec<EnumMapping>)> = BTreeMap::new();
     for message in schema.messages() {
@@ -105,8 +105,8 @@ fn build_sort(
         let oneof = message
             .oneofs()
             .iter()
-            .find(|oneof| oneof.arms().contains(&field.number()))
-            .map(Oneof::name);
+            .find(|oneof| oneof.arms.contains(&field.number()))
+            .map(|oneof| oneof.name.as_str());
         fields.push(names::field_mapping(
             field,
             names::field_name(field)?,

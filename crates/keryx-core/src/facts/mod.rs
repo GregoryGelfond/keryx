@@ -49,7 +49,7 @@ fn statements(schema: &Schema) -> Result<Vec<WithProvenance<Statement>>, Diagnos
     for file in schema.files() {
         out.push(terms::fact(
             "file",
-            vec![terms::text(file.name()), terms::text(file.package())],
+            vec![terms::text(&file.name), terms::text(&file.package)],
         ));
     }
     for message in schema.messages() {
@@ -144,17 +144,17 @@ fn value_term(value: &ValueType) -> Term {
 }
 
 fn oneof_facts(message_path: &str, oneof: &Oneof, out: &mut Vec<WithProvenance<Statement>>) {
-    for arm in oneof.arms() {
+    for arm in &oneof.arms {
         out.push(terms::fact(
             "oneof",
             vec![
                 terms::text(message_path),
-                terms::text(oneof.name()),
+                terms::text(&oneof.name),
                 terms::int(*arm),
             ],
         ));
     }
-    doc_fact(oneof.path().as_str(), oneof.doc(), out);
+    doc_fact(oneof.path.as_str(), oneof.doc.as_deref(), out);
 }
 
 fn enum_facts(
@@ -181,12 +181,12 @@ fn enum_facts(
             "enum_value",
             vec![
                 terms::text(path),
-                terms::text(value.name()),
-                terms::int(value.number()),
+                terms::text(&value.name),
+                terms::int(value.number),
             ],
         ));
-        annotation_facts(value.path().as_str(), value.options(), out)?;
-        doc_fact(value.path().as_str(), value.doc(), out);
+        annotation_facts(value.path.as_str(), &value.options, out)?;
+        doc_fact(value.path.as_str(), value.doc.as_deref(), out);
     }
     annotation_facts(path, enumeration.options(), out)?;
     doc_fact(path, enumeration.doc(), out);
@@ -202,13 +202,13 @@ fn annotation_facts(
     out: &mut Vec<WithProvenance<Statement>>,
 ) -> Result<(), Diagnostics> {
     for annotation in options {
-        let key = terms::try_konst(annotation.key()).map_err(|_| {
+        let key = terms::try_konst(&annotation.key).map_err(|_| {
             Diagnostic::new(
                 DiagnosticKind::UnrenderableFacts,
                 Locus::at(path),
                 format!(
                     "option key `{}` is not a themelios identifier",
-                    annotation.key()
+                    annotation.key
                 ),
             )
         })?;
@@ -217,7 +217,7 @@ fn annotation_facts(
             vec![
                 terms::text(path),
                 key,
-                annotation_value_term(annotation.value()),
+                annotation_value_term(&annotation.value),
             ],
         ));
     }

@@ -237,28 +237,16 @@ pub enum AnnotationValue {
     Enum(String),
 }
 
-/// A source file: its name and package (Appendix C `file/2`). The file's version
-/// is resolved transiently for feature resolution (openness) and is not stored —
-/// nothing at M0 consumes a stored version; a `version` field is added when a
-/// consumer (e.g. `explain` showing the era) needs it, non-breaking.
+/// A source file: its name and package (Appendix C `file/2`). The file's version is
+/// resolved transiently for feature resolution (openness) and is not stored — a `version`
+/// field is added when a consumer (e.g. `explain` showing the era) needs it. Plain data,
+/// reached through [`Schema::files`] and built only at the ingest door.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct File {
-    pub(crate) name: String,
-    pub(crate) package: String,
-}
-
-impl File {
     /// The file's name (Appendix C `file/2`).
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
+    pub name: String,
     /// The file's package; empty when the file declares none.
-    #[must_use]
-    pub fn package(&self) -> &str {
-        &self.package
-    }
+    pub package: String,
 }
 
 /// A message type — a sort (§4.1). Identity is `path`; `outer` is its lexical
@@ -382,36 +370,14 @@ impl Field {
 /// generates is de-sugared away (§20). Records which arm field numbers belong.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Oneof {
-    pub(crate) name: String,
-    pub(crate) path: FqName,
-    pub(crate) arms: Vec<i32>,
-    pub(crate) doc: Option<String>,
-}
-
-impl Oneof {
     /// The oneof's short name.
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
+    pub name: String,
     /// The oneof's fully-qualified name.
-    #[must_use]
-    pub fn path(&self) -> &FqName {
-        &self.path
-    }
-
+    pub path: FqName,
     /// The field numbers of the oneof's arms.
-    #[must_use]
-    pub fn arms(&self) -> &[i32] {
-        &self.arms
-    }
-
+    pub arms: Vec<i32>,
     /// The doc comment, if the descriptor carried source info for it.
-    #[must_use]
-    pub fn doc(&self) -> Option<&str> {
-        self.doc.as_deref()
-    }
+    pub doc: Option<String>,
 }
 
 /// An enum type — a closed sort of symbolic constants (§7.4). `openness` is the
@@ -475,43 +441,16 @@ impl Enum {
 /// `opt`/`doc` facts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EnumValue {
-    pub(crate) name: String,
-    pub(crate) number: i32,
-    pub(crate) path: FqName,
-    pub(crate) options: Vec<Annotation>,
-    pub(crate) doc: Option<String>,
-}
-
-impl EnumValue {
     /// The value's short name.
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
+    pub name: String,
     /// The value's number (Appendix C `enum_value/3`).
-    #[must_use]
-    pub fn number(&self) -> i32 {
-        self.number
-    }
-
+    pub number: i32,
     /// The value's fully-qualified name.
-    #[must_use]
-    pub fn path(&self) -> &FqName {
-        &self.path
-    }
-
+    pub path: FqName,
     /// The applied keryx annotations, in declaration order.
-    #[must_use]
-    pub fn options(&self) -> &[Annotation] {
-        &self.options
-    }
-
+    pub options: Vec<Annotation>,
     /// The doc comment, if the descriptor carried source info for it.
-    #[must_use]
-    pub fn doc(&self) -> Option<&str> {
-        self.doc.as_deref()
-    }
+    pub doc: Option<String>,
 }
 
 /// A keryx annotation — one applied custom option (§15), keyed by its option name
@@ -520,22 +459,10 @@ impl EnumValue {
 /// added with overlays at Increment 5.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Annotation {
-    pub(crate) key: String,
-    pub(crate) value: AnnotationValue,
-}
-
-impl Annotation {
     /// The option name with `keryx.` stripped (e.g. `set`, `numeric`).
-    #[must_use]
-    pub fn key(&self) -> &str {
-        &self.key
-    }
-
+    pub key: String,
     /// The applied value.
-    #[must_use]
-    pub fn value(&self) -> &AnnotationValue {
-        &self.value
-    }
+    pub value: AnnotationValue,
 }
 
 /// The schema model root (§3, §5): the de-sugared files, messages, and enums of

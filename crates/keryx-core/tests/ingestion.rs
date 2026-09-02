@@ -90,7 +90,7 @@ fn proto3_optional_desugars_and_oneof_is_real() {
     let arm_numbers: Vec<i32> = reading
         .oneofs()
         .iter()
-        .flat_map(|o| o.arms().iter().copied())
+        .flat_map(|o| o.arms.iter().copied())
         .collect();
     assert!(
         !arm_numbers.contains(&3),
@@ -100,9 +100,9 @@ fn proto3_optional_desugars_and_oneof_is_real() {
     let source = reading
         .oneofs()
         .iter()
-        .find(|o| o.name() == "source")
+        .find(|o| o.name == "source")
         .expect("real oneof present");
-    assert_eq!(source.arms(), &[6, 7]);
+    assert_eq!(source.arms, [6, 7]);
     // message field -> EXPLICIT; enum field -> IMPLICIT; open enum.
     assert!(matches!(
         field(reading, "detail").shape(),
