@@ -21,6 +21,7 @@ mod docs;
 mod options;
 mod recursion;
 
+use prost::Message as _;
 use prost_reflect::{
     DescriptorPool, EnumDescriptor, EnumValueDescriptor, FieldDescriptor, FileDescriptor, Kind,
     MessageDescriptor, OneofDescriptor,
@@ -68,15 +69,46 @@ pub(crate) fn ingest_subjects(bytes: &[u8], subjects: &[String]) -> Result<Schem
 
 /// Decode a serialized `FileDescriptorSet` into a `DescriptorPool`, or the typed reason it did
 /// not (`UnreadableDescriptorSet`, §6) — the one decode door both `ingest` paths share.
+///
+/// The descriptor engine (prost-reflect 0.16.5) has no editions `Syntax`, and it **panics**
+/// building a pool from an editions `FileDescriptorSet` rather than returning an error. keryx does
+/// not catch that panic — it avoids provoking it: [`is_editions`] inspects the set with a plain
+/// decode (which cannot panic) and refuses editions with a specific diagnostic, so the engine only
+/// ever sees input it can represent. Ingestion is thus total (§6) by construction, not by masking
+/// a panic. Editions support waits on the engine gaining it (`docs/proto-support.md`).
 fn decode(bytes: &[u8]) -> Result<DescriptorPool, Diagnostics> {
-    DescriptorPool::decode(bytes).map_err(|error| {
-        Diagnostic::new(
-            DiagnosticKind::UnreadableDescriptorSet,
-            Locus::whole(),
-            error.to_string(),
-        )
-        .into()
-    })
+    if is_editions(bytes) {
+        return Err(unreadable_set(
+            "editions descriptor sets (edition 2023+) are not supported yet — keryx's descriptor \
+             engine has no editions support; transliterate the schema to proto3, or track \
+             editions in docs/proto-support.md"
+                .to_owned(),
+        ));
+    }
+    DescriptorPool::decode(bytes).map_err(|error| unreadable_set(error.to_string()))
+}
+
+/// Whether the serialized set declares editions (edition 2023+): a plain protobuf decode of the
+/// `FileDescriptorSet` (no feature resolution, so it cannot panic the way the engine's pool build
+/// can), then a scan for a file whose `syntax` is `"editions"` — which `descriptor.proto` requires
+/// on every file that carries an `edition`, so it is the definitive marker even though this
+/// prost-types predates the `edition` field itself. A blob that does not decode as a
+/// `FileDescriptorSet` is not treated as editions — the engine's own decode then composes the
+/// malformed-input diagnostic.
+fn is_editions(bytes: &[u8]) -> bool {
+    prost_types::FileDescriptorSet::decode(bytes)
+        .is_ok_and(|set| set.file.iter().any(|file| file.syntax() == "editions"))
+}
+
+/// An `UnreadableDescriptorSet` diagnostic at the whole-input locus (§6) — the shared reason
+/// composer for [`decode`]'s failure paths (an editions refusal, and an engine decode error).
+fn unreadable_set(detail: String) -> Diagnostics {
+    Diagnostic::new(
+        DiagnosticKind::UnreadableDescriptorSet,
+        Locus::whole(),
+        detail,
+    )
+    .into()
 }
 
 /// Assemble the schema from the pool, over the subject files only (dependencies —

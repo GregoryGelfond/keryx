@@ -257,7 +257,9 @@ version = "0.1.0"
 dependencies = [
  "keryx-test-support",
  "proptest",
+ "prost",
  "prost-reflect",
+ "prost-types",
  "protox",
  "themelios-program",
 ]

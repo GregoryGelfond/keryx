@@ -8,6 +8,7 @@ use keryx_core::descriptor::model::{
     Enum, Field, FieldShape, FqName, Message, Openness, Presence, Scalar, ValueType,
 };
 use keryx_core::descriptor::{Schema, ingest};
+use keryx_core::diagnostics::DiagnosticKind;
 
 fn schema(fixture: &str) -> Schema {
     ingest(&support::compile_fixture(fixture)).expect("the fixture ingests")
@@ -178,4 +179,21 @@ fn ingestion_is_deterministic() {
     let mut sorted = paths.clone();
     sorted.sort_unstable();
     assert_eq!(paths, sorted);
+}
+
+#[test]
+fn an_editions_descriptor_set_is_a_diagnostic_not_a_panic() {
+    // The descriptor engine (prost-reflect 0.16.5) has no editions `Syntax` and *panics* building
+    // a pool from an editions FileDescriptorSet; keryx detects editions before the engine and
+    // refuses it with a specific diagnostic, so ingestion stays total (§6). This test running to
+    // completion is itself the proof no panic escapes; the fixture was compiled by protoc
+    // (edition 2023).
+    let error = ingest(include_bytes!("fixtures/editions.binpb"))
+        .expect_err("an editions set keryx cannot decode is a diagnostic, not a panic");
+    let diagnostic = error.iter().next().expect("one diagnostic");
+    assert_eq!(diagnostic.kind(), DiagnosticKind::UnreadableDescriptorSet);
+    assert!(
+        format!("{diagnostic}").contains("editions"),
+        "the message names editions specifically: {diagnostic}"
+    );
 }

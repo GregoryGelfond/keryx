@@ -50,18 +50,29 @@ impl Termination for Exit {
     }
 }
 
-/// Run `run`, containing an escaped panic (architecture §6): a top-level hook prints a clean
-/// internal-error line — swallowing a broken stderr pipe rather than re-panicking, so an escaped
-/// panic never double-panics into an abort — and any panic maps to `Internal` (exit 1), never a
-/// raw backtrace. The one place the process's panic posture is set, so `main` is a shim over it.
+/// Run `run`, containing an escaped panic (architecture §6): a top-level hook prints a calm,
+/// user-facing line — never a raw `panicked at …` backtrace — and any panic maps to `Internal`
+/// (exit 1). A panic is a bug in keryx, not a fault in the user's input, and the line says so; the
+/// panic detail is shown only when the user opts in with `RUST_BACKTRACE`, for a bug report. The
+/// hook swallows a broken stderr pipe rather than re-panicking, so an escaped panic never
+/// double-panics into an abort. The one place the process's panic posture is set, so `main` is a
+/// shim over it.
 #[must_use]
 pub fn contain(run: impl FnOnce() -> Exit) -> Exit {
     std::panic::set_hook(Box::new(|info| {
-        let _ = writeln!(std::io::stderr(), "keryx: internal error: {info}");
+        if std::env::var_os("RUST_BACKTRACE").is_some() {
+            let _ = writeln!(std::io::stderr(), "keryx: internal error (bug): {info}");
+        } else {
+            let _ = writeln!(
+                std::io::stderr(),
+                "keryx: internal error — this is a bug in keryx, not a problem with your input; \
+                 please report it (set RUST_BACKTRACE=1 for detail)"
+            );
+        }
     }));
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
         Ok(exit) => exit,
-        Err(_) => Exit::Internal, // the hook printed; map the panic to a clean exit 1
+        Err(_) => Exit::Internal, // the hook printed the friendly line; map to a clean exit 1
     }
 }
 

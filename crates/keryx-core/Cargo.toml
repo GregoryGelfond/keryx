@@ -25,6 +25,12 @@ prost-reflect = "0.16.5"
 # type reaches a keryx-core public signature (the descriptor-engine boundary).
 protox = "0.9.1"
 
+# The generated descriptor types and prost decode — used only to *inspect* a serialized
+# `FileDescriptorSet` (editions detection) before handing it to the descriptor engine, a
+# plain decode that cannot panic the way prost-reflect's pool build does on editions.
+prost = "0.14"
+prost-types = "0.14"
+
 [dev-dependencies]
 # Fixture compilation shared across the suites lives in one dev-only crate, so no
 # suite carries a dead-code allow for a helper it does not use.
