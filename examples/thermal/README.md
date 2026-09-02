@@ -42,11 +42,11 @@ default would, so the generated vocabulary is the same.
 
 ## Generating the vocabulary
 
-Run `keryx gen` with the vendored keryx option registry on the include path (the schema
-imports `keryx/options.proto` for `(keryx.set)`):
+Run `keryx gen` (the schema imports `keryx/options.proto` for `(keryx.set)`, which keryx
+resolves from its embedded registry — no `-I` for it):
 
 ```sh
-keryx gen thermal.proto -I . -I ../../crates/keryx-core/proto -o gen/
+keryx gen thermal.proto -I . -o gen/
 ```
 
 keryx writes one file set per package (spec §13). For `thermal.v1` that is the three files in
@@ -56,12 +56,18 @@ keryx writes one file set per package (spec §13). For `thermal.v1` that is the 
 
 ### `thermal.v1.core.lp` — the honorary signature (spec §13.1)
 
-The sorts and field predicates, one **`#defined`** declaration each:
+The sorts and the base-fact (scalar) field predicates, one **`#defined`** declaration each; a
+message-typed field has no base predicate here, so its functional signature rides on its
+parent sort's declaration:
 
 ```prolog
 %!An alert raised for an overheating reading.
 %!sort alert/1
 #defined alert/1.
+%!A batch of readings — a sequence.
+%!sort reading_batch/1
+%!readings : reading_batch × index -> reading  (sequence)
+#defined reading_batch/1.
 …
 %!sensor : alert -> string  (total)
 %!sensor : reading -> string  (total)
@@ -77,34 +83,41 @@ reader writes over this vocabulary) does not draw an "atom does not occur in any
 warning. The vocabulary declares its own shape.
 
 `sensor/2` and `temp_c/2` each appear once, carrying both `alert` and `reading` signatures —
-the shared-field merge (spec §4.2). `alerts/3` and `readings/3` are the repeated fields, each
-an index-keyed family (a sequence, spec §7.1).
+the shared-field merge (spec §4.2). The repeated message fields `readings` and `alerts` have no
+`#defined` of their own: they are message-typed, so keryx's canonical form is the occupant
+access-path term (`readings(P, I)`, spec §4.1), and their signature rides on the parent sort as
+shown above. The relational view a model author joins on lives in `views.lp`.
 
 ### `thermal.v1.views.lp` — the relational views (spec §13.2)
 
-One access-path view rule per message-typed occupant, so a downstream model can range over
-the elements of a sequence by sort:
+An additive module, and a client of `core.lp`: it opens by including the base — so it is
+loadable on its own — then adds one access-path view rule per message-typed occupant, so a
+downstream model can range over the elements of a sequence by sort:
 
 ```prolog
+#include "thermal.v1.core.lp".
 %!readings : reading_batch × index -> reading  (sequence)
 readings(P, I, E) :- reading(E), E = readings(P, I).
 ```
 
 `readings` and `alerts` each get a **sequence** view (their elements are messages —
-`Reading`, `Alert`). The scalar fields `sensor` and `temp_c` need no view.
+`Reading`, `Alert`). The scalar fields `sensor` and `temp_c` need no view. A project that wants
+only the functional canon can exclude this file (spec §13.2); `core.lp` stands on its own.
 
 ### `thermal.v1.keryx-manifest` — the evolution contract (spec §13.4)
 
 The number↔name binding: every proto path and field number, and the emitted predicate,
-arity, shape, and totality it maps to.
+arity, and shape it maps to.
 
 ```
-thermal.v1.AlertSet.alerts #1 fam  alerts/3 -> alert  alert  total  ; view alerts/3
+thermal.v1.AlertSet.alerts #1 fam  alerts/2 -> alert  alert  seq ; view alerts/3
 ```
 
-This is the contract a later revision of the schema is checked against — the record of what
-each element *became*, so a rename, a renumber, or a treatment change is a visible, reviewable
-diff rather than a silent break (schema-diff checking lands at Increment 5).
+The record's own arity, `alerts/2`, is the occupant access-path term keryx keys facts on
+(spec §4.1); `; view alerts/3` names the relational view in `views.lp`. This is the contract a
+later revision of the schema is checked against — the record of what each element *became*, so
+a rename, a renumber, or a treatment change is a visible, reviewable diff rather than a silent
+break (schema-diff checking lands at Increment 5).
 
 ## The solver-free path
 
@@ -125,7 +138,8 @@ this example is the piece that is real today.
 
 - **`(keryx.set)` is inert at M1.** keryx ingests the annotation (it appears as an `opt/3`
   descriptor fact) but does not yet read it for translation, so `AlertSet.alerts` is generated
-  as a **sequence**, exactly like `ReadingBatch.readings` — `alerts/3` with a sequence view.
+  as a **sequence**, exactly like `ReadingBatch.readings` — `alerts/2` with a sequence view
+  `alerts/3`.
   Set semantics — order- and multiplicity-insensitive membership — arrive with annotation
   reading at Increment 5, at which point `alerts` becomes a membership relation.
 - **No `shape.lp` yet.** The serializability guard that constrains an answer set to a

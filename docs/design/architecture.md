@@ -1,9 +1,8 @@
 # keryx — Founding Architecture
 
 **Date:** 2026-08-31
-**Status:** Founding design. Converged in the founding design session; pending principal review before its implementation plan is written. This document is the architecture of record; the keryx specification is the design of record beneath it.
-**Provenance:** Founding build session (`~/Projects/keryx`, empty at start).
-**Design of record:** the keryx specification — `~/Projects/archeion/keryx/keryx-spec.md`, sha256 `11a6bf11…`, 792 lines. Imported into the repo as `docs/specification.md` at Increment 0. Revised at Increment 2 (§6 `fixed32`; §20 editions-gate citation; Appendix A `zero`→`zero_field`; §34 qualifier-rule note).
+**Status:** The architecture of record for keryx; the keryx specification (`docs/specification.md`) is the design of record beneath it.
+**Design of record:** `docs/specification.md` — revised alongside the gen stage (§6 `fixed32`; §20 editions-gate citation; Appendix A `zero`→`zero_field`; §34 qualifier-rule note; §4.2/§7.4 identifier lowering).
 **Dependency:** themelios @ `86c7dfb` (public: `https://github.com/GregoryGelfond/themelios`) — program + analysis tiers built, validated, and consolidated for keryx.
 **North star:** pythia requirements v0.3 (`~/Desktop/pythia-requirements-v0.3.md`).
 
@@ -160,7 +159,7 @@ Two complementary lenses cover the deferred solve without themelios-solve: the *
   RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
   coverage floor                                                       # tool matched to themelios's, at scaffolding
   ```
-- **Method-clean, method-invisible commits (koinon):** the message describes the *code*, never the process (no "pass / finding / review / agent / gate"), imperative mood, and carries **no method markers or tool attribution** — no automated session or tooling trailer of any kind; the artifacts are the practitioner's. This overrides any harness/tooling default that would add one. Push only on the principal's word.
+- **Commit discipline:** imperative mood; the message describes the change, not the process.
 - **`examples/`** — workspace-root worked scenarios (not cargo `.rs` examples), seeded from the spec's three stories, each self-contained and runnable on the solver-free standalone path (`gen` → `facts` → *user's clingo* → reassemble). They double as fixtures the gate runs (documentation-by-example = regression suite, §27) and as user onboarding, with a "plug it in" baseline-integration section. **thermal** first (headline solver-free E2E); **dispatch** and **diagnosis (translation)** with annotations.
 - **`README.md`** — the user/client-facing front door, kept **pithy**: the naming blurb, a two-line *what*, one high-level example (`thermal`), getting-started, and a one-line *how it fits*. It states keryx's value and boundary crisply ("the message side never learns ASP; the model side never learns the wire"; "keryx doesn't solve — bring your own solver, clingo today") but keeps **rationale and internals out** — those live in `docs/design/`, which ship in the repo. It opens with the estate-standard naming blurb, matching θεμέλιος / μορφή:
   > `# keryx`

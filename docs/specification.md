@@ -96,7 +96,7 @@ Consequences worth stating because they carry the design:
 
 #### 4.2 Naming and qualification
 
-- **Base names.** Field → its `.proto` name verbatim (protobuf convention is already `lower_snake`). Message sort → message name in `lower_snake`. Enum values → §7.4.
+- **Base names.** Field, message sort, and enum sort alike → the proto short name in `lower_snake`; a `camelCase` or `PascalCase` name is lowered (`camelField` → `camel_field`, `PascalField` → `pascal_field`), so the emitted vocabulary is uniformly snake-case regardless of the proto author's casing (protobuf convention is usually already `lower_snake`, for which the lowering is the identity). Two fields of one message that lower to the same predicate collide and are diagnosed (§6), never silently merged. Enum values → §7.4.
 - **Shared field names are a feature.** `name` on both `Person` and `Company` yields one predicate `name/2` used at both sorts. In the typed target this is overloading resolved statically by the subject's sort. In the raw clingo target it is conventional ASP polymorphism-by-disjoint-sorts: legal, idiomatic, and unchecked — the lint tool (§25) can warn on cross-sort joins.
 - **Qualification only on collision.** When two *different* constructs would map to the same name/arity with incompatible meaning (e.g., a scalar field `status` on one message and a message type `Status`), the stage-1 policy (§21.3) assigns qualifiers: prefix segments drawn from the fully-qualified proto path, joined with `__`, using the **shortest suffix that restores injectivity** (e.g. `dispatch__status` before `acme__dispatch__status`). Qualifier assignment is computed as an optimization (minimize total qualifier segments subject to injectivity) and recorded in the manifest.
 - **Reserved words.** Clingo reserved tokens (`not`, `#…` forms cannot occur as identifiers anyway) and generated-infrastructure names (`reach`, `violates`, `emit_*`, `ep`) are avoided by suffixing `_` and recording in the manifest.
@@ -418,7 +418,7 @@ Two profiles, one vocabulary; profile choice never changes generated artifacts.
   4. solve with assumptions selecting the active episode set — sliding window (last *n* guards true, rest false), cumulative (all true), or arbitrary what-if subsets;
   5. **retire** an episode permanently by releasing its external (the solver may then simplify its rules away). The vocabulary never changes; only the assumption set does.
 
-  Design note: an equivalent encoding uses backend choice atoms as guards with explicit negative assumptions; externals-with-release is normative here because release enables simplification and matches multi-shot idiom. New terms per episode are unproblematic precisely because guards are backend-registered atoms, not grounded `#external` directives (which require grounding-time domains).
+  An equivalent encoding uses backend choice atoms as guards with explicit negative assumptions; externals-with-release is normative here because release enables simplification and matches multi-shot idiom. New terms per episode are unproblematic precisely because guards are backend-registered atoms, not grounded `#external` directives (which require grounding-time domains).
 - **Diagnosis of the pipeline itself:** guards double as assumption-labeled suspects — on UNSAT, the unsat core names *which episodes* jointly broke consistency, and the envelope reports it as such.
 - Envelope assembly, `-n N` enumeration, and brave/cautious set operations (§12.4) live in the driver, uniform across profiles.
 

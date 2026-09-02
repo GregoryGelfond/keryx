@@ -26,11 +26,15 @@ change, and the status (open / fixed-in `<rev>` / adopted).
   a rendering path for plain `%` comments. Status: open (surfaced at the founding
   design review; the emit shape is decided at the `emit` increment).
 
-  **Increment 2 resolution (`gen`'s `emit::core`/`emit::views`).** The
-  §13.1 honorary signature now ships as one documented `#defined name/arity.`
-  per sort and field predicate: the signature line (and the proto doc, if any)
-  rides as a single `%!` doc string on the declaration, through
-  `render_documented`. This is the accepted divergence from §13.1's literal
+  **Resolution in `gen` (`emit::core`/`emit::views`).** The §13.1 honorary
+  signature ships as documented `#defined name/arity.` declarations, one per
+  sort and per base-fact (scalar/enum) field predicate: the signature line (and
+  the proto doc, if any) rides as a single `%!` doc string on the declaration,
+  through `render_documented`. A message-typed field has no base predicate, so
+  its functional signature rides on its parent sort's `#defined` — keeping
+  `core.lp` the complete functional canon — and its relational view (carrying
+  the same signature) lives in `views.lp`, which opens with `#include
+  "<pkg>.core.lp".`. This is the accepted divergence from §13.1's literal
   free-standing `%` comment block — themelios `86c7dfb` has no comment-only
   `Statement` variant, so the block form stays unemittable — and it renders in
   themelios's canonical `Ord` order (alphabetical by `name/arity`), not §28's
