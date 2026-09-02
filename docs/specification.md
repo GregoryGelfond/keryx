@@ -157,7 +157,7 @@ Arms are EXPLICIT-presence fields on the parent sort — ordinary partial functi
 
 - **Lexical nesting** (`message A { message B {…} }`) is namespacing only. It influences qualifier *choice* (§4.2) and nothing else. Moving a type between nesting levels is wire-invisible and must be vocabulary-semantics-invisible (P3).
 - **Compositional nesting** (message-typed fields) is fully handled by path terms (§4.1). No depth limit; no special cases.
-- **Recursion.** If a message type participates in a cycle of the schema's *containment graph* (reachability through message-typed fields, including via repeated/map), path terms remain sound for any finite payload — but the compile-time analysis flags the cycle, because recursive schemas are precisely where authors typically *want* reified, quantifiable individuals rather than ever-deepening paths. v0 behavior: emit a prominent note in `keryx explain` and the manifest; translate with path terms regardless. A `(keryx.reify)` annotation reserving content-addressed or key-addressed occupants for such types is sketched in Appendix A and marked open (§33) — it must be designed against P4 (additive, never renaming) before it ships.
+- **Recursion.** If a message type participates in a cycle of the schema's *containment graph* (reachability through message-typed fields, including via repeated/map), path terms remain sound for any finite payload — but the compile-time analysis flags the cycle, because recursive schemas are precisely where authors typically *want* reified, quantifiable individuals rather than ever-deepening paths. v0 behavior: emit a prominent note in `keryx explain` and the manifest; translate with path terms regardless. A `(keryx.reify)` annotation reserving content-addressed or key-addressed occupants for such types is sketched in Appendix A and marked open (§32) — it must be designed against P4 (additive, never renaming) before it ships.
 - **Reification triggers** (design guidance, for `explain` output and documentation): reify when (a) the type is recursive, (b) it is a genuine domain concept whose extension the model quantifies over *independently of containment* — though note occupancy sorts already give quantification, so this trigger is rarer than it sounds — or (c) deliberate graph semantics is wanted, which per P7 is expressed with explicit ID fields in the schema, not by keryx machinery.
 
 ### 9. Identity and equality
@@ -168,9 +168,9 @@ Arms are EXPLICIT-presence fields on the parent sort — ordinary partial functi
 
 ### 10. Well-known types and `Any`
 
-- **Uniformity first:** `google.protobuf.Timestamp`, `Duration`, and the wrapper types (`Int32Value`, …) are ordinary messages and translate structurally with zero special cases — `Timestamp.seconds` is an `int64` and gets the decimal-string default, which is not pedantry: epoch seconds exceed 2³¹ in 2038, inside this tool's design life. Fields wanting arithmetic opt into `(keryx.numeric) = NATIVE_CHECKED` (with eyes open) or `= CLINGCON`. Convenience annotations (e.g. a first-class epoch lowering) are an open question (§33), to be added only additively.
+- **Uniformity first:** `google.protobuf.Timestamp`, `Duration`, and the wrapper types (`Int32Value`, …) are ordinary messages and translate structurally with zero special cases — `Timestamp.seconds` is an `int64` and gets the decimal-string default, which is not pedantry: epoch seconds exceed 2³¹ in 2038, inside this tool's design life. Fields wanting arithmetic opt into `(keryx.numeric) = NATIVE_CHECKED` (with eyes open) or `= CLINGCON`. Convenience annotations (e.g. a first-class epoch lowering) are an open question (§32), to be added only additively.
 - **Wrappers** exist to add presence to scalars; under editions they are legacy. Structural translation (a one-field occupant) is correct if noisy; `explain` suggests migrating the schema to `optional`.
-- **`Any`** is nesting with no static structure. Default: opaque — `type_url(P, "…")` and `payload(P, hexbytes)`. Opt-in: `(keryx.any_types) = ["fq.Type", …]` declares a closed registry; the translator dispatches on `type_url`, compiles each registered type, and uses type-tagged occupancy on the same path term. Unregistered types arriving under a registry are structured errors. Marked semi-open (§33) pending a real use case.
+- **`Any`** is nesting with no static structure. Default: opaque — `type_url(P, "…")` and `payload(P, hexbytes)`. Opt-in: `(keryx.any_types) = ["fq.Type", …]` declares a closed registry; the translator dispatches on `type_url`, compiles each registered type, and uses type-tagged occupancy on the same path term. Unregistered types arriving under a registry are structured errors. Marked semi-open (§32) pending a real use case.
 
 ---
 
@@ -291,7 +291,7 @@ truck_id(asg(S), V)    :- assignment(asg(S)), V = ▢.
 plan(p).  assignments(p, A) :- assignment(A).  emit_plan(p).
 ```
 
-A correspondence annotation `(keryx.mirror) = "Shipment.id"` letting the generator fill echo-bodies outright is sugar under consideration, not v0 (§33).
+A correspondence annotation `(keryx.mirror) = "Shipment.id"` letting the generator fill echo-bodies outright is sugar under consideration, not v0 (§32).
 
 ---
 

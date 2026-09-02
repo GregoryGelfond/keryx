@@ -212,19 +212,17 @@ Ring / horizon and all stateful serving are **pythia's**, not keryx increments (
 ## 11. Open questions & decided-at-increment
 
 - **Tuned at scaffolding (Increment 0):** exact exit-code integers; the coverage tool + floor (matched to themelios's); the MIT holder/year line; the CI workflow specifics; the themelios-repo CI credential mechanism.
-- **Settled at the `emit` increment (2/4):** the honorary-signature-block emission (leaning `%!` doc annotations on sort/field statements); whether any free-standing-comment need becomes a themelios gap.
-- **Settled at the `gen` increment (2):** the exact shape of the Rust mapping-policy module and whether/when to add the ASP policy co-artifact + elenctic cross-check.
+- **Settled at the `emit` increment (2):** the §13.1 honorary signature ships as `%!` docs on `#defined` declarations (themelios has no free-standing `%` block — `docs/themelios-gaps.md`); a message-typed field's functional signature (its occupant access-path term, §4.1) rides on its parent sort's `#defined`, keeping `core.lp` the complete functional canon, while the relational view is an additive `views.lp` layer that opens with `#include "<pkg>.core.lp".`.
+- **Settled at the `gen` increment (2):** the shape of the Rust mapping-policy module; the manifest names a message field by its occupant term with the view noted (`readings/2 ; view readings/3`); `keryx/options.proto` resolves from keryx's embedded registry (like the well-known types), so importing it needs no `-I`. Whether/when to add the ASP policy co-artifact + elenctic cross-check stays open.
 - **Carried from the spec (§32), unchanged:** `(keryx.reify)`, `(keryx.mirror)`, the oneof discriminator view, Timestamp/Duration conveniences, `Any` registry ergonomics, manifest wire format, static per-spec codec codegen — all additive, none founding-blocking.
 - **Family-level:** themelios crates.io publication (triggers the dependency-form transition, §8); themelios-solve timeline (gates D1).
 - **Candidate gap-log entry #1:** `themelios_program::raise_source(&Source) -> Raised`.
 
 ---
 
-## 12. The path from here
+## 12. Status
 
-1. **This document** — written to `~/Projects/archeion/keryx/2026-08-31-founding-design/` (session artifact; archeion is not a git repo, matching the themelios convention). Imported into `keryx/docs/design/architecture.md` at Increment 0.
-2. **Principal review** of this document.
-3. On approval → **the implementation plan** for Increment 0 (the walking skeleton).
-4. Increment 0's build stands up the repo and imports both the specification and this design.
-
-No repo scaffolding or code precedes step 3 (the gated flow).
+Increments 0–2 are built: the walking skeleton, `.proto` ingestion, and the `gen` stage
+(schema → ASP vocabulary, `keryx gen` / `keryx explain`). The codec — inbound facts (Increment
+3) and outbound reassembly (Increment 4) — and the annotation semantics with `keryx diff`
+(Increment 5) follow, per the specification's milestones (§31).
