@@ -19,26 +19,27 @@ pub fn views(unit: &Unit) -> Result<String, Diagnostics> {
     let mut statements = Vec::new();
     for sort in unit.sorts() {
         for field in sort.fields() {
-            if let Some(kind) = field.view() {
-                statements.push(view(sort, field, kind));
+            // A view exists exactly for a message-typed field: `FieldMapping::view` is `Some`
+            // iff the value is a message (and the form is not `Set`), so pairing the view kind
+            // with the referent in one match puts the referent in hand with no re-extraction —
+            // "a view on a non-message field" is not a state that reaches here to guard against.
+            if let (Some(kind), ValueMapping::Message(referent)) = (field.view(), field.value()) {
+                statements.push(view(sort, field, kind, referent.clone()));
             }
         }
     }
     render(statements)
 }
 
-/// The relational view rule for one message-typed field (spec §13.2's table). Total: policy
-/// sets `view` only on a message-typed field (`FieldMapping::view`, §13.2), so a non-message
-/// value reaching here is a keryx-internal invariant violation, not foreign input — the
-/// `expect` is discharged by that invariant (§6), the same posture as `facts::terms`'s
-/// `vocabulary`, not a diagnostic (there is no adversarial `Mapping`: it is built only at
-/// the policy door).
-fn view(parent: &SortMapping, field: &FieldMapping, kind: ViewKind) -> WithProvenance<Statement> {
-    let referent = match field.value() {
-        ValueMapping::Message(name) => Some(name.clone()),
-        ValueMapping::Scalar { .. } | ValueMapping::Enum(_) => None,
-    }
-    .expect("policy sets a view only on a message-typed field (§13.2)");
+/// The relational view rule for one message-typed field (spec §13.2's table): the referent
+/// sort is supplied by the caller's match, so this is total by construction with no discharged
+/// `expect`.
+fn view(
+    parent: &SortMapping,
+    field: &FieldMapping,
+    kind: ViewKind,
+    referent: Name,
+) -> WithProvenance<Statement> {
     let f = field.predicate().clone();
     let doc = doc_line(field.doc(), &signature::field(parent, field));
     let p = build::var("P");
