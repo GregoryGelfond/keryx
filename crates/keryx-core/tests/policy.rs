@@ -108,6 +108,27 @@ fn reading_oneof_arms_are_partial_oneof_arm_functions() {
 }
 
 #[test]
+fn field_names_lower_and_reserved_escape() {
+    let mapping = mapping("field_lowering.proto");
+    let sample = sort(&mapping, "keryx.fieldlower.Sample");
+
+    // camelCase / PascalCase field names lower like sorts and enums (§4.2).
+    let camel = field(sample, "camelField");
+    assert_eq!(camel.predicate().as_str(), "camel_field");
+    assert!(!camel.escaped());
+    assert_eq!(
+        field(sample, "PascalField").predicate().as_str(),
+        "pascal_field"
+    );
+
+    // A field colliding with a generated identifier is escaped, and the escape is recorded as
+    // data (§13.4), not re-derived from the trailing underscore.
+    let reach = field(sample, "reach");
+    assert_eq!(reach.predicate().as_str(), "reach_");
+    assert!(reach.escaped());
+}
+
+#[test]
 fn maps_scalar_value_has_no_view() {
     let mapping = mapping("maps.proto");
     let inventory = sort(&mapping, "keryx.maps.Inventory");

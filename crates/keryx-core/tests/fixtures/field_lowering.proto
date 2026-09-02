@@ -1,0 +1,12 @@
+syntax = "proto3";
+package keryx.fieldlower;
+
+// Field names lower like sorts and enums (§4.2): a camelCase or PascalCase proto field name is
+// `lower_snake`d (`camelField` -> `camel_field`, `PascalField` -> `pascal_field`), and a field
+// colliding with a generated-infrastructure identifier is reserved-word escaped (`reach` ->
+// `reach_`), the escape recorded in the manifest (§13.4).
+message Sample {
+  string camelField = 1;
+  string PascalField = 2;
+  int32 reach = 3;
+}

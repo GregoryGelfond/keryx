@@ -13,6 +13,17 @@ use crate::descriptor::model::FqName;
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use crate::policy::names::{SortEntry, identifier, lower_snake};
 
+/// A resolved sort name with the decisions that produced it (§13.4): the final `name`, the
+/// `qualifier` segments prepended (each `lower_snake`d; empty when bare), and whether the base
+/// name was reserved-word `escaped`. Carried as data so the manifest need not re-derive it from
+/// the name.
+#[derive(Debug)]
+pub(super) struct Qualified {
+    pub(super) name: Name,
+    pub(super) qualifier: Vec<String>,
+    pub(super) escaped: bool,
+}
+
 /// Resolve the base sort table to the final `path → Name` map (spec §4.2). When distinct
 /// sorts share a base name, **all** of them are prefixed together to the shortest common
 /// path-suffix depth that separates them — the symmetric rule §4.2's own example shows
@@ -23,7 +34,7 @@ use crate::policy::names::{SortEntry, identifier, lower_snake};
 /// result is unique; distinct full paths guarantee termination. Total (§6). (§4.2's prose
 /// objective and its example are themselves in tension — keryx follows the example's
 /// symmetric, unique rule, recorded in spec §34 item 9.)
-pub(super) fn resolve(table: &[SortEntry]) -> Result<BTreeMap<String, Name>, Diagnostics> {
+pub(super) fn resolve(table: &[SortEntry]) -> Result<BTreeMap<String, Qualified>, Diagnostics> {
     let mut depths = vec![0usize; table.len()];
     loop {
         let names: Vec<String> = table
@@ -61,34 +72,50 @@ pub(super) fn resolve(table: &[SortEntry]) -> Result<BTreeMap<String, Name>, Dia
         .zip(&depths)
         .map(|(entry, &depth)| {
             let name = identifier(&qualified(entry, depth), &entry.path)?;
-            Ok((entry.path.as_str().to_owned(), name))
+            let qualifier = qualifier_segments(entry, depth);
+            Ok((
+                entry.path.as_str().to_owned(),
+                Qualified {
+                    name,
+                    qualifier,
+                    escaped: entry.escaped,
+                },
+            ))
         })
         .collect()
 }
 
-/// The emitted name for an entry at qualifier `depth`: the last `depth` prefix segments
-/// (each `lower_snake`d), joined by `__`, prepended to the entry's escaped base leaf.
-/// `depth == 0` is the base name alone. Precondition: `depth <= prefix_segments(path).len()`
-/// — upheld by `resolve`'s advance guard, which never raises a depth to or past that bound;
-/// the suffix slice below would otherwise underflow.
+/// The emitted name for an entry at qualifier `depth`: its qualifier segments joined by `__`
+/// and prepended to the escaped base leaf, or the base name alone when bare (`depth == 0`).
 fn qualified(entry: &SortEntry, depth: usize) -> String {
-    if depth == 0 {
+    let segments = qualifier_segments(entry, depth);
+    if segments.is_empty() {
         return entry.base.as_str().to_owned();
+    }
+    let mut out = segments.join("__");
+    out.push_str("__");
+    out.push_str(entry.base.as_str());
+    out
+}
+
+/// The qualifier segments for an entry at `depth`: the last `depth` prefix segments, each
+/// `lower_snake`d; empty when `depth == 0` (bare) — the decision the mapping records as data
+/// (§13.4). Precondition `depth <= prefix_segments(path).len()`, upheld by `resolve`'s advance
+/// guard, which never raises a depth to or past that bound; the suffix slice would otherwise
+/// underflow.
+fn qualifier_segments(entry: &SortEntry, depth: usize) -> Vec<String> {
+    if depth == 0 {
+        return Vec::new();
     }
     let prefix = prefix_segments(&entry.path);
     debug_assert!(
         depth <= prefix.len(),
         "qualifier depth exceeds available prefix segments"
     );
-    let take = &prefix[prefix.len() - depth..];
-    let mut out = take
+    prefix[prefix.len() - depth..]
         .iter()
         .map(|s| lower_snake(s))
-        .collect::<Vec<_>>()
-        .join("__");
-    out.push_str("__");
-    out.push_str(entry.base.as_str());
-    out
+        .collect()
 }
 
 /// The proto path's segments before the final (type-name) segment, e.g.
@@ -147,10 +174,12 @@ mod tests {
             SortEntry {
                 path: FqName::new("keryx.coll.Dup"),
                 base: base.clone(),
+                escaped: false,
             },
             SortEntry {
                 path: FqName::new("keryx.coll.Dup"),
                 base,
+                escaped: false,
             },
         ];
         let error = resolve(&table).expect_err("a shared full path is diagnosed, not looped");

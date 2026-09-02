@@ -70,6 +70,7 @@ pub enum ValueMapping {
 /// downstream range obligation); the 64-bit family is `DecimalString`; float/double have
 /// no default (`NeedsAnnotation` — the error is Increment 5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ScalarTreatment {
     /// `int32`, `sint32`, `sfixed32`, `uint32`, `fixed32` — native clingo integer
     /// (uint32/fixed32 range-checked downstream).
@@ -121,6 +122,8 @@ pub enum ViewKind {
 pub struct SortMapping {
     pub(crate) proto: FqName,
     pub(crate) predicate: Name,
+    pub(crate) qualifier: Vec<String>,
+    pub(crate) escaped: bool,
     pub(crate) recursive: bool,
     pub(crate) doc: Option<String>,
     pub(crate) fields: Vec<FieldMapping>,
@@ -133,10 +136,24 @@ impl SortMapping {
         &self.proto
     }
 
-    /// The emitted sort predicate `s/1` (qualifier/escape decisions materialized in).
+    /// The emitted sort predicate `s/1` (the final name after qualification and escaping).
     #[must_use]
     pub fn predicate(&self) -> &Name {
         &self.predicate
+    }
+
+    /// The qualifier segments prepended to restore injectivity (§4.2), each already
+    /// `lower_snake`d; empty when the base name did not collide. The decision recorded as
+    /// data, not re-derived from the predicate (§13.4).
+    #[must_use]
+    pub fn qualifier(&self) -> &[String] {
+        &self.qualifier
+    }
+
+    /// Whether the base name was reserved-word escaped with a trailing `_` (§4.2, §13.4).
+    #[must_use]
+    pub fn escaped(&self) -> bool {
+        self.escaped
     }
 
     /// Whether this sort participates in a containment cycle (§8).
@@ -170,7 +187,7 @@ pub struct FieldMapping {
     pub(crate) form: EmitForm,
     pub(crate) value: ValueMapping,
     pub(crate) presence: Totality,
-    pub(crate) view: Option<ViewKind>,
+    pub(crate) escaped: bool,
     pub(crate) doc: Option<String>,
 }
 
@@ -217,10 +234,27 @@ impl FieldMapping {
         self.presence
     }
 
-    /// The relational view `emit::views` generates, if any.
+    /// The relational view `emit::views` generates, if any (spec §13.2) — *derived* from the
+    /// form and value, not stored: only a message-typed field gets one, and the form selects
+    /// the rule shape. A scalar or enum field is already relational; a set membership
+    /// (Increment 5) needs none. So "a view on a non-message field" is unrepresentable.
     #[must_use]
     pub fn view(&self) -> Option<ViewKind> {
-        self.view
+        if !matches!(self.value, ValueMapping::Message(_)) {
+            return None;
+        }
+        match self.form {
+            EmitForm::Function | EmitForm::OneofArm { .. } => Some(ViewKind::Singular),
+            EmitForm::Sequence => Some(ViewKind::Sequence),
+            EmitForm::Map { .. } => Some(ViewKind::Map),
+            EmitForm::Set => None,
+        }
+    }
+
+    /// Whether the predicate was reserved-word escaped with a trailing `_` (§4.2, §13.4).
+    #[must_use]
+    pub fn escaped(&self) -> bool {
+        self.escaped
     }
 
     /// The doc comment, if the descriptor carried one.
@@ -236,6 +270,8 @@ impl FieldMapping {
 pub struct EnumMapping {
     pub(crate) proto: FqName,
     pub(crate) predicate: Name,
+    pub(crate) qualifier: Vec<String>,
+    pub(crate) escaped: bool,
     pub(crate) openness: Openness,
     pub(crate) doc: Option<String>,
     pub(crate) values: Vec<EnumValueMapping>,
@@ -252,6 +288,19 @@ impl EnumMapping {
     #[must_use]
     pub fn predicate(&self) -> &Name {
         &self.predicate
+    }
+
+    /// The qualifier segments prepended to restore injectivity (§4.2), each already
+    /// `lower_snake`d; empty when the base name did not collide (§13.4).
+    #[must_use]
+    pub fn qualifier(&self) -> &[String] {
+        &self.qualifier
+    }
+
+    /// Whether the base name was reserved-word escaped with a trailing `_` (§4.2, §13.4).
+    #[must_use]
+    pub fn escaped(&self) -> bool {
+        self.escaped
     }
 
     /// The resolved `enum_type` feature (§7.4).
@@ -280,6 +329,7 @@ pub struct EnumValueMapping {
     pub(crate) proto_name: String,
     pub(crate) number: i32,
     pub(crate) constant: Name,
+    pub(crate) escaped: bool,
     pub(crate) doc: Option<String>,
 }
 
@@ -300,6 +350,12 @@ impl EnumValueMapping {
     #[must_use]
     pub fn constant(&self) -> &Name {
         &self.constant
+    }
+
+    /// Whether the constant was reserved-word escaped with a trailing `_` (§7.4, §13.4).
+    #[must_use]
+    pub fn escaped(&self) -> bool {
+        self.escaped
     }
 
     /// The doc comment, if the descriptor carried one.
@@ -359,7 +415,7 @@ mod tests {
 
     use super::{
         EmitForm, EnumMapping, EnumValueMapping, FieldMapping, Mapping, ScalarTreatment,
-        SortMapping, Totality, Unit, ValueMapping, ViewKind,
+        SortMapping, Totality, Unit, ValueMapping,
     };
     use crate::descriptor::model::{FqName, MapKey, Openness, Scalar};
 
@@ -379,7 +435,7 @@ mod tests {
                 treatment: ScalarTreatment::Text,
             },
             presence: Totality::Total,
-            view: Some(ViewKind::Singular),
+            escaped: false,
             doc: Some("the tags field".to_owned()),
         }
     }
@@ -400,7 +456,9 @@ mod tests {
             }
         );
         assert_eq!(field.presence(), Totality::Total);
-        assert_eq!(field.view(), Some(ViewKind::Singular));
+        assert!(!field.escaped());
+        // `view` is derived: a scalar field has no relational view (§13.2).
+        assert_eq!(field.view(), None);
         assert_eq!(field.doc(), Some("the tags field"));
     }
 
@@ -427,6 +485,8 @@ mod tests {
         let sort = SortMapping {
             proto: FqName::new("keryx.test.Sample"),
             predicate: name("sample"),
+            qualifier: vec!["keryx".to_owned(), "test".to_owned()],
+            escaped: false,
             recursive: false,
             doc: Some("the sample sort".to_owned()),
             fields: vec![sample_field()],
@@ -434,12 +494,15 @@ mod tests {
         let enumeration = EnumMapping {
             proto: FqName::new("keryx.test.Kind"),
             predicate: name("kind"),
+            qualifier: Vec::new(),
+            escaped: false,
             openness: Openness::Open,
             doc: Some("the sample enum".to_owned()),
             values: vec![EnumValueMapping {
                 proto_name: "ACTIVE".to_owned(),
                 number: 1,
                 constant: name("active"),
+                escaped: false,
                 doc: Some("the active value".to_owned()),
             }],
         };
@@ -459,6 +522,8 @@ mod tests {
         let sort = &unit.sorts()[0];
         assert_eq!(sort.proto().as_str(), "keryx.test.Sample");
         assert_eq!(sort.predicate().as_str(), "sample");
+        assert_eq!(sort.qualifier(), ["keryx", "test"]);
+        assert!(!sort.escaped());
         assert!(!sort.is_recursive());
         assert_eq!(sort.doc(), Some("the sample sort"));
         assert_eq!(sort.fields().len(), 1);
@@ -474,6 +539,7 @@ mod tests {
         assert_eq!(value.proto_name(), "ACTIVE");
         assert_eq!(value.number(), 1);
         assert_eq!(value.constant().as_str(), "active");
+        assert!(!value.escaped());
         assert_eq!(value.doc(), Some("the active value"));
     }
 }

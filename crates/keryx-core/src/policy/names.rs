@@ -13,30 +13,33 @@ use crate::descriptor::model::{
 };
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use crate::policy::model::{
-    EmitForm, EnumValueMapping, FieldMapping, ScalarTreatment, Totality, ValueMapping, ViewKind,
+    EmitForm, EnumValueMapping, FieldMapping, ScalarTreatment, Totality, ValueMapping,
 };
 
-/// Lower a message's short name to its base sort predicate (`lower_snake` of the final
-/// path segment, then reserved-word escaped): `dispatch.v1.Reading` → `reading`.
-/// Validated into a `Name` (§6). Collision qualification is `qualify`'s.
-pub(super) fn sort_name(path: &FqName) -> Result<Name, Diagnostics> {
-    identifier(
-        &escape_reserved(&lower_snake(final_segment(path.as_str()))),
-        path,
-    )
+/// Lower a message's short name to its base sort predicate (`lower_snake` of the final path
+/// segment, then reserved-word escaped): `dispatch.v1.Reading` → `reading`. Returns the
+/// validated `Name` (§6) and whether it was reserved-word escaped. Collision qualification is
+/// `qualify`'s.
+pub(super) fn sort_name(path: &FqName) -> Result<(Name, bool), Diagnostics> {
+    let (escaped, was_escaped) = escape_reserved(&lower_snake(final_segment(path.as_str())));
+    Ok((identifier(&escaped, path)?, was_escaped))
 }
 
 /// Lower an enum's short name to its base sort predicate, as [`sort_name`].
-pub(super) fn enum_name(path: &FqName) -> Result<Name, Diagnostics> {
+pub(super) fn enum_name(path: &FqName) -> Result<(Name, bool), Diagnostics> {
     sort_name(path)
 }
 
-/// The base predicate name of a field: its proto name (already `lower_snake` by protobuf
-/// convention, §4.2), reserved-word escaped, validated into a `Name`. Field names are
-/// intentionally shared across sorts (§4.2 — polymorphism-by-disjoint-sorts), so they are
-/// not collision-qualified; only reserved-word escaping applies.
-pub(super) fn field_name(field: &Field) -> Result<Name, Diagnostics> {
-    identifier(&escape_reserved(field.name()), field.path())
+/// The base predicate name of a field: its proto name lowered to `lower_snake` (§4.2), like a
+/// sort or enum, then reserved-word escaped and validated into a `Name`. Returns the name and
+/// whether it was escaped. Field names are intentionally shared across sorts (§4.2 —
+/// polymorphism-by-disjoint-sorts) and so are not collision-qualified; a *within-message*
+/// collision — two distinct proto fields lowering to one predicate — is diagnosed by the
+/// caller (`build_sort`). A proto name with no legal ASP-identifier form (e.g. a leading
+/// underscore then a digit, `_2foo`) is an `UnmappableName` translation error (§6).
+pub(super) fn field_name(field: &Field) -> Result<(Name, bool), Diagnostics> {
+    let (escaped, was_escaped) = escape_reserved(&lower_snake(field.name()));
+    Ok((identifier(&escaped, field.path())?, was_escaped))
 }
 
 /// The generated-infrastructure and clingo-reserved identifiers a base name must avoid
@@ -47,12 +50,14 @@ pub(super) fn field_name(field: &Field) -> Result<Name, Diagnostics> {
 const RESERVED: &[&str] = &["not", "reach", "violates", "ep"];
 
 /// Escape a lowered name that would collide with a reserved or generated-infrastructure
-/// identifier (spec §4.2): suffix `_`. Idempotent on already-legal names. Deterministic.
-fn escape_reserved(name: &str) -> String {
+/// identifier (spec §4.2): suffix `_`. Returns the (possibly escaped) name and whether the
+/// escape fired — the decision the manifest records as data (§13.4), never re-derived from the
+/// name. Idempotent on already-legal names. Deterministic.
+fn escape_reserved(name: &str) -> (String, bool) {
     if RESERVED.contains(&name) || name.starts_with("emit_") {
-        format!("{name}_")
+        (format!("{name}_"), true)
     } else {
-        name.to_owned()
+        (name.to_owned(), false)
     }
 }
 
@@ -64,6 +69,8 @@ fn escape_reserved(name: &str) -> String {
 pub(super) struct SortEntry {
     pub(super) path: FqName,
     pub(super) base: Name,
+    /// Whether `base` was reserved-word escaped — carried through to the mapping (§13.4).
+    pub(super) escaped: bool,
 }
 
 /// The base sort table: every message and enum path → its escaped base sort entry, in
@@ -72,15 +79,19 @@ pub(super) struct SortEntry {
 pub(super) fn sort_table(schema: &Schema) -> Result<Vec<SortEntry>, Diagnostics> {
     let mut entries = Vec::new();
     for message in schema.messages() {
+        let (base, escaped) = sort_name(message.path())?;
         entries.push(SortEntry {
             path: message.path().clone(),
-            base: sort_name(message.path())?,
+            base,
+            escaped,
         });
     }
     for enumeration in schema.enums() {
+        let (base, escaped) = enum_name(enumeration.path())?;
         entries.push(SortEntry {
             path: enumeration.path().clone(),
-            base: enum_name(enumeration.path())?,
+            base,
+            escaped,
         });
     }
     // `Schema` already orders messages and enums by fq-path; interleave the two lists by
@@ -120,10 +131,11 @@ pub(super) fn scalar_treatment(scalar: Scalar) -> ScalarTreatment {
 pub(super) fn field_mapping(
     field: &Field,
     predicate: Name,
+    escaped: bool,
     oneof: Option<&str>,
     sort_of: &impl Fn(&FqName) -> Result<Name, Diagnostics>,
 ) -> Result<FieldMapping, Diagnostics> {
-    let (form, arity, value, view) = shape(field.shape(), oneof, sort_of)?;
+    let (form, arity, value) = shape(field.shape(), oneof, sort_of)?;
     let presence = match field.shape() {
         FieldShape::Singular { presence, .. } => totality(*presence),
         FieldShape::Repeated { .. } | FieldShape::Map { .. } => Totality::Total,
@@ -136,7 +148,7 @@ pub(super) fn field_mapping(
         form,
         value,
         presence,
-        view,
+        escaped,
         doc: field.doc().map(str::to_owned),
     })
 }
@@ -147,17 +159,17 @@ fn shape(
     shape: &FieldShape,
     oneof: Option<&str>,
     sort_of: &impl Fn(&FqName) -> Result<Name, Diagnostics>,
-) -> Result<(EmitForm, u32, ValueMapping, Option<ViewKind>), Diagnostics> {
+) -> Result<(EmitForm, u32, ValueMapping), Diagnostics> {
     Ok(match shape {
         FieldShape::Singular { value, .. } => {
-            let (mapped, view) = singular_value(value, sort_of)?;
+            let mapped = singular_value(value, sort_of)?;
             let form = match oneof {
                 Some(name) => EmitForm::OneofArm {
                     oneof: name.to_owned(),
                 },
                 None => EmitForm::Function,
             };
-            (form, 2, mapped, view)
+            (form, 2, mapped)
         }
         FieldShape::Repeated { value } => match value {
             ValueType::Scalar(scalar) => (
@@ -167,62 +179,40 @@ fn shape(
                     kind: *scalar,
                     treatment: scalar_treatment(*scalar),
                 },
-                None,
             ),
-            ValueType::Message(path) => (
-                EmitForm::Sequence,
-                3,
-                ValueMapping::Message(sort_of(path)?),
-                Some(ViewKind::Sequence),
-            ),
-            ValueType::Enum(path) => (
-                EmitForm::Sequence,
-                3,
-                ValueMapping::Enum(sort_of(path)?),
-                None,
-            ),
+            ValueType::Message(path) => {
+                (EmitForm::Sequence, 3, ValueMapping::Message(sort_of(path)?))
+            }
+            ValueType::Enum(path) => (EmitForm::Sequence, 3, ValueMapping::Enum(sort_of(path)?)),
         },
         FieldShape::Map { key, value } => {
-            let (arity, mapped, view) = match value {
-                ValueType::Scalar(scalar) => (
-                    3,
-                    ValueMapping::Scalar {
-                        kind: *scalar,
-                        treatment: scalar_treatment(*scalar),
-                    },
-                    None,
-                ),
-                ValueType::Message(path) => (
-                    3,
-                    ValueMapping::Message(sort_of(path)?),
-                    Some(ViewKind::Map),
-                ),
-                ValueType::Enum(path) => (3, ValueMapping::Enum(sort_of(path)?), None),
+            let mapped = match value {
+                ValueType::Scalar(scalar) => ValueMapping::Scalar {
+                    kind: *scalar,
+                    treatment: scalar_treatment(*scalar),
+                },
+                ValueType::Message(path) => ValueMapping::Message(sort_of(path)?),
+                ValueType::Enum(path) => ValueMapping::Enum(sort_of(path)?),
             };
-            (EmitForm::Map { key: *key }, arity, mapped, view)
+            (EmitForm::Map { key: *key }, 3, mapped)
         }
     })
 }
 
-/// A singular field's value treatment and view: a scalar (no view), a message (the
-/// `Singular` view over the referent sort), or an enum (no view).
+/// A singular field's value treatment: a scalar, a message occupant (carrying the referent
+/// sort predicate), or an enum. The relational view is derived at the mapping
+/// ([`FieldMapping::view`]), not decided here.
 fn singular_value(
     value: &ValueType,
     sort_of: &impl Fn(&FqName) -> Result<Name, Diagnostics>,
-) -> Result<(ValueMapping, Option<ViewKind>), Diagnostics> {
+) -> Result<ValueMapping, Diagnostics> {
     Ok(match value {
-        ValueType::Scalar(scalar) => (
-            ValueMapping::Scalar {
-                kind: *scalar,
-                treatment: scalar_treatment(*scalar),
-            },
-            None,
-        ),
-        ValueType::Message(path) => (
-            ValueMapping::Message(sort_of(path)?),
-            Some(ViewKind::Singular),
-        ),
-        ValueType::Enum(path) => (ValueMapping::Enum(sort_of(path)?), None),
+        ValueType::Scalar(scalar) => ValueMapping::Scalar {
+            kind: *scalar,
+            treatment: scalar_treatment(*scalar),
+        },
+        ValueType::Message(path) => ValueMapping::Message(sort_of(path)?),
+        ValueType::Enum(path) => ValueMapping::Enum(sort_of(path)?),
     })
 }
 
@@ -281,11 +271,12 @@ pub(super) fn enum_constant(
     // `strip` is `enum_strip`'s result for this same enum: 0, or an ASCII-prefix byte
     // length it confirmed is a valid char boundary strictly less than every sibling
     // value's name length — never a panic here.
-    let lowered = escape_reserved(&lower_snake(&value.name[strip..]));
+    let (lowered, escaped) = escape_reserved(&lower_snake(&value.name[strip..]));
     Ok(EnumValueMapping {
         proto_name: value.name.clone(),
         number: value.number,
         constant: identifier(&lowered, &value.path)?,
+        escaped,
         doc: value.doc.clone(),
     })
 }

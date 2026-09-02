@@ -254,7 +254,7 @@ mod tests {
     use crate::descriptor::model::{FqName, Openness, Scalar};
     use crate::policy::model::{
         EmitForm, EnumMapping, EnumValueMapping, FieldMapping, ScalarTreatment, SortMapping,
-        Totality, Unit, ValueMapping, ViewKind,
+        Totality, Unit, ValueMapping,
     };
 
     fn name(text: &str) -> Name {
@@ -351,6 +351,8 @@ mod tests {
         let sort = SortMapping {
             proto: FqName::new("keryx.t.Reading"),
             predicate: name("reading"),
+            qualifier: Vec::new(),
+            escaped: false,
             recursive: false,
             doc: None,
             fields: vec![FieldMapping {
@@ -364,7 +366,7 @@ mod tests {
                     treatment: ScalarTreatment::Text,
                 },
                 presence: Totality::Total,
-                view: None,
+                escaped: false,
                 doc: None,
             }],
         };
@@ -384,12 +386,15 @@ mod tests {
         let enumeration = EnumMapping {
             proto: FqName::new("keryx.t.Level"),
             predicate: name("level"),
+            qualifier: Vec::new(),
+            escaped: false,
             openness: Openness::Open,
             doc: None,
             values: vec![EnumValueMapping {
                 proto_name: "LEVEL_LOW".to_owned(),
                 number: 1,
                 constant: name("low"),
+                escaped: false,
                 doc: None,
             }],
         };
@@ -414,6 +419,8 @@ mod tests {
         let sort = SortMapping {
             proto: FqName::new("keryx.t.Choice"),
             predicate: name("choice"),
+            qualifier: Vec::new(),
+            escaped: false,
             recursive: false,
             doc: None,
             fields: vec![FieldMapping {
@@ -426,7 +433,7 @@ mod tests {
                 },
                 value: ValueMapping::Message(name("y")),
                 presence: Totality::Partial,
-                view: Some(ViewKind::Singular),
+                escaped: false,
                 doc: None,
             }],
         };
@@ -458,7 +465,7 @@ mod tests {
                 treatment: ScalarTreatment::Text,
             },
             presence: Totality::Total,
-            view: None,
+            escaped: false,
             doc: None,
         };
         let mut out = String::new();
@@ -471,6 +478,8 @@ mod tests {
         let sort = SortMapping {
             proto: FqName::new("keryx.t.Tree"),
             predicate: name("tree"),
+            qualifier: Vec::new(),
+            escaped: false,
             recursive: true,
             doc: None,
             fields: vec![],
@@ -478,6 +487,8 @@ mod tests {
         let enumeration = EnumMapping {
             proto: FqName::new("keryx.t.Grade"),
             predicate: name("grade"),
+            qualifier: Vec::new(),
+            escaped: false,
             openness: Openness::Closed,
             doc: None,
             values: vec![],
