@@ -4,15 +4,15 @@
 //!
 //! keryx's own closed vocabulary — predicate names, scalar kinds, presence,
 //! cardinality, openness, and the `msg`/`enum`/`map` type functors — is always a
-//! fixed compile-time literal, so `konst`/`function`/`fact` lower it through
+//! fixed compile-time literal, so `constant`/`function`/`fact` lower it through
 //! `vocabulary`'s `expect`: a discharged invariant, not a live risk (§6).
 //!
 //! An option key (`Annotation::key`) is different: a `String`, not a literal.
 //! `descriptor::options::read` admits an option by matching its extension's
 //! *file name* against `keryx/options.proto` — a best-effort heuristic, not true
 //! extension identity (see that function's doc) — so a key reaching here is
-//! never assumed to be one of keryx's own registry. `try_konst` is the total
-//! counterpart to `konst` for exactly this one runtime-derived string: it
+//! never assumed to be one of keryx's own registry. `try_constant` is the total
+//! counterpart to `constant` for exactly this one runtime-derived string: it
 //! returns `Err` instead of panicking, so `facts::render` stays total over any
 //! input (§6). Internal to `facts`.
 
@@ -30,7 +30,7 @@ pub(super) fn int(value: i32) -> Term {
 
 /// A constant (0-arity function) over a keryx-vocabulary identifier, e.g.
 /// `implicit`, `singular`, `int32`.
-pub(super) fn konst(name: &str) -> Term {
+pub(super) fn constant(name: &str) -> Term {
     function(name, Vec::new())
 }
 
@@ -53,11 +53,11 @@ pub(super) fn fact(predicate: &str, arguments: Vec<Term>) -> WithProvenance<Stat
 }
 
 /// The `opt/3` key constant for `key`, or the reason it is not a themelios
-/// identifier. Unlike `konst`, total: an option key is the one runtime-derived
+/// identifier. Unlike `constant`, total: an option key is the one runtime-derived
 /// string that can reach a `Name::new` door (see the module doc), so it is
 /// checked here rather than `expect`ed — `annotation_facts` composes a
 /// diagnostic on `Err` instead of panicking (§6).
-pub(super) fn try_konst(key: &str) -> Result<Term, NotAnIdentifier> {
+pub(super) fn try_constant(key: &str) -> Result<Term, NotAnIdentifier> {
     Ok(Term::Function {
         name: Name::new(key)?,
         arguments: Vec::new(),
@@ -68,7 +68,7 @@ pub(super) fn try_konst(key: &str) -> Result<Term, NotAnIdentifier> {
 /// A validated keryx-vocabulary identifier — a fixed, all-legal set, so the
 /// `expect` is discharged (§6); proto text never arrives here (it uses `text`),
 /// and the one runtime-derived string that could (the option key) uses
-/// `try_konst` instead.
+/// `try_constant` instead.
 fn vocabulary(name: &str) -> Name {
     Name::new(name).expect("keryx vocabulary is a valid identifier")
 }

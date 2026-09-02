@@ -201,7 +201,7 @@ fn level_enum_lowering_strips_the_shared_prefix() {
 }
 
 #[test]
-fn enum_strip_falls_back_when_it_would_open_a_constant_with_a_digit() {
+fn enum_strip_falls_back_on_a_leading_digit() {
     // §7.4: stripping `Edition`'s `EDITION_` prefix would leave `2023`/`1_test_only`, neither a
     // legal ASP constant (an identifier cannot open with a digit), so the strip falls back to
     // the unstripped form for the *whole* enum. This is the shape descriptor.proto's own
@@ -364,7 +364,7 @@ fn repeated_and_mapped_enum_values_have_no_view() {
 }
 
 #[test]
-fn within_enum_constant_collision_is_reported_loud_not_deduplicated() {
+fn within_enum_constant_collision_is_reported() {
     let schema = schema("enum_collision.proto");
     let error = policy::map(&schema).expect_err("a within-enum constant collision is an error");
 
@@ -394,7 +394,7 @@ fn map_is_pure_and_deterministically_ordered() {
 }
 
 #[test]
-fn colliding_message_sorts_qualify_symmetrically_to_the_shortest_suffix() {
+fn colliding_sorts_qualify_to_the_shortest_suffix() {
     let mapping = mapping("collisions.proto");
     // Two distinct `Status` messages share the base sort `status`. The symmetric §4.2 rule
     // qualifies BOTH by one path segment each (`dispatch__status` *and* `logistics__status`)
@@ -535,7 +535,7 @@ fn a_collision_that_survives_depth_one_resolves_at_depth_two() {
 }
 
 #[test]
-fn a_three_way_collision_qualifies_each_member_only_as_deep_as_needed() {
+fn a_three_way_collision_qualifies_minimally() {
     let mapping = mapping("deep_collisions.proto");
     // `U.K.Y`, `V.K.Y`, `W.N.Y` all share base `y`. `W.N.Y` becomes unique at depth 1
     // (`n__y`) and STOPS there, while `{U.K.Y, V.K.Y}` still collide at `k__y` and advance to
@@ -554,7 +554,7 @@ fn a_three_way_collision_qualifies_each_member_only_as_deep_as_needed() {
 }
 
 #[test]
-fn distinct_sorts_that_lower_to_one_predicate_are_diagnosed_not_conflated() {
+fn distinct_sorts_that_collide_are_diagnosed() {
     // `Bar` and `Bar_` are distinct proto messages, but `lower_snake` trims the trailing `_`
     // so both lower to base `bar`; as siblings they share every qualifier and never separate.
     // Qualification is the injectivity backstop: `map` returns an error rather than silently

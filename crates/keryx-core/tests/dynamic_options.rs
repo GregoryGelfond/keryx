@@ -1,6 +1,7 @@
 //! The §20 rule, proven: keryx's annotations — custom options a typed prost
 //! struct would silently drop — survive ingestion as `opt`-bearing annotations,
-//! read by extension identity through the dynamic layer.
+//! admitted through the dynamic layer because their extension is declared in
+//! `keryx/options.proto` (the file-name heuristic, `descriptor::options::read`).
 
 use keryx_test_support as support;
 

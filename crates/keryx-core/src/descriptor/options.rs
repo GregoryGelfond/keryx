@@ -18,7 +18,7 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// descriptor set can self-declare a file under that exact name, carrying an
 /// extension whose field name is not a themelios identifier (e.g. `Evil`). This
 /// filter is therefore not what keeps `facts::render` total — that totality is
-/// guaranteed downstream by `facts`'s option-key lowering (`terms::try_konst`),
+/// guaranteed downstream by `facts`'s option-key lowering (`terms::try_constant`),
 /// which diagnoses a non-identifier key instead of panicking (§6). Non-matching
 /// extensions and base fields are ignored here; a repeated option expands to one
 /// [`Annotation`] per element; the result is key-ordered (stable, so repeated

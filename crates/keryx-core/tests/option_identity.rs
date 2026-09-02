@@ -1,12 +1,13 @@
-//! Extension-identity resolution for keryx options (architecture §6): an
-//! option is admitted only when its extension is declared in the vendored
-//! `keryx/options.proto`, never merely because its full name happens to start
-//! with `keryx.`. A foreign schema can coin its own extension under
-//! `package keryx` with a field name that is not a themelios identifier;
-//! admitting it by name alone would carry that foreign text into
-//! `facts::render`'s vocabulary-only `Name::new` door and panic — a §6
-//! totality violation on foreign input. This proves the fix: the foreign
-//! option is excluded at ingestion, and `facts::render` stays total.
+//! The option file-name heuristic (architecture §6): `descriptor::options::read` admits a
+//! custom option only when its extension is declared in a file *named* `keryx/options.proto`,
+//! not merely because the extension's full name starts with `keryx.` — a best-effort stand-in
+//! for true extension identity, which waits for the real registry (Increment 5). A foreign
+//! schema can coin its own extension under `package keryx` in a differently-named file; this
+//! fixture (`foreign_option.proto`) does exactly that, and the heuristic excludes it at
+//! ingestion, so its non-identifier field name never reaches an `Annotation`. The render check
+//! is a backstop on §6 totality: were such a key ever to reach `facts`, it lowers through
+//! `terms::try_constant` (not the vocabulary `expect`), which diagnoses a non-identifier rather
+//! than panicking — so `facts::render` stays total either way.
 
 use keryx_test_support as support;
 
@@ -14,7 +15,7 @@ use keryx_core::descriptor::ingest;
 use keryx_core::facts;
 
 #[test]
-fn a_foreign_keryx_prefixed_extension_is_excluded_and_render_stays_total() {
+fn a_foreign_keryx_prefixed_extension_is_excluded() {
     let schema = ingest(&support::compile_fixture("foreign_option.proto")).expect("ingests");
     let foreign = schema
         .messages()
@@ -27,16 +28,15 @@ fn a_foreign_keryx_prefixed_extension_is_excluded_and_render_stays_total() {
         .find(|f| f.name() == "note")
         .expect("note present");
 
-    // The foreign `(keryx.Evil)` option is not declared in the vendored
-    // registry, so it is excluded by extension identity — not merely an
-    // unrecognized key, but never carried into an `Annotation` at all.
+    // The foreign `(keryx.Evil)` option is declared in this fixture's own file, not in
+    // `keryx/options.proto`, so the file-name heuristic excludes it — never carried into an
+    // `Annotation` at all, not merely admitted as an unrecognized key.
     assert!(
         note.options().is_empty(),
         "a foreign keryx.-prefixed extension must not be admitted as an annotation"
     );
 
-    // Had `Evil` been admitted, `facts::render` would have panicked lowering
-    // its key through `Name::new` (not a themelios identifier) — the §6
-    // totality bug the identity fix closes. This must not panic.
+    // A backstop: even had a foreign key reached `facts`, it lowers through `terms::try_constant`,
+    // which diagnoses a non-identifier rather than panicking, so render stays total (§6).
     facts::render(&schema).expect("renders");
 }

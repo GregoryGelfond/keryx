@@ -48,13 +48,7 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// [`Schema`]: model::Schema
 /// [`Diagnostics`]: crate::diagnostics::Diagnostics
 pub fn ingest(bytes: &[u8]) -> Result<Schema, Diagnostics> {
-    let pool = DescriptorPool::decode(bytes).map_err(|error| {
-        Diagnostic::new(
-            DiagnosticKind::UnreadableDescriptorSet,
-            Locus::whole(),
-            error.to_string(),
-        )
-    })?;
+    let pool = decode(bytes)?;
     build_schema(&pool, |name| !desugar::is_dependency_file(name))
 }
 
@@ -68,14 +62,21 @@ pub fn ingest(bytes: &[u8]) -> Result<Schema, Diagnostics> {
 ///
 /// As [`ingest`].
 pub(crate) fn ingest_subjects(bytes: &[u8], subjects: &[String]) -> Result<Schema, Diagnostics> {
-    let pool = DescriptorPool::decode(bytes).map_err(|error| {
+    let pool = decode(bytes)?;
+    build_schema(&pool, |name| subjects.iter().any(|subject| subject == name))
+}
+
+/// Decode a serialized `FileDescriptorSet` into a `DescriptorPool`, or the typed reason it did
+/// not (`UnreadableDescriptorSet`, §6) — the one decode door both `ingest` paths share.
+fn decode(bytes: &[u8]) -> Result<DescriptorPool, Diagnostics> {
+    DescriptorPool::decode(bytes).map_err(|error| {
         Diagnostic::new(
             DiagnosticKind::UnreadableDescriptorSet,
             Locus::whole(),
             error.to_string(),
         )
-    })?;
-    build_schema(&pool, |name| subjects.iter().any(|subject| subject == name))
+        .into()
+    })
 }
 
 /// Assemble the schema from the pool, over the subject files only (dependencies —

@@ -24,7 +24,7 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// Total over any input: doc and path text always render as string terms, keryx's
 /// own vocabulary is a fixed, valid set, and an option key that is not a
 /// themelios identifier is diagnosed here rather than panicked through
-/// `terms::konst` — see `terms`'s module doc for why a key cannot be assumed
+/// `terms::constant` — see `terms`'s module doc for why a key cannot be assumed
 /// valid.
 ///
 /// # Errors
@@ -103,8 +103,8 @@ fn field_facts(
             terms::int(field.number()),
             terms::text(field.name()),
             type_term,
-            terms::konst(presence),
-            terms::konst(cardinality),
+            terms::constant(presence),
+            terms::constant(cardinality),
         ],
     ));
     annotation_facts(field.path().as_str(), field.options(), out)?;
@@ -125,7 +125,7 @@ fn shape_terms(shape: &FieldShape) -> (Term, &'static str, &'static str) {
             terms::function(
                 "map",
                 vec![
-                    terms::konst(scalar_name(Scalar::from(*key))),
+                    terms::constant(Scalar::from(*key).as_str()),
                     value_term(value),
                 ],
             ),
@@ -137,7 +137,7 @@ fn shape_terms(shape: &FieldShape) -> (Term, &'static str, &'static str) {
 
 fn value_term(value: &ValueType) -> Term {
     match value {
-        ValueType::Scalar(scalar) => terms::konst(scalar_name(*scalar)),
+        ValueType::Scalar(scalar) => terms::constant(scalar.as_str()),
         ValueType::Message(name) => terms::function("msg", vec![terms::text(name.as_str())]),
         ValueType::Enum(name) => terms::function("enum", vec![terms::text(name.as_str())]),
     }
@@ -167,7 +167,7 @@ fn enum_facts(
         vec![
             terms::text(path),
             terms::text(enumeration.file()),
-            terms::konst(openness_name(enumeration.openness())),
+            terms::constant(openness_name(enumeration.openness())),
         ],
     ));
     if let Some(outer) = enumeration.outer() {
@@ -195,14 +195,14 @@ fn enum_facts(
 
 /// One `opt/3` fact per annotation. The key lowering is total (§6): a key that
 /// is not a themelios identifier composes an `UnrenderableFacts` diagnostic at
-/// the annotated element's `path`, rather than panicking through `terms::konst`.
+/// the annotated element's `path`, rather than panicking through `terms::constant`.
 fn annotation_facts(
     path: &str,
     options: &[Annotation],
     out: &mut Vec<WithProvenance<Statement>>,
 ) -> Result<(), Diagnostics> {
     for annotation in options {
-        let key = terms::try_konst(&annotation.key).map_err(|_| {
+        let key = terms::try_constant(&annotation.key).map_err(|_| {
             Diagnostic::new(
                 DiagnosticKind::UnrenderableFacts,
                 Locus::at(path),
@@ -226,7 +226,7 @@ fn annotation_facts(
 
 fn annotation_value_term(value: &AnnotationValue) -> Term {
     match value {
-        AnnotationValue::Bool(flag) => terms::konst(if *flag { "true" } else { "false" }),
+        AnnotationValue::Bool(flag) => terms::constant(if *flag { "true" } else { "false" }),
         AnnotationValue::Int(number) => match i32::try_from(*number) {
             Ok(small) => terms::int(small),
             Err(_) => terms::text(&number.to_string()), // decimal-string when out of i32 range (§6)
@@ -257,13 +257,6 @@ fn openness_name(openness: Openness) -> &'static str {
         Openness::Open => "open",
         Openness::Closed => "closed",
     }
-}
-
-/// Delegates to [`Scalar::as_str`] — the one home of the scalar-name table (§13.1); kept as
-/// a local wrapper so `facts`'s other `xxx_name` helpers (`presence_name`, `openness_name`)
-/// read uniformly.
-fn scalar_name(scalar: Scalar) -> &'static str {
-    scalar.as_str()
 }
 
 #[cfg(test)]
