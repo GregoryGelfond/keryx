@@ -13,3 +13,9 @@ pub mod facts;
 pub mod policy;
 pub mod emit;
 pub mod manifest;
+
+/// themelios's identifier type, re-exported so keryx's public surface is self-contained: a
+/// `Mapping`'s predicates and constants *are* `Name`s (R1), and a client names them through
+/// keryx alone, never a direct rev-pinned dependency on `themelios-program`. The `Symbol`
+/// value vocabulary (`ToSymbol`/`FromSymbol`) joins this re-export at the codec (Increment 3).
+pub use themelios_program::Name;

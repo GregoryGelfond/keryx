@@ -8,7 +8,7 @@
 //! so a subject named like a well-known type (the §21.2 `descriptor.proto` self-application)
 //! is ingested, not treated as a dependency. Editions gate (spec §31 M1): a file protox
 //! cannot compile (editions is DEFERRED for protox 0.9.1, `docs/proto-support.md`) composes
-//! a `SourceCompile` diagnostic telling the caller to supply a descriptor set — a front-door
+//! a `UncompilableSource` diagnostic telling the caller to supply a descriptor set — a front-door
 //! limit, not a translation one.
 
 use std::path::Path;
@@ -25,11 +25,11 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// `encode_file_descriptor_set`, **not** `protox::compile` — the convenience re-encodes
 /// options through prost-types' typed structs and drops keryx's custom-option bytes (the
 /// §20 trap; see `tests/support/mod.rs`). Total (§6): any compile failure composes a
-/// `SourceCompile` diagnostic, never a panic.
+/// `UncompilableSource` diagnostic, never a panic.
 ///
 /// # Errors
 ///
-/// [`Diagnostics`] (`SourceCompile`) when protox cannot compile the sources, or the
+/// [`Diagnostics`] (`UncompilableSource`) when protox cannot compile the sources, or the
 /// ingestion diagnostics when the resulting set does not ingest.
 pub fn compile(
     files: &[impl AsRef<Path>],
@@ -60,7 +60,7 @@ pub fn compile(
 /// compiler's message is preserved in the detail, its type never re-exported.
 fn source_error(error: &protox::Error, locus: Locus) -> Diagnostics {
     Diagnostics::from(Diagnostic::new(
-        DiagnosticKind::SourceCompile,
+        DiagnosticKind::UncompilableSource,
         locus,
         format!("{error}"),
     ))

@@ -1,7 +1,7 @@
 //! Every fixture compiles under protox and decodes under prost-reflect — the
 //! hermetic corpus is sound before the ingestion pass asserts on it.
 
-mod support;
+use keryx_test_support as support;
 
 use prost_reflect::DescriptorPool;
 

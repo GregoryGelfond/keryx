@@ -54,9 +54,9 @@ fn diagnostics_collect_in_order() {
 #[test]
 fn locus_whole_and_at() {
     assert!(Locus::whole().is_whole());
-    assert_eq!(Locus::whole().as_str(), "");
+    assert_eq!(Locus::whole().path(), None);
 
     let at = Locus::at("x");
     assert!(!at.is_whole());
-    assert_eq!(at.as_str(), "x");
+    assert_eq!(at.path(), Some("x"));
 }

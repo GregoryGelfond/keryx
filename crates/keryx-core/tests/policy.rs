@@ -7,7 +7,7 @@
 //! non-colliding sorts stay bare, shared enum-value constants are not cross-qualified,
 //! and the emitted /1 sort namespace is injective and deterministic.
 
-mod support;
+use keryx_test_support as support;
 
 use keryx_core::descriptor::{MapKey, Openness, Scalar, Schema, ingest};
 use keryx_core::diagnostics::DiagnosticKind;
@@ -350,7 +350,7 @@ fn within_enum_constant_collision_is_reported_loud_not_deduplicated() {
     assert_eq!(error.len(), 1);
     let diagnostic = error.iter().next().expect("one diagnostic");
     assert_eq!(diagnostic.kind(), DiagnosticKind::AmbiguousConstant);
-    assert_eq!(diagnostic.locus().as_str(), "keryx.enumcoll.Mixed");
+    assert_eq!(diagnostic.locus().path(), Some("keryx.enumcoll.Mixed"));
 }
 
 #[test]
@@ -544,5 +544,5 @@ fn distinct_sorts_that_lower_to_one_predicate_are_diagnosed_not_conflated() {
     assert_eq!(error.len(), 1);
     let diagnostic = error.iter().next().expect("one diagnostic");
     assert_eq!(diagnostic.kind(), DiagnosticKind::UnmappableName);
-    assert_eq!(diagnostic.locus().as_str(), "keryx.collapse.Bar");
+    assert_eq!(diagnostic.locus().path(), Some("keryx.collapse.Bar"));
 }

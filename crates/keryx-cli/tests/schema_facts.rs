@@ -2,7 +2,7 @@
 //! diagnostics on stderr, stable exit codes (§6). The set is produced by protox,
 //! reusing keryx-core's fixtures.
 
-mod support;
+use keryx_test_support as support;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

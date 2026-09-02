@@ -3,7 +3,7 @@
 //! Goldens are generated once (below), verified by eye against Appendix C, and
 //! committed; a diff here is a real change, intended or a regression.
 
-mod support;
+use keryx_test_support as support;
 
 use keryx_core::descriptor::ingest;
 use keryx_core::facts;

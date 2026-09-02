@@ -1,7 +1,7 @@
 //! Doc comments read from `SourceCodeInfo` (§13.1) and the containment-cycle
 //! `recursive` flag (§8), proven end to end through `ingest`.
 
-mod support;
+use keryx_test_support as support;
 
 use keryx_core::descriptor::ingest;
 

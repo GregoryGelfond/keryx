@@ -307,7 +307,7 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         let diagnostic = diagnostics.iter().next().expect("one diagnostic");
         assert_eq!(diagnostic.kind(), DiagnosticKind::UnrenderableFacts);
-        assert_eq!(diagnostic.locus().as_str(), "keryx.adversarial.Sample");
+        assert_eq!(diagnostic.locus().path(), Some("keryx.adversarial.Sample"));
     }
 
     // A genuine keryx-vocabulary key (lowercase-initial) still renders — the

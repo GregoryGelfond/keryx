@@ -1,8 +1,8 @@
 //! The `.proto` front door (spec §20, §31 M1): protox compiles source behind the bytes
-//! seam and keryx ingests it; a compile failure is a `SourceCompile` diagnostic, never
+//! seam and keryx ingests it; a compile failure is a `UncompilableSource` diagnostic, never
 //! a panic (§6). Engine-direct fixtures resolved against the crate's fixtures/proto dirs.
 
-mod support;
+use keryx_test_support as support;
 
 use std::path::{Path, PathBuf};
 
@@ -34,13 +34,13 @@ fn a_broken_source_is_a_diagnostic_not_a_panic() {
     assert!(
         diagnostics
             .iter()
-            .any(|d| d.kind() == DiagnosticKind::SourceCompile),
-        "a compile failure composes SourceCompile"
+            .any(|d| d.kind() == DiagnosticKind::UncompilableSource),
+        "a compile failure composes UncompilableSource"
     );
 }
 
 // The editions front-door gate, verdict-aware (docs/proto-support.md; mirrors
-// tests/editions_capability.rs). DEFERRED today → SourceCompile; flips to Ok when
+// tests/editions_capability.rs). DEFERRED today → UncompilableSource; flips to Ok when
 // protox gains editions, at which point the editions fixture/golden are added.
 #[test]
 fn editions_source_is_gated_by_the_compiler_verdict() {
@@ -53,7 +53,7 @@ fn editions_source_is_gated_by_the_compiler_verdict() {
         Err(diagnostics) => assert!(
             diagnostics
                 .iter()
-                .any(|d| d.kind() == DiagnosticKind::SourceCompile),
+                .any(|d| d.kind() == DiagnosticKind::UncompilableSource),
             "editions: DEFERRED — the front door says supply a descriptor set"
         ),
     }

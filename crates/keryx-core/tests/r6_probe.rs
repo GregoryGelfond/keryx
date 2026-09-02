@@ -3,7 +3,7 @@
 //! the production wrap `descriptor::ingest` will be exercised by the ingestion
 //! tests at a later step.
 
-mod support;
+use keryx_test_support as support;
 
 use prost_reflect::DescriptorPool;
 

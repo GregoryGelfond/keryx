@@ -2,7 +2,7 @@
 //! struct would silently drop — survive ingestion as `opt`-bearing annotations,
 //! read by extension identity through the dynamic layer.
 
-mod support;
+use keryx_test_support as support;
 
 use keryx_core::descriptor::ingest;
 use keryx_core::descriptor::model::{Annotation, AnnotationValue};

@@ -5,7 +5,7 @@
 //! constant. Catches a future mis-cased registry addition here, at CI, rather
 //! than downstream as an `UnrenderableFacts` diagnostic.
 
-mod support;
+use keryx_test_support as support;
 
 use prost_reflect::DescriptorPool;
 use themelios_program::prelude::Name;

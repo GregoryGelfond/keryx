@@ -2,7 +2,7 @@
 //! presence across the three labels, proto3-optional and map de-sugaring, real vs.
 //! synthetic oneofs, closed vs. open enums, and determinism (P3).
 
-mod support;
+use keryx_test_support as support;
 
 use keryx_core::descriptor::model::{
     Enum, Field, FieldShape, FqName, Message, Openness, Presence, Scalar, ValueType,

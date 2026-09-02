@@ -5,7 +5,7 @@
 //! `-o` is an `Input`(3) write error; a package-less source is rejected. No protox type is in
 //! reach here — `gen` composes the library (the fixtures are compiled in `support`).
 
-mod support;
+use keryx_test_support as support;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -98,7 +98,7 @@ fn a_missing_source_is_a_schema_error_with_a_fix_it_hint() {
     assert!(status.stdout.is_empty(), "no partial product on error");
     let stderr = String::from_utf8(status.stderr).unwrap();
     assert!(
-        stderr.contains("source_compile"),
+        stderr.contains("uncompilable_source"),
         "the diagnostic names the front-door compile failure: {stderr}"
     );
     // The fix-it hint travels with the error (§6): supply a descriptor set instead.
@@ -128,8 +128,8 @@ fn the_error_format_is_json_on_request() {
         "stderr is a structured JSON array (Appendix B): {stderr}"
     );
     assert!(
-        stderr.contains(r#""kind":"source_compile""#),
-        "the source_compile kind is structured: {stderr}"
+        stderr.contains(r#""kind":"uncompilable_source""#),
+        "the uncompilable_source kind is structured: {stderr}"
     );
     assert!(stderr.ends_with("}]"), "a closed JSON array: {stderr}");
 }
@@ -147,9 +147,9 @@ fn the_error_format_is_human_on_request() {
         .unwrap();
     assert_eq!(status.status.code(), Some(4));
     let stderr = String::from_utf8(status.stderr).unwrap();
-    // Human prose is the library `Display`: `keryx: source_compile at <locus>: <detail>`.
+    // Human prose is the library `Display`: `keryx: uncompilable_source at <locus>: <detail>`.
     assert!(
-        stderr.contains("keryx: source_compile at "),
+        stderr.contains("keryx: uncompilable_source at "),
         "human prose, not JSON: {stderr}"
     );
 }

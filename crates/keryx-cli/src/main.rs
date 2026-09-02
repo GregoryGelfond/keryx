@@ -257,14 +257,14 @@ fn load_schema(specs: &[PathBuf], includes: &[PathBuf], format: Format) -> Resul
 /// with the error): a source keryx cannot compile — e.g. a Protobuf edition, which protox does
 /// not yet cover (spec §31) — can be compiled to a descriptor set and supplied here as a
 /// `.binpb`, which `gen`/`explain` now accept. Appended as a further diagnostic so it renders
-/// in both the human and JSON forms; a non-`SourceCompile` failure is returned unchanged.
+/// in both the human and JSON forms; a non-`UncompilableSource` failure is returned unchanged.
 fn with_descriptor_set_hint(mut diagnostics: Diagnostics) -> Diagnostics {
     if diagnostics
         .iter()
-        .any(|diagnostic| diagnostic.kind() == DiagnosticKind::SourceCompile)
+        .any(|diagnostic| diagnostic.kind() == DiagnosticKind::UncompilableSource)
     {
         diagnostics.push(Diagnostic::new(
-            DiagnosticKind::SourceCompile,
+            DiagnosticKind::UncompilableSource,
             Locus::whole(),
             "compile this source to a descriptor set and supply that instead — keryx accepts a <spec>.binpb",
         ));

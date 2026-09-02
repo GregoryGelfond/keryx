@@ -4,7 +4,7 @@
 //! that restricts the explanation to one element. The explanation is the product, so it is on
 //! stdout. Reuses keryx-core's fixtures off the include path.
 
-mod support;
+use keryx_test_support as support;
 
 use std::process::Command;
 

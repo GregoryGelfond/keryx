@@ -16,7 +16,8 @@ keryx-core = { path = "../keryx-core" }
 clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
-protox = "0.9.1"
+# Fixture compilation via the shared test-support crate (protox lives there now).
+keryx-test-support = { path = "../keryx-test-support" }
 
 [lints]
 workspace = true

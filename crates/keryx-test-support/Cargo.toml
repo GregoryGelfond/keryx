@@ -1,0 +1,16 @@
+[package]
+name = "keryx-test-support"
+version = "0.1.0"
+description = "Test-only helpers shared across keryx's suites: compile a fixture .proto to a FileDescriptorSet through protox, keeping the custom-option bytes (§20)."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# The pure-Rust .proto compiler, to turn a fixture into a serialized FileDescriptorSet.
+# This is a dev-dependency library, so its helpers are public API and no suite pays a
+# dead-code allow for the ones it does not use (the morphe-test-support shape).
+protox = "0.9.1"
+
+[lints]
+workspace = true

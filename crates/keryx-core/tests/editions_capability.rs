@@ -4,7 +4,7 @@
 //! upgrade — keryx branches on resolved features, so it is a fixture add, not a
 //! redesign. Run with `--nocapture` to read the verdict for `docs/proto-support.md`.
 
-mod support;
+use keryx_test_support as support;
 
 use prost_reflect::DescriptorPool;
 

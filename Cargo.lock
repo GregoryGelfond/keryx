@@ -188,13 +188,14 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "keryx-core",
- "protox",
+ "keryx-test-support",
 ]
 
 [[package]]
 name = "keryx-core"
 version = "0.1.0"
 dependencies = [
+ "keryx-test-support",
  "prost-reflect",
  "protox",
  "themelios-program",
@@ -203,6 +204,13 @@ dependencies = [
 [[package]]
 name = "keryx-driver"
 version = "0.1.0"
+
+[[package]]
+name = "keryx-test-support"
+version = "0.1.0"
+dependencies = [
+ "protox",
+]
 
 [[package]]
 name = "lazy_static"

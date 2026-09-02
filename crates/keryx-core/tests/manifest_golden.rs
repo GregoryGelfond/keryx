@@ -6,7 +6,7 @@
 //! against §13.4/Appendix B, and committed; a diff here is a real change, intended or a
 //! regression.
 
-mod support;
+use keryx_test_support as support;
 
 use keryx_core::descriptor::ingest;
 use keryx_core::{manifest, policy};

@@ -8,7 +8,7 @@
 //! totality violation on foreign input. This proves the fix: the foreign
 //! option is excluded at ingestion, and `facts::render` stays total.
 
-mod support;
+use keryx_test_support as support;
 
 use keryx_core::descriptor::ingest;
 use keryx_core::facts;

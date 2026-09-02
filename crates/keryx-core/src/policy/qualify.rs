@@ -157,6 +157,6 @@ mod tests {
         assert_eq!(error.len(), 1);
         let diagnostic = error.iter().next().expect("one diagnostic");
         assert_eq!(diagnostic.kind(), DiagnosticKind::UnmappableName);
-        assert_eq!(diagnostic.locus().as_str(), "keryx.coll.Dup");
+        assert_eq!(diagnostic.locus().path(), Some("keryx.coll.Dup"));
     }
 }

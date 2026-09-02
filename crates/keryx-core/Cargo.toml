@@ -25,5 +25,10 @@ prost-reflect = "0.16.5"
 # type reaches a keryx-core public signature (the descriptor-engine boundary).
 protox = "0.9.1"
 
+[dev-dependencies]
+# Fixture compilation shared across the suites lives in one dev-only crate, so no
+# suite carries a dead-code allow for a helper it does not use.
+keryx-test-support = { path = "../keryx-test-support" }
+
 [lints]
 workspace = true
