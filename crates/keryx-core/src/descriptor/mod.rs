@@ -126,11 +126,14 @@ fn decode(bytes: &[u8]) -> Result<DescriptorPool, Diagnostics> {
     {
         return Err(diagnostics);
     }
-    // The pool decode: the closure borrows only `bytes`. prost-reflect reads its global well-known-type
-    // pool — here and at accessor time — only across an infallible `Arc` clone, never across panic-prone
-    // work, and keryx never calls the pool's global mutators, so a contained panic cannot poison it.
-    // (A same-process consumer that *does* call those mutators with a panicking set is the residual,
-    // recorded under the threat model's Open items.) Verified against the pinned prost-reflect.
+    // The pool decode: the closure borrows only `bytes`. prost-reflect touches its global
+    // well-known-type pool — here and at accessor time — only through `DescriptorPool::global()`, which
+    // locks the pool's `Mutex` solely across an infallible `Arc` clone and drops the guard
+    // (prost-reflect-0.16.5 `src/descriptor/global.rs:10-27`); the only holders across fallible work are
+    // the `*_global_*` mutators (`global.rs:32-48`), which keryx never calls (a grep of `crates/` finds
+    // none). So a contained panic cannot poison the global lock, and `AssertUnwindSafe` is sound on that
+    // basis. (A same-process consumer that *does* call those mutators with a panicking set is the
+    // residual, recorded in the threat model's dependency boundary — not an Open item.)
     crate::fault::contain("prost-reflect", "decoding the descriptor set", || {
         DescriptorPool::decode(bytes)
     })?
@@ -616,6 +619,27 @@ mod tests {
             diagnostics.iter().next().unwrap().kind(),
             DiagnosticKind::DependencyFault
         );
+    }
+
+    #[test]
+    fn a_contained_fault_does_not_poison_a_later_decode() {
+        // The global-pool argument, made executable (not just asserted against the source): a contained
+        // decode fault must leave the process's shared well-known-type pool usable, so a clean decode in
+        // the *same* process still succeeds — prost-reflect holds the global lock only across an
+        // infallible clone, and keryx never mutates it, so one fault cannot turn into a persistent
+        // denial for a long-lived service (the dependency boundary).
+        let _ = ingest(&decode_fault_set()).expect_err("the crafted set faults");
+        let good = encode(vec![FileDescriptorProto {
+            name: Some("ok.proto".to_owned()),
+            package: Some("ok".to_owned()),
+            syntax: Some("proto3".to_owned()),
+            message_type: vec![DescriptorProto {
+                name: Some("Ok".to_owned()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]);
+        ingest(&good).expect("a clean decode after a contained fault still succeeds");
     }
 
     #[test]

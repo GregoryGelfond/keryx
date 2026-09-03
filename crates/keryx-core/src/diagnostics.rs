@@ -381,14 +381,17 @@ fn escape(text: &str) -> String {
 /// so the cap counts what is shown.
 const DETAIL_HUMAN_CHARS: usize = 2_048;
 
-/// The terminal view of a composed value — sibling to [`escape`], the JSON view. Escapes control
-/// characters (C0/C1 and DEL) to a visible `\u{…}` form so an adversary's control bytes cannot move a
-/// terminal's cursor or inject an escape sequence, then takes the first [`DETAIL_HUMAN_CHARS`]
-/// characters, marking truncation with `…`. On a `char` boundary throughout: a byte-index slice of
-/// adversary multibyte text would panic, and keryx's own renderers stay total (§6). Applied to the
-/// `detail` and the locus path — the two adversary-influenced fields — not the `kind`, which is
-/// keryx's own name.
-fn human(text: &str) -> String {
+/// The terminal view of a composed value — sibling to [`escape`], the JSON view — **escaped and
+/// bounded**. Escapes control characters (C0/C1 and DEL) to a visible `\u{…}` form so an adversary's
+/// control bytes cannot move a terminal's cursor or inject an escape sequence, then takes the first
+/// [`DETAIL_HUMAN_CHARS`] characters, marking truncation with `…`. On a `char` boundary throughout: a
+/// byte-index slice of adversary multibyte text would panic, and keryx's own renderers stay total (§6).
+/// Applied to the `detail` and the locus path — the two adversary-influenced fields — not the `kind`,
+/// which is keryx's own name. Public so a boundary rendering adversary-influenced text outside a
+/// `Diagnostic` (the CLI's panic hook, which prints a contained fault's payload under `RUST_BACKTRACE`)
+/// bounds and escapes it through the one function, not by hand.
+#[must_use]
+pub fn human(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for ch in text.chars() {
         if ch.is_control() {

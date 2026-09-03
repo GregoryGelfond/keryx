@@ -6,7 +6,7 @@
 use std::io::Write as _;
 use std::process::{ExitCode, Termination};
 
-use keryx_core::diagnostics::{DiagnosticKind, Diagnostics, wire_object};
+use keryx_core::diagnostics::{DiagnosticKind, Diagnostics, human, wire_object};
 
 /// The process exit code, by error class (architecture §6).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,10 +117,14 @@ fn hook_report(
         if !detailed {
             return None;
         }
+        // The payload carries the contained fault's message — for an engine fault, adversary-chosen
+        // names (a `DecodeError`'s field path) — so it is bounded and control-escaped through the same
+        // `human` renderer a `Diagnostic` uses, never printed raw; the backtrace is keryx's own.
         (
             Exit::Dependency,
             format!(
-                "a contained dependency fault: {info}\n{}",
+                "a contained dependency fault: {}\n{}",
+                human(&info.to_string()),
                 std::backtrace::Backtrace::force_capture()
             ),
         )
