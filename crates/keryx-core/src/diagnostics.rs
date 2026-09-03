@@ -206,8 +206,14 @@ impl Diagnostic {
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.locus.path() {
-            None => write!(f, "{}: {}", self.kind.as_str(), self.detail),
-            Some(path) => write!(f, "{} at {}: {}", self.kind.as_str(), path, self.detail),
+            None => write!(f, "{}: {}", self.kind.as_str(), human(&self.detail)),
+            Some(path) => write!(
+                f,
+                "{} at {}: {}",
+                self.kind.as_str(),
+                human(path),
+                human(&self.detail)
+            ),
         }
     }
 }
@@ -345,9 +351,39 @@ fn escape(text: &str) -> String {
     out
 }
 
+/// The human-view length cap, in **characters** (not bytes): a diagnostic is a line for a person, not
+/// a payload dump, and adversary-influenced text must not flood a terminal. Applied *after* escaping,
+/// so the cap counts what is shown.
+const DETAIL_HUMAN_CHARS: usize = 2_048;
+
+/// The terminal view of a composed value — sibling to [`escape`], the JSON view. Escapes control
+/// characters (C0/C1 and DEL) to a visible `\u{…}` form so an adversary's control bytes cannot move a
+/// terminal's cursor or inject an escape sequence, then takes the first [`DETAIL_HUMAN_CHARS`]
+/// characters, marking truncation with `…`. On a `char` boundary throughout: a byte-index slice of
+/// adversary multibyte text would panic, and keryx's own renderers stay total (§6). Applied to the
+/// `detail` and the locus path — the two adversary-influenced fields — not the `kind`, which is
+/// keryx's own name.
+fn human(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for ch in text.chars() {
+        if ch.is_control() {
+            let code = ch as u32;
+            let _ = write!(escaped, "\\u{{{code:04x}}}");
+        } else {
+            escaped.push(ch);
+        }
+    }
+    let char_count = escaped.chars().count();
+    let mut out: String = escaped.chars().take(DETAIL_HUMAN_CHARS).collect();
+    if char_count > DETAIL_HUMAN_CHARS {
+        out.push('…');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Diagnostic, DiagnosticKind, Diagnostics, Locus, escape};
+    use super::{DETAIL_HUMAN_CHARS, Diagnostic, DiagnosticKind, Diagnostics, Locus, escape};
 
     #[test]
     fn escape_encodes_quote_backslash_and_controls() {
@@ -357,6 +393,21 @@ mod tests {
             escape("a\"b\\c\nd\te\rf\u{01}g"),
             "a\\\"b\\\\c\\nd\\te\\rf\\u0001g"
         );
+    }
+
+    #[test]
+    fn the_human_view_escapes_controls_and_bounds_on_a_char_boundary() {
+        // Adversary-influenced detail: control bytes (ESC, BEL) and multibyte text past the cap. The
+        // human view escapes the controls to a visible form and truncates on a `char` boundary — a
+        // byte-index slice of the multibyte text would panic, which is the whole point.
+        let noisy = format!("\u{1b}[31m\u{7}{}", "é".repeat(DETAIL_HUMAN_CHARS + 50));
+        let shown =
+            Diagnostic::new(DiagnosticKind::DependencyFault, Locus::whole(), noisy).to_string();
+        assert!(
+            !shown.contains('\u{1b}') && !shown.contains('\u{7}'),
+            "controls escaped: {shown:?}"
+        );
+        assert!(shown.contains('…'), "truncation marked");
     }
 
     #[test]
