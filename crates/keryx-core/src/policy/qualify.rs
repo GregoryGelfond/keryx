@@ -42,29 +42,45 @@ pub(super) fn resolve(table: &[SortEntry]) -> Result<BTreeMap<String, Qualified>
             .zip(&depths)
             .map(|(entry, &depth)| qualified(entry, depth))
             .collect();
-        match first_clash(&names) {
-            None => break,
-            Some(clashing) => {
-                let mut progressed = false;
-                for &i in &clashing {
-                    if depths[i] < prefix_segments(&table[i].path).len() {
-                        depths[i] += 1;
-                        progressed = true;
-                    }
-                }
-                // A stall — no member could advance — means two entries share the same
-                // maximal qualified name: either the same full proto path (which `ingest`
-                // cannot produce, P3), or distinct paths whose base and every qualifier
-                // `lower_snake`-collapse to one string (e.g. sibling `Bar`/`Bar_`, both
-                // `bar`, since `lower_snake` trims a trailing `_` and collapses `_`-runs) —
-                // reachable from valid input. Both are genuinely non-injective, so this guard
-                // is the injectivity backstop: without it `resolve` would emit a
-                // non-injective map. `first_clash` only reports groups of two or more, so
-                // `clashing[0]` names the first offender. Diagnose, never loop or conflate.
-                if !progressed {
-                    return Err(duplicate(table, &names, clashing[0]));
-                }
+        // Advance *every* clashing member together, not one Ord-least group per round. Distinct
+        // clash-groups are independent, so resolving them in parallel bounds the round count by the
+        // deepest qualifier prefix — each still-clashing member advances one segment per round — rather
+        // than by the *total* number of advances, which an adversary could stretch to a superlinear
+        // number of rounds (a denial-of-service the property set named open). The fixpoint is the same:
+        // two names collide only at equal depth (a qualified name's `__`-separator count equals its
+        // depth), so a base-group advances in lockstep and members split off monotonically, never to
+        // re-collide — so the least depth at which each is unique is unchanged. The prefix length is
+        // bounded (the package-segment cap and the nesting cap), so `resolve` is bounded work on any
+        // admitted schema.
+        let clashing = clashing_indices(&names);
+        if clashing.is_empty() {
+            break;
+        }
+        let mut progressed = false;
+        let mut stuck: Option<usize> = None;
+        for &i in &clashing {
+            if depths[i] < prefix_segments(&table[i].path).len() {
+                depths[i] += 1;
+                progressed = true;
+            } else if stuck.is_none() {
+                stuck = Some(i);
             }
+        }
+        // If some member advanced we continue — a maxed member still clashing this round separates
+        // next round by its shorter `__`-count. Only when *no* clashing member can advance
+        // (`!progressed`) is every one at its maximal name and still sharing it: two distinct sorts
+        // resolve to one maximal predicate qualification cannot separate — the same full proto path
+        // (which `ingest` cannot produce, P3), or distinct paths whose base and every qualifier
+        // `lower_snake`-collapse to one string (e.g. sibling `Bar`/`Bar_`, both `bar`, since
+        // `lower_snake` trims a trailing `_` and collapses `_`-runs) — reachable from valid input. Both
+        // are genuinely non-injective, so this is the injectivity backstop; `stuck` names the first
+        // offender deterministically. Diagnose, never loop or conflate.
+        if !progressed {
+            return Err(duplicate(
+                table,
+                &names,
+                stuck.expect("a non-empty clash has at least one member"),
+            ));
         }
     }
     table
@@ -126,17 +142,18 @@ fn prefix_segments(path: &FqName) -> Vec<&str> {
     segments
 }
 
-/// The indices of the lexicographically-least name shared by two or more entries, or
-/// `None` when every name is unique (deterministic tie-break — the Ord-least clash first).
-fn first_clash(names: &[String]) -> Option<Vec<usize>> {
-    let mut by_name: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
-    for (i, name) in names.iter().enumerate() {
-        by_name.entry(name).or_default().push(i);
+/// The indices of *every* entry whose emitted name is shared by two or more entries — the clashing
+/// members this round, advanced together. Empty when every name is unique. Deterministic (index
+/// order), O(*n* · *L* · log *n*) per round via a `BTreeMap` count (no `HashMap`, so no seed enters
+/// the result, P3); the round count is bounded, so the whole pass is bounded work.
+fn clashing_indices(names: &[String]) -> Vec<usize> {
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for name in names {
+        *counts.entry(name).or_default() += 1;
     }
-    by_name
-        .into_iter()
-        .find(|(_, indices)| indices.len() > 1)
-        .map(|(_, indices)| indices)
+    (0..names.len())
+        .filter(|&i| counts[names[i].as_str()] > 1)
+        .collect()
 }
 
 /// The injectivity-backstop diagnostic (§6): two distinct sorts — at index `i` (the first
@@ -155,6 +172,7 @@ fn duplicate(table: &[SortEntry], names: &[String], i: usize) -> Diagnostics {
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
+    use std::time::{Duration, Instant};
 
     use proptest::prelude::*;
     use themelios_program::Name;
@@ -170,6 +188,44 @@ mod tests {
     /// the *reachable* variant — distinct paths that `lower_snake`-collapse — is covered
     /// end-to-end by the `collapsing_sorts` fixture. Here the two entries advance to max
     /// depth, stay identical, and `resolve` returns a `duplicate` diagnostic, not a loop.
+    #[test]
+    fn independent_collisions_resolve_in_bounded_rounds() {
+        // The denial-of-service the property set named open, distilled: many *independent* base-name
+        // collisions. Advancing every clashing member per round resolves them in parallel — the round
+        // count is bounded by the qualifier prefix depth (one here), not by the number of groups —
+        // where advancing one Ord-least group per round would take a round per group, superlinear in
+        // the input. Each pair shares a base and separates at its distinct package, so the result is
+        // injective; the pass stays far under a bound a per-group walk would blow by orders of
+        // magnitude (the 5 s margin is generous, not tight, so the assertion is not flaky).
+        let groups = 8_000;
+        let mut table = Vec::with_capacity(groups * 2);
+        for i in 0..groups {
+            let base = Name::new(format!("t{i}")).expect("valid base");
+            for pkg in ["p", "q"] {
+                table.push(SortEntry {
+                    path: FqName::new(format!("{pkg}{i}.T{i}")),
+                    base: base.clone(),
+                    escaped: false,
+                });
+            }
+        }
+        let start = Instant::now();
+        let resolved = resolve(&table).expect("the independent collisions resolve");
+        let elapsed = start.elapsed();
+
+        let names: BTreeSet<&str> = resolved.values().map(|q| q.name.as_str()).collect();
+        assert_eq!(
+            names.len(),
+            table.len(),
+            "every sort gets a distinct predicate"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "resolve stayed bounded ({elapsed:?} for {} sorts)",
+            table.len()
+        );
+    }
+
     #[test]
     fn two_entries_sharing_a_full_path_diagnose_rather_than_loop() {
         let base = Name::new("dup").expect("`dup` is a valid identifier");
