@@ -257,20 +257,18 @@ fn build_schema(
 
 /// Every message under a file — top level and nested, in one flat list (order is
 /// fixed by the caller's sort). Map-entry synthetics are included here and filtered
-/// at the call site.
+/// at the call site. Walked with an **explicit managed stack** — heap, not the call
+/// stack — so nesting depth cannot exhaust the stack (the threat model's bounded-depth
+/// walks; the same idiom as `recursion::reaches_self`). Bounded by the file's message
+/// count: every message reachable through `child_messages()` is pushed once.
 fn subject_messages(file: &FileDescriptor) -> Vec<MessageDescriptor> {
     let mut out = Vec::new();
-    for message in file.messages() {
-        collect_messages(message, &mut out);
+    let mut stack: Vec<MessageDescriptor> = file.messages().collect();
+    while let Some(message) = stack.pop() {
+        stack.extend(message.child_messages());
+        out.push(message);
     }
     out
-}
-
-fn collect_messages(message: MessageDescriptor, out: &mut Vec<MessageDescriptor>) {
-    for child in message.child_messages() {
-        collect_messages(child, out);
-    }
-    out.push(message);
 }
 
 /// Every enum under a file — top level and nested within any message; the message
@@ -430,11 +428,42 @@ mod tests {
         MessageOptions,
     };
 
-    use super::ingest;
+    use super::{DescriptorPool, ingest, subject_messages};
     use crate::diagnostics::DiagnosticKind;
+
+    /// prost's decode recursion limit (`prost::RECURSION_LIMIT`, not public API): the descriptor door
+    /// admits a lexical message chain one shallower, and refuses a `DECODE_RECURSION_LIMIT`-deep one as
+    /// `UnreadableDescriptorSet`. The source door's nesting guard derives from the same limit.
+    const DECODE_RECURSION_LIMIT: usize = 100;
 
     fn encode(files: Vec<FileDescriptorProto>) -> Vec<u8> {
         FileDescriptorSet { file: files }.encode_to_vec()
+    }
+
+    /// A file with one lexically-nested message chain `M0 { M1 { … M{depth-1} } }` — the `nested_type`
+    /// chain the walk descends. Built inside-out; typed, so `from_file_descriptor_set` can build a pool
+    /// past the byte-decode cap.
+    fn lexical_chain_typed(depth: usize) -> FileDescriptorSet {
+        let mut inner: Option<DescriptorProto> = None;
+        for i in (0..depth).rev() {
+            let mut message = DescriptorProto {
+                name: Some(format!("M{i}")),
+                ..Default::default()
+            };
+            if let Some(child) = inner.take() {
+                message.nested_type.push(child);
+            }
+            inner = Some(message);
+        }
+        FileDescriptorSet {
+            file: vec![FileDescriptorProto {
+                name: Some("chain.proto".to_owned()),
+                package: Some("chain".to_owned()),
+                syntax: Some("proto3".to_owned()),
+                message_type: vec![inner.expect("depth >= 1")],
+                ..Default::default()
+            }],
+        }
     }
 
     #[test]
@@ -537,5 +566,34 @@ mod tests {
             diagnostics.iter().next().unwrap().kind(),
             DiagnosticKind::MalformedDescriptor
         );
+    }
+
+    #[test]
+    fn the_door_admits_the_deepest_lexical_nesting_and_refuses_past_it() {
+        // The deepest lexical message chain the door admits is one shallower than the engine's decode
+        // recursion limit; one deeper is refused as `UnreadableDescriptorSet` (the engine's own
+        // limit), not a panic — the managed walk is defense-in-depth behind this.
+        let deepest = DECODE_RECURSION_LIMIT - 1;
+        let schema = ingest(&lexical_chain_typed(deepest).encode_to_vec())
+            .expect("at the deepest admitted depth, the door admits and the walk runs");
+        assert_eq!(schema.messages.len(), deepest);
+        let refused = ingest(&lexical_chain_typed(DECODE_RECURSION_LIMIT).encode_to_vec())
+            .expect_err("one deeper is refused");
+        assert_eq!(
+            refused.iter().next().unwrap().kind(),
+            DiagnosticKind::UnreadableDescriptorSet
+        );
+    }
+
+    #[test]
+    fn the_managed_walk_survives_nesting_past_the_decode_cap() {
+        // A typed set built in memory bypasses the byte-decode cap, so the walk itself is exercised at
+        // a depth a naive recursion could not survive; the managed stack walks it without exhausting
+        // the call stack.
+        let depth = 500;
+        let pool = DescriptorPool::from_file_descriptor_set(lexical_chain_typed(depth))
+            .expect("the pool builds past the byte-decode cap");
+        let file = pool.files().next().expect("one file");
+        assert_eq!(subject_messages(&file).len(), depth);
     }
 }
