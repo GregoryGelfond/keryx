@@ -265,7 +265,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "keryx-driver"
+name = "keryx-protoc"
 version = "0.1.0"
 
 [[package]]
@@ -497,10 +497,6 @@ checksum = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a"
 dependencies = [
  "prost",
 ]
-
-[[package]]
-name = "protoc-gen-keryx"
-version = "0.1.0"
 
 [[package]]
 name = "protox"

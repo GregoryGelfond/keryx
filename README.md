@@ -18,8 +18,9 @@ and [`docs/specification.md`](docs/specification.md) for the full design.
 ## Built on
 
 [themelios](https://github.com/GregoryGelfond/themelios) — the ASP program
-representation and, ahead, the solver backend. keryx is also the foundation for
-pythia, a mission-critical ASP-solver-as-a-service.
+representation keryx builds on. keryx is itself the foundation for pythia, a
+mission-critical ASP-solver-as-a-service that invokes the solver and uses keryx
+for the protobuf↔ASP translation.
 
 ## License
 

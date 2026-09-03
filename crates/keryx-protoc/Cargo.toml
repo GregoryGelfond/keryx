@@ -1,0 +1,16 @@
+[package]
+name = "keryx-protoc"
+version = "0.1.0"
+description = "The keryx protoc/buf plugin: the protoc-gen-keryx shim, a bytes-to-bytes CodeGeneratorRequest/Response frontend over keryx-core."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# protoc/buf discover a plugin by binary name (`protoc --keryx_out` runs `protoc-gen-keryx`),
+# so the binary keeps that required name while the crate takes keryx's own `keryx-*` voice.
+[[bin]]
+name = "protoc-gen-keryx"
+path = "src/main.rs"
+
+[lints]
+workspace = true

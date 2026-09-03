@@ -30,15 +30,15 @@ keryx is designed and justified as a **standalone tool** (spec §1) and, in the 
 
 ## 2. Reconciliation ledger — the spec, brought to today
 
-The keryx spec was written when aspis (not themelios-solve) was the backend and themelios's surface was not yet consolidated or blessed as the sole provider. This design reconciles it with three facts now true: **themelios is ready and blessed as the sole emission/analysis provider**, **themelios-solve replaces aspis but is not yet built**, and **pythia's propagated split** (pythia §0.3, §3, §7). The deltas from the spec, each justified:
+The keryx spec was written when aspis (not themelios-solve) was the backend and themelios's surface was not yet consolidated or blessed as the sole provider. This design reconciles it with three facts now true: **themelios is ready and blessed as the sole emission/analysis provider**, **keryx is translation-only — solving belongs to the consuming tool, not keryx** (so no solver backend, no themelios-solve dependency), and **pythia's propagated split** (pythia §0.3, §3, §7). The deltas from the spec, each justified:
 
 | # | Delta | Supersedes | Why |
 |---|---|---|---|
 | R1 | **`Sym = themelios::Symbol`** — no keryx `Sym` enum | spec §22 (own `Sym` value type) | themelios's `Symbol` *is* the value type; its `ToSymbol`/`FromSymbol` coverage (`{i8,i16,i32,u8,u16,str,String}`, excluding `u32,i64,u64,bool,f64`) **is** the §6 scalar policy, type-enforced. `Symbol::Ord` = gringo order = the canonical-bytes anchor. |
 | R2 | **Emission is a keryx `emit` module directly over themelios `construct`/`render`** | spec §18 (swappable builder/printer trait + internal fallback AST) | Both motivations for the trait are resolved: ship-before-themelios (themelios is ready) and provider independence vs. a rival syntax effort (OQ-9 — themelios is the blessed sole provider). One provider, no speculative indirection. |
 | R3 | **Stage-1 mapping policy is computed in Rust** | spec §21.3 (ASP program as the production mechanism) | keryx invokes no solver (R4); an ASP-as-production policy would need one. The ASP formulation survives as an *optional inspectable / cross-check co-artifact* (renderable by `explain`, checkable in elenctic under the user's clingo, plus the §21.2 self-application) — the inspection/verification intent preserved without keryx solving. If the co-artifact ships, the Rust policy is sole authority and the ASP form is a *view* generated from the same mapping model (so it cannot disagree) or held to agreement by a gate — never an independently-authored second model. |
-| R4 | **keryx invokes no concrete solver, ever** (compile-time included) | spec §18–§23 (aspis-driven) | keryx is translation glue; solving is themelios-solve's / the user's. This makes keryx-core solver-free and the whole founding arc solver-free. |
-| R5 | **keryx is a translation library; it invokes no solver and defines no solver backend.** A consuming tool (pythia, or any tool, in any language) invokes the solver and composes keryx's translation — `facts` (message → `.lp`) and reassembly (answer-set → message) — around it. | spec §23; pythia §3/§7.4 framing | Sessions, episodes, ring/horizon, the domain model, and the solver call are how a tool *runs* an oracle over keryx's vocabulary; keryx provides only the bidirectional translation. The `keryx-driver` crate's former solver-backend role is therefore removed — it dissolves, or narrows to a translation-I/O helper (fate TBD, principal's call). |
+| R4 | **keryx invokes no concrete solver, ever** (compile-time included) | spec §18–§23 (aspis-driven) | keryx is translation glue; solving is the consuming tool's. This makes keryx-core solver-free and the whole bridge solver-free. |
+| R5 | **keryx is a translation library; it invokes no solver and defines no solver backend.** A consuming tool (pythia, or any tool, in any language) invokes the solver and composes keryx's translation — `facts` (message → `.lp`) and reassembly (answer-set → message) — around it. | spec §23; pythia §3/§7.4 framing | Sessions, episodes, ring/horizon, the domain model, and the solver call are how a tool *runs* an oracle over keryx's vocabulary; keryx provides only the bidirectional translation. The `keryx-driver` crate — an empty stub whose every role (backend, lifecycle, envelope, fact-delivery) is the consuming tool's — is therefore removed; keryx is `keryx-core` (library), `keryx-cli` (tool), `keryx-protoc` (plugin). |
 | R6 | **keryx parses no protobuf** — protox produces `FileDescriptorSet`, prost-reflect reads it | (affirms spec P9, §20) | `FileDescriptorSet` is the interface; the dynamic layer (prost-reflect) is mandatory because keryx's annotations are custom options that typed `prost` structs silently drop (§20, load-bearing). Symmetry: keryx parses nothing — protobuf via protox/prost-reflect, ASP text via themelios `raise`. |
 
 ---
@@ -49,16 +49,14 @@ A Cargo workspace at `~/Projects/keryx`, centered on *translation, not solving*:
 
 ```
 keryx/                     bidirectional bridge: Protocol Buffers ⇄ ASP ; solving is external
-├─ keryx-core     solver-free LIBRARY — compile + codec + admission
+├─ keryx-core     solver-free LIBRARY — the translation: compile + codec + admission
 │     ├─ themelios-program    construct · render/render_documented · raise · Symbol/To|FromSymbol · provenance
 │     ├─ themelios-syntax     parse: text → AST  (front half of raise; admission; text-facts)
 │     ├─ themelios-analysis   Analysis/Constructs scan · Atom::signatures · dependency facets
 │     └─ prost-reflect, protox   descriptor ingestion (dynamic options — the §20 rule)
-├─ keryx-driver   transient-solve glue + the backend abstraction pythia targets
-│     ├─ keryx-core
-│     └─ «backend trait»  concrete impl = themelios-solve when it lands (test double until)
-├─ keryx-cli      thin `keryx` frontend that COMPOSES the library (a satellite, never the primary artifact)
-└─ protoc-gen-keryx   bytes→bytes plugin shim over keryx-core (trivially golden-testable)
+├─ keryx-cli      the TOOL — the `keryx` command that composes the library; the language-agnostic
+│                 interface a consuming tool (in any language) drives keryx through
+└─ keryx-protoc   the protoc/buf plugin — the `protoc-gen-keryx` binary, a bytes→bytes shim over keryx-core
 ```
 
 **keryx-core modules:**
@@ -72,27 +70,18 @@ keryx/                     bidirectional bridge: Protocol Buffers ⇄ ASP ; solv
 | `codec` | payload ⇄ `themelios::Symbol` ground facts; validation | **`Symbol` + `ToSymbol`/`FromSymbol`**; the Symbol→`Atom`→`Rule::fact`→`render` bridge |
 | `manifest` | read / write / diff (name↔number authority + evolution contract) | — (keryx-owned text) |
 | `admit` | `.lp` admission, collision check, text-facts lowering | **`syntax::parse` → `program::raise` → `Analysis`/`Constructs` + `Atom::signatures`** |
-| `analysis` (profile inputs) | ring's schema-derived inputs for pythia: keyed elements, finite domains, bounds, inert-field report | (schema inspection; solverless) |
+| `analysis` | schema-derived, solverless metadata a consuming tool's profiles can use: keyed elements, finite domains, bounds, inert-field report | (schema inspection; solverless) |
 
-**keryx-driver modules:**
-
-| module | job | notes |
-|---|---|---|
-| `backend` | the backend **trait** (pythia §8, B-1…B-11): ground-once / ground-parameterized-module / build-facts-from-AST; externals declare·assign·release·assume; guard atoms; enumeration·optimization·brave/cautious·cores; interruptibility; statistics; deterministic mode; isolation-friendly; clingcon | designed now, bound to themelios-solve later; a test double stands in |
-| `lifecycle` | the **one-shot** transient solve: assemble modules → ground once → solve → reassemble → envelope | drives the *abstract* injected backend; the §7.2 fact delivery lives here |
-| `envelope` | envelope assembly; brave/cautious as set-ops over `models[]`; consequence scope (C-K3) | pure, solverless |
-
-Everything stateful — sessions, episodes, ring/horizon profiles, selection, retention, blame, compaction — is **pythia**, ingesting keryx-driver's mechanism and keryx-core's translation + profile-input analysis.
+Everything past the translation — invoking the solver, the domain model, the result envelope, and all stateful serving (sessions, episodes, ring/horizon profiles, selection, retention, blame, compaction) — belongs to the **consuming tool** (pythia is the canonical one), which composes keryx-core's translation and drives its own solver. keryx defines no solver backend and drives no solve loop (R4, R5).
 
 ---
 
 ## 4. The themelios binding
 
-- **Value plane — `Sym = themelios::Symbol`.** The codec's value type end to end. The `ToSymbol`/`FromSymbol` exclusions *force* keryx to make the §6 decisions explicitly (range-check `u32`→`i32::MAX`; decimal-string for `i64`/`u64`; the `floor/ceil/round/trunc(f64)->Result` adapters are the `(keryx.scale)` primitive; bool/enum → constant `Function`). Interior NUL in a `Symbol::String` is refused at decode with a field-path error (spec §6; the solve-seam marshalling constraint).
+- **Value plane — `Sym = themelios::Symbol`.** The codec's value type end to end. The `ToSymbol`/`FromSymbol` exclusions *force* keryx to make the §6 decisions explicitly (range-check `u32`→`i32::MAX`; decimal-string for `i64`/`u64`; the `floor/ceil/round/trunc(f64)->Result` adapters are the `(keryx.scale)` primitive; bool/enum → constant `Function`). Interior NUL in a `Symbol::String` is refused at decode with a field-path error (spec §6; the codec marshalling constraint).
 - **Emission — direct over `construct`/`render`.** keryx owns the *shapes* (path-term atoms, occupancy, shape obligations, `emit_t` markers, the module set); themelios owns the AST and the printer. Vocabulary modules render through **`render_documented`** (proto doc comments as verbatim `%!` lines); canonical `render` stays available for hash-stable text (`keryx diff`, content hashes).
 - **Doc comments — proto prose → ASP doc comments (P1, §13.1).** `descriptor` reads each element's doc from `SourceCodeInfo` (precondition: the descriptor set carries source info; absent → no docs ride, still valid); `emit` attaches it via `Provenance::with_doc`; `render_documented` prints it. The honorary signature block (§13.1) and the inline `%` prose the worked stories show are a **real seam gap**: themelios's `render` emits comments *only* as statement-attached `%!` doc lines — there is no free-standing or inline plain-`%` emission, and §18 forbids string-templating it in. This is logged now as themelios gap #2 (`docs/themelios-gaps.md`), per the arm's-length rule (surface before depending). Founding stance: keryx `.lp` carries commentary as statement-attached `%!` docs; whether the whole §13.1 signature block fits that shape, or needs free-standing `%` emission from themelios, is decided at the `emit` increment against the logged gap.
 - **Admission — `parse` → `raise` → `Analysis`.** `.lp` / text-facts admission (pythia §11.3, §7.1) and `keryx check` lint: total, diagnostics-as-values; the `Constructs` allow-list scan (SEC-1…3, SEC-22), `Atom::signatures` for generated↔program collision (C-K4).
-- **The backend trait — the arm's-length seam to solving.** keryx-driver reaches the solver only through this trait (pythia §7.6); the concrete solver is always injected. It honors the grounding constraint (§7.2): payload facts enter by pre-declared externals or by grounding an AST-built parameterized module — backend injection is for guards only (C-K1).
 - **The arm's-length rule (load-bearing).** keryx consumes themelios; it **never modifies it**. A surfaced gap is recorded in `docs/themelios-gaps.md` and closed in a *themelios* session, then adopted here by a deliberate dependency bump (pythia OQ-1, one layer down). Candidate gap #1: if touching `themelios_syntax::parse` directly (to hand a `Parse` to `raise`) reads as a leak, a `themelios_program::raise_source(&Source) -> Raised` convenience is the first entry — logged from keryx, fixed in themelios.
 
 ---
@@ -101,13 +90,11 @@ Everything stateful — sessions, episodes, ring/horizon profiles, selection, re
 
 **Compile pipeline:** `FileDescriptorSet → [descriptor] schema model → [policy, Rust] mapping model → [emit] core.lp · views.lp · shape.lp · manifest · scaffolds · envelope types`. The schema model and mapping model are the two stable interfaces; stage-2 emission is a pure function of the mapping model (deterministic, P3 → golden-comparable). Inline options + TOML overlay merge into the schema model's annotations (overlay wins; unmatched key = error, §16). The per-package **envelope `.proto` types** in the pipeline are the one non-ASP `emit` output — generated protobuf via a distinct protobuf-codegen mechanism, not themelios-rendered ASP, so they do not pass through the `construct`/`render` seam.
 
-**Inbound (message → facts):** payload (binary | JSON | textproto) → prost-reflect dynamic decode → tree-walk guided by the mapping model + a root constant → `Vec<Symbol>` + validation report. Delivered as a `.lp` fact module (Symbol→`Atom`→`Rule::fact`→`render`) or, in the driver, through the §7.2 mechanism. Ground by construction (P10) — no grounder. Validation names field paths; partial shreds never delivered.
+**Inbound (message → facts):** payload (binary | JSON | textproto) → prost-reflect dynamic decode → tree-walk guided by the mapping model + a root constant → `Vec<Symbol>` + validation report. Delivered as a `.lp` fact module (Symbol→`Atom`→`Rule::fact`→`render`). Ground by construction (P10) — no grounder. Validation names field paths; partial shreds never delivered.
 
-**Outbound (answer set → message):** answer-set `Vec<Symbol>` — from a `.lp` fixture (themelios `raise`), the user's clingo, or a backend model — → reachable subgraph from `emit_t`/`reach` → rebuild trees by joining on occupant terms → order sequences by index, sets by `Symbol::Ord` (canonical bytes) → `FromSymbol` scalars + term-type conformance → dynamic message → bytes. `shape.lp` in strict (UNSAT on unserializable) or diagnostic (`violates(field-path, occupant)`) mode.
+**Outbound (answer set → message):** answer-set `Vec<Symbol>` — from a `.lp` fixture (themelios `raise`) or the consuming tool's solver — → reachable subgraph from `emit_t`/`reach` → rebuild trees by joining on occupant terms → order sequences by index, sets by `Symbol::Ord` (canonical bytes) → `FromSymbol` scalars + term-type conformance → dynamic message → bytes. `shape.lp` in strict (UNSAT on unserializable) or diagnostic (`violates(field-path, occupant)`) mode.
 
-**The backend seam (deferred impl):** keryx-driver's one-shot lifecycle drives the *abstract, injected* backend; the concrete solver is never linked or spawned by keryx.
-
-**Solver-free in both directions:** outbound consumes answer sets as *input* (fixtures / the user's clingo), so the entire bridge — `gen` → `facts` → *user's clingo* → reassemble → message — is buildable and usable with no solver. Only `keryx solve`'s backend-driven loop is deferred, and it only ever drives an injected abstract backend.
+**Solver-free in both directions:** outbound consumes answer sets as *input* (fixtures / the consuming tool's solver), so the entire bridge — `gen` → `facts` → *the tool's solver* → reassemble → message — is buildable and usable with no solver in keryx. keryx never invokes a solver; the consuming tool does (R4, R5).
 
 ---
 
@@ -140,7 +127,7 @@ The founding arc is testable end to end **without a solver**:
 - **The gate** (§8) enforced per change.
 - **The honest boundary:** keryx's *runtime* invokes no solver; keryx's *test harness / examples* may drive the user's clingo in CI to validate that the generated programs behave (the ASP-policy co-artifact and elenctic fixture contracts). That is test infrastructure, not keryx code — the guard-rail holds.
 
-Two complementary lenses cover the deferred solve without themelios-solve: the **test double** proves keryx's *orchestration* (right backend calls, §7.2-shaped fact delivery, envelope assembly); the **clingo-run examples** prove the *generated ASP's semantics*.
+The generated ASP's semantics are proven by the **clingo-run examples**: the worked scenarios run a solver (the consuming tool's clingo) over the generated vocabulary, facts, and a model in CI, checking the answer sets behave as intended — test infrastructure, not keryx code (§7's honest boundary).
 
 ---
 
@@ -173,15 +160,12 @@ Two complementary lenses cover the deferred solve without themelios-solve: the *
 
 The propagated needs (pythia §0.3, §7, §8, §11.3) are wired in, not bolted on:
 
-- **C-K1** — the §7.2 fact path (backend injection for guards only; facts by pre-declared externals or AST-into-module) → keryx-driver's `lifecycle` + the backend trait.
-- **C-K2** — ring support, **split at the library/service seam**: keryx provides the schema-derived inputs (keyed elements, finite domains, bounds, inert-field report) via `keryx-core::analysis`; pythia *ingests* them and binds the profile (generates `ring.lp`, grounds slots, manages guards). This refines pythia §0.3's shorthand, which lists a generated `ring.lp` under keryx: the `ring.lp` generation is pythia's because it needs the slot budget — a pythia publication-time decision — so keryx's C-K2 obligation is the schema-derived inputs only.
-- **C-K3** — consequence scope in the envelope operations → keryx-driver's `envelope`.
+- **C-K2** — ring support, **split at the library/service seam**: keryx provides the schema-derived inputs (keyed elements, finite domains, bounds, inert-field report) via `keryx-core::analysis`; the consuming tool (pythia) *ingests* them and binds its profile (generates `ring.lp`, grounds slots, manages guards). This refines pythia §0.3's shorthand, which lists a generated `ring.lp` under keryx: the `ring.lp` generation is the tool's because it needs the slot budget — a publication-time decision — so keryx's C-K2 obligation is the schema-derived inputs only.
 - **C-K4** — generated↔program predicate collision → `keryx-core::admit` via `Atom::signatures`.
 - **§7.1** — `Sym = themelios::Symbol`; total functions, structured errors, no panics on foreign input.
-- **§8** — the backend trait *is* the B-1…B-11 surface.
 - **§11.3 / §7.1 text-facts** — `keryx-core::admit`.
 
-The backend trait is designed to pythia §8 from the start (defined + tested against a double at Increment 8), so pythia opens onto a stable surface; only the concrete themelios-solve binding remains (D1).
+keryx enables the consuming tool by providing the **translation** (schema → vocabulary, message ⇄ facts), the **schema-derived analysis** its profiles can use, and **admission** (`.lp` / text-facts lint). The tool composes these with its own solver and its own stateful serving; keryx invokes no solver and holds no session state (R4, R5). The former solve-side correspondences (C-K1's fact-to-solver path, C-K3's envelope, §8's backend trait) are the tool's, not keryx's.
 
 ---
 
@@ -191,13 +175,13 @@ Each increment leaves the workspace green and demonstrable and lands its worked 
 
 | # | increment | delivers | example |
 |---|---|---|---|
-| **0** | **Walking skeleton** | workspace + 4 crates + themelios git-deps + gate + CI + smoke test (construct→render + `Symbol` round-trip); LICENSE, spec + design import, gap-log stub | — |
+| **0** | **Walking skeleton** | workspace + crates + themelios git-deps + gate + CI + smoke test (construct→render + `Symbol` round-trip); LICENSE, spec + design import, gap-log stub | — |
 | 1 | Ingestion | descriptor → schema model → descriptor facts; the §20 dynamic-options rule; golden tests | — |
 | 2 | gen | Rust policy → mapping model; emit `core`/`views`/manifest via `render_documented`; `explain`; self-application | thermal *(gen)* |
 | 3 | Inbound codec | payload → `Symbol` facts → `facts.lp`; `keryx facts`; round-trip properties | thermal *(facts)* |
 | 4 | Outbound + shape | `shape.lp` (strict/diagnostic); reassemble from answer sets; `--emit`; field-path diagnostics | **thermal *(complete E2E)*** |
 | 5 | Annotations + overlays | Appendix A vocabulary; TOML overlays; scalar policies; `keryx diff`; `scaffold` | dispatch; diagnosis *(translation)* |
-| 6 | Admit + plugin | `.lp` admission/lint (`keryx check`, C-K4); `protoc-gen-keryx` (editions handshake) | — |
+| 6 | Admit + plugin | `.lp` admission/lint (`keryx check`, C-K4); `keryx-protoc` (the `protoc-gen-keryx` plugin; editions handshake) | — |
 | 7 | Targets | `--profile clingcon`; `--target flint` + degradation report (emission only) | — |
 
 The solver, the domain model, and all stateful serving (sessions, episodes, ring / horizon, retention, blame) belong to the **consuming tool** — pythia is the canonical one — not to keryx (R4, R5). keryx's boundary is the translation: schema → vocabulary, message → facts, answer-set → message, plus the shape contract and the manifest. There is no keryx `solve`, and keryx never depends on themelios-solve.
@@ -210,7 +194,7 @@ The solver, the domain model, and all stateful serving (sessions, episodes, ring
 - **Settled at the `emit` increment (2):** the §13.1 honorary signature ships as `%!` docs on `#defined` declarations (themelios has no free-standing `%` block — `docs/themelios-gaps.md`); a message-typed field's functional signature (its occupant access-path term, §4.1) rides on its parent sort's `#defined`, keeping `core.lp` the complete functional canon, while the relational view is an additive `views.lp` layer that opens with `#include "<pkg>.core.lp".`.
 - **Settled at the `gen` increment (2):** the shape of the Rust mapping-policy module; the manifest names a message field by its occupant term with the view noted (`readings/2 ; view readings/3`); `keryx/options.proto` resolves from keryx's embedded registry (like the well-known types), so importing it needs no `-I`. Whether/when to add the ASP policy co-artifact + elenctic cross-check stays open.
 - **Carried from the spec (§32), unchanged:** `(keryx.reify)`, `(keryx.mirror)`, the oneof discriminator view, Timestamp/Duration conveniences, `Any` registry ergonomics, manifest wire format, static per-spec codec codegen — all additive, none founding-blocking.
-- **Family-level:** themelios crates.io publication (triggers the dependency-form transition, §8); themelios-solve timeline (gates D1).
+- **Family-level:** themelios crates.io publication (triggers the dependency-form transition, §8).
 - **Candidate gap-log entry #1:** `themelios_program::raise_source(&Source) -> Raised`.
 
 ---

@@ -2,7 +2,7 @@
 
 **Version:** 0.1 (preliminary design, for local refinement)
 **Date:** 2026-08-28
-**Status:** Draft. This document is the project's sole onboarding artifact: a developer given only this file must be able to begin building the system. It is self-contained by policy — everything the system depends on is outlined here, never referenced out to another document.
+**Status:** The founding specification — the design of record *beneath* `docs/design/architecture.md`, which is the architecture of record and reconciles this document via its "deltas from the spec" table. Where the two differ, the architecture governs. In particular, keryx is **translation-only** — it invokes no solver and defines no solver backend (architecture R4/R5) — so this document's aspis / `keryx-driver` / `keryx solve` material (§18, §22–§23, §25) is superseded: the consuming tool invokes the solver and composes keryx's translation.
 
 **Name:** *keryx* (κῆρυξ — the herald who carries messages between parties) is provisional and the maintainer's to change. Candidate alternates in the house style: *angelia*, *hermeneus*. All names in this document (crates, CLI, options namespace) follow the provisional name and rename mechanically with it.
 
