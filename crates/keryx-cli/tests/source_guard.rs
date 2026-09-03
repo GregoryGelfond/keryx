@@ -37,6 +37,7 @@ fn a_deeply_nested_source_is_refused_not_aborted() {
         .arg(&dir)
         .arg("-o")
         .arg(&dir)
+        .env_remove("RUST_BACKTRACE")
         .output()
         .unwrap();
 
@@ -81,6 +82,7 @@ fn a_deep_option_aggregate_is_refused_not_aborted() {
         .arg(&dir)
         .arg("-o")
         .arg(&dir)
+        .env_remove("RUST_BACKTRACE")
         .output()
         .unwrap();
 
@@ -122,6 +124,7 @@ fn a_long_import_chain_is_refused_not_aborted() {
         .arg(&dir)
         .arg("-o")
         .arg(&dir)
+        .env_remove("RUST_BACKTRACE")
         .output()
         .unwrap();
 

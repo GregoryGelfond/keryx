@@ -44,7 +44,7 @@ pub(crate) const MAX_PACKAGE_SEGMENTS: usize = 64;
 /// `descriptor::pre_validate`, which refuses every other shape before a `Schema` is built), so no
 /// sink re-derives trust from a bare `String`. The leading-`.` package the engine panics on is one
 /// refused shape among these.
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Package(String);
 
 impl Package {

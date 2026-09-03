@@ -1,7 +1,9 @@
 //! R5 proven end to end in the ingestion increment: protox produces the descriptor set,
 //! prost-reflect reads it dynamically, keryx parses no protobuf. Engine-direct at the test
 //! level; the production wrap `descriptor::ingest` will be exercised by the ingestion tests at
-//! a later step.
+//! a later step. (R5 carries one bounded departure — the source door's lexical nesting scan, a
+//! structural *measure* not a parse, named in the threat model's property 3; it is off the engine
+//! path this probe tests, where R5 holds unqualified.)
 
 use keryx_test_support as support;
 

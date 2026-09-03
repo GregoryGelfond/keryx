@@ -35,7 +35,18 @@ pub(super) struct Qualified {
 /// objective and its example are themselves in tension — keryx follows the example's
 /// symmetric, unique rule, recorded in spec §34 item 9.)
 pub(super) fn resolve(table: &[SortEntry]) -> Result<BTreeMap<String, Qualified>, Diagnostics> {
+    resolve_counted(table).map(|(map, _rounds)| map)
+}
+
+/// As [`resolve`], additionally returning the number of **advancing rounds** — each raises some
+/// still-clashing member's qualifier by one segment. Exposed so a test asserts the round bound (the
+/// count is the qualifier prefix depth, not the number of collisions an adversary can multiply)
+/// *structurally* — `resolve` itself discards it.
+fn resolve_counted(
+    table: &[SortEntry],
+) -> Result<(BTreeMap<String, Qualified>, usize), Diagnostics> {
     let mut depths = vec![0usize; table.len()];
+    let mut rounds = 0usize;
     loop {
         let names: Vec<String> = table
             .iter()
@@ -82,8 +93,9 @@ pub(super) fn resolve(table: &[SortEntry]) -> Result<BTreeMap<String, Qualified>
                 stuck.expect("a non-empty clash has at least one member"),
             ));
         }
+        rounds += 1;
     }
-    table
+    let map = table
         .iter()
         .zip(&depths)
         .map(|(entry, &depth)| {
@@ -98,7 +110,8 @@ pub(super) fn resolve(table: &[SortEntry]) -> Result<BTreeMap<String, Qualified>
                 },
             ))
         })
-        .collect()
+        .collect::<Result<BTreeMap<String, Qualified>, Diagnostics>>()?;
+    Ok((map, rounds))
 }
 
 /// The emitted name for an entry at qualifier `depth`: its qualifier segments joined by `__`
@@ -172,31 +185,24 @@ fn duplicate(table: &[SortEntry], names: &[String], i: usize) -> Diagnostics {
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
-    use std::time::{Duration, Instant};
 
     use proptest::prelude::*;
     use themelios_program::Name;
 
-    use super::{Qualified, resolve};
+    use super::{Qualified, resolve, resolve_counted};
     use crate::descriptor::model::FqName;
     use crate::diagnostics::DiagnosticKind;
     use crate::policy::names::SortEntry;
 
-    /// The `!progressed` guard keeps `resolve` total when two entries share a maximal
-    /// qualified name and no member can advance. This hand-built table exercises the
-    /// identical-full-path variant (which `ingest` cannot produce, so no fixture reaches it);
-    /// the *reachable* variant — distinct paths that `lower_snake`-collapse — is covered
-    /// end-to-end by the `collapsing_sorts` fixture. Here the two entries advance to max
-    /// depth, stay identical, and `resolve` returns a `duplicate` diagnostic, not a loop.
     #[test]
     fn independent_collisions_resolve_in_bounded_rounds() {
         // The denial-of-service the property set named open, distilled: many *independent* base-name
-        // collisions. Advancing every clashing member per round resolves them in parallel — the round
-        // count is bounded by the qualifier prefix depth (one here), not by the number of groups —
-        // where advancing one Ord-least group per round would take a round per group, superlinear in
-        // the input. Each pair shares a base and separates at its distinct package, so the result is
-        // injective; the pass stays far under a bound a per-group walk would blow by orders of
-        // magnitude (the 5 s margin is generous, not tight, so the assertion is not flaky).
+        // collisions. Advancing every clashing member per round resolves them in parallel, so the
+        // round count is the qualifier prefix depth (one here), not the number of groups — where
+        // advancing one Ord-least group per round would take a round per group, superlinear in the
+        // input. Asserted on the round count itself, not a wall-clock bound: each pair shares a base
+        // and separates at its distinct package in a single advancing round, and the result is
+        // injective.
         let groups = 8_000;
         let mut table = Vec::with_capacity(groups * 2);
         for i in 0..groups {
@@ -209,23 +215,28 @@ mod tests {
                 });
             }
         }
-        let start = Instant::now();
-        let resolved = resolve(&table).expect("the independent collisions resolve");
-        let elapsed = start.elapsed();
+        let (resolved, rounds) =
+            resolve_counted(&table).expect("the independent collisions resolve");
 
+        assert_eq!(
+            rounds, 1,
+            "one advancing round for a prefix depth of one, whatever the group count — \
+             a per-group walk would take {groups}"
+        );
         let names: BTreeSet<&str> = resolved.values().map(|q| q.name.as_str()).collect();
         assert_eq!(
             names.len(),
             table.len(),
             "every sort gets a distinct predicate"
         );
-        assert!(
-            elapsed < Duration::from_secs(5),
-            "resolve stayed bounded ({elapsed:?} for {} sorts)",
-            table.len()
-        );
     }
 
+    /// The `!progressed` guard keeps `resolve` total when two entries share a maximal
+    /// qualified name and no member can advance. This hand-built table exercises the
+    /// identical-full-path variant (which `ingest` cannot produce, so no fixture reaches it);
+    /// the *reachable* variant — distinct paths that `lower_snake`-collapse — is covered
+    /// end-to-end by the `collapsing_sorts` fixture. Here the two entries advance to max
+    /// depth, stay identical, and `resolve` returns a `duplicate` diagnostic, not a loop.
     #[test]
     fn two_entries_sharing_a_full_path_diagnose_rather_than_loop() {
         let base = Name::new("dup").expect("`dup` is a valid identifier");
@@ -251,8 +262,10 @@ mod tests {
     proptest! {
         // `resolve` is order-independent and injective (P3, §4.2): a set of distinct paths that
         // all lower to one base predicate resolves to distinct qualified names, and the result
-        // does not depend on the table's order (resolve sorts its input internally). A mutant
-        // that dropped that internal sort, or a qualifier that collapsed two paths, fails here.
+        // does not depend on the table's order — `resolve` makes no per-round choice (every clashing
+        // member advances together, not an Ord-least one) and returns a path-keyed map, so input
+        // order cannot reach the output. A qualifier that collapsed two paths fails the injectivity
+        // check here.
         #[test]
         fn resolve_is_order_independent_and_injective(
             segments in prop::collection::hash_set("[a-z]{1,6}", 1..6)

@@ -20,6 +20,10 @@ fn a_contained_engine_fault_exits_dependency_with_no_bug_notice() {
     let out = Command::new(env!("CARGO_BIN_EXE_keryx"))
         .arg("schema-facts")
         .arg(&path)
+        // The "no raw panic line by default" claim is about the process's *default* hook; clear the
+        // runner's `RUST_BACKTRACE` so the subprocess sees that default, not the shell's (with it set,
+        // the hook prints the fault's location and this assertion, unrelated to it, would fail).
+        .env_remove("RUST_BACKTRACE")
         .output()
         .unwrap();
 

@@ -504,7 +504,7 @@ fn the_sort_namespace_is_injective() {
 
 #[test]
 fn qualification_is_deterministic() {
-    // `map` is a pure function (P3/R4): the choice-free, Ord-least-first advance makes the
+    // `map` is a pure function (P3/R4): the choice-free advance of every clashing member makes the
     // qualified result unique, hence stable across runs. Two INDEPENDENT parses+ingests of
     // the fixture — not one shared `Schema` mapped twice — so this guards ingest→map order
     // stability, not merely a HashMap-iteration regression inside a single `map`.

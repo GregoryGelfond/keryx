@@ -118,7 +118,7 @@ Everything past the translation — invoking the solver, the domain model, the r
 
 ```rust
 #[derive(Clone, Copy)] #[repr(u8)]
-enum Exit { Success=0, Internal=1, Usage=2, Input=3, Schema=4, Admission=5, Shape=6 }
+enum Exit { Success=0, Internal=1, Usage=2, Input=3, Schema=4, /*Admission=5, Shape=6 reserved*/ Dependency=7 }
 impl From<Exit> for std::process::ExitCode { /* … */ }   // integers live ONLY here (exact values tunable)
 ```
 

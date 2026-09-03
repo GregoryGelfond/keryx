@@ -54,14 +54,14 @@ pub fn try_compile_fixture(name: &str) -> Result<Vec<u8>, String> {
     Ok(compiler.encode_file_descriptor_set())
 }
 
-/// A hand-built `FileDescriptorSet` that carries a deep **`uninterpreted_option`** — a message with a
-/// 120-deep option-name path. keryx refuses any `uninterpreted_option` at the door
+/// A hand-built `FileDescriptorSet` that carries an **`uninterpreted_option`** — one message with a
+/// single scalar-valued uninterpreted option. keryx refuses *any* uninterpreted option at the door
 /// (`descriptor::pre_validate`): a compiled set has none (protoc/protox interpret and clear them),
-/// and an unresolved one drives the descriptor engine's *unbounded* text-format parse of its value —
-/// a stack-overflow **abort** containment cannot hold — so keryx pre-empts it as a clean
-/// `MalformedDescriptor` rather than letting it reach the engine. protoc/protox would never emit
-/// this, so it is built by hand rather than compiled from a fixture. For the tests that exercise the
-/// door's uninterpreted-option refusal.
+/// and an unresolved one could carry a deep text-format aggregate value the descriptor engine parses
+/// with an *unbounded* recursion — a stack-overflow **abort** containment cannot hold — so keryx
+/// pre-empts every such option as a clean `MalformedDescriptor`, not only one bearing a deep
+/// aggregate. protoc/protox would never emit this, so it is built by hand. For the tests that
+/// exercise the door's uninterpreted-option refusal.
 #[must_use]
 pub fn uninterpreted_option_set() -> Vec<u8> {
     use prost::Message as _;
@@ -71,17 +71,6 @@ pub fn uninterpreted_option_set() -> Vec<u8> {
         UninterpretedOption,
     };
 
-    const DEPTH: usize = 120;
-    let mut name: Vec<NamePart> = (0..DEPTH)
-        .map(|_| NamePart {
-            name_part: "self_".to_owned(),
-            is_extension: false,
-        })
-        .collect();
-    name.push(NamePart {
-        name_part: "x".to_owned(),
-        is_extension: false,
-    });
     FileDescriptorSet {
         file: vec![FileDescriptorProto {
             name: Some("m.proto".to_owned()),
@@ -91,7 +80,10 @@ pub fn uninterpreted_option_set() -> Vec<u8> {
                 name: Some("M".to_owned()),
                 options: Some(MessageOptions {
                     uninterpreted_option: vec![UninterpretedOption {
-                        name,
+                        name: vec![NamePart {
+                            name_part: "x".to_owned(),
+                            is_extension: true,
+                        }],
                         positive_int_value: Some(1),
                         ..Default::default()
                     }],

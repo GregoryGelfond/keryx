@@ -261,6 +261,19 @@ impl Diagnostics {
         Diagnostics(vec![diagnostic])
     }
 
+    /// The diagnostics collecting a possibly-empty sequence of causes: `None` when the sequence is
+    /// empty (nothing to report), else a non-empty `Diagnostics`. The one home of the "take the first,
+    /// then push the rest" idiom every multi-refusal site would otherwise copy — so the non-empty
+    /// invariant is upheld here, not re-argued at each caller (`descriptor::pre_validate`,
+    /// `policy::reject_packageless`).
+    #[must_use]
+    pub fn collect(diagnostics: impl IntoIterator<Item = Diagnostic>) -> Option<Diagnostics> {
+        let mut iter = diagnostics.into_iter();
+        let mut out = Diagnostics::one(iter.next()?);
+        out.0.extend(iter);
+        Some(out)
+    }
+
     /// Add a further cause — the collection only grows, so the non-empty
     /// invariant holds.
     pub fn push(&mut self, diagnostic: Diagnostic) {
@@ -436,6 +449,22 @@ mod tests {
             "controls escaped: {shown:?}"
         );
         assert!(shown.contains('…'), "truncation marked");
+
+        // The locus *path* is the other adversary-influenced field (a declared name); `Display` routes
+        // it through `human` too, so it is escaped and bounded alike — a mutant dropping that survives
+        // without this case (the field an attacker controls most directly).
+        let noisy_path = format!("\u{1b}\u{7}{}", "é".repeat(DETAIL_HUMAN_CHARS + 50));
+        let located = Diagnostic::new(
+            DiagnosticKind::UnmappableName,
+            Locus::at(noisy_path),
+            "boom",
+        )
+        .to_string();
+        assert!(
+            !located.contains('\u{1b}') && !located.contains('\u{7}'),
+            "path controls escaped: {located:?}"
+        );
+        assert!(located.contains('…'), "path truncation marked");
     }
 
     #[test]

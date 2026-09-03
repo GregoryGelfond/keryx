@@ -4,7 +4,7 @@
 //! and **valid encodings of structurally-invalid descriptors** — a proptest strategy over
 //! `FileDescriptorProto` with adversarial packages/names, nested types, and uninterpreted options —
 //! which is the one that reaches keryx's own pre-emption and walk (a structured generator finds the
-//! F-class shapes — an arbitrary package, an uninterpreted option — that arbitrary bytes never do).
+//! structured shapes — an arbitrary package, an uninterpreted option — that arbitrary bytes never do).
 //! The hand-built sets in the `descriptor` module carry the specific refusals a golden asserts.
 
 use proptest::prelude::*;

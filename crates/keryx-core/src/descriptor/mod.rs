@@ -189,12 +189,7 @@ fn pre_validate(bytes: &[u8]) -> Option<Diagnostics> {
         }
         check_structure(file, &mut refusals);
     }
-    let mut refusals = refusals.into_iter();
-    let mut diagnostics = Diagnostics::one(refusals.next()?);
-    for diagnostic in refusals {
-        diagnostics.push(diagnostic);
-    }
-    Some(diagnostics)
+    Diagnostics::collect(refusals)
 }
 
 /// A `MalformedDescriptor` at a file's locus — the pre-read's one refusal shape.
@@ -352,13 +347,8 @@ fn build_schema(
         // `pre_validate` already refused any non-identifier package, so this parse cannot fail on a
         // set that reached the walk; re-derived through the one door (`Package::parse`) rather than
         // wrapped unchecked, so `File.package` is a proof of shape and a `?` keeps the walk total.
-        let package = Package::parse(file.package_name()).map_err(|problem| {
-            Diagnostics::from(Diagnostic::new(
-                DiagnosticKind::MalformedDescriptor,
-                Locus::at(file.name().to_owned()),
-                problem.detail(),
-            ))
-        })?;
+        let package = Package::parse(file.package_name())
+            .map_err(|problem| Diagnostics::from(malformed(file.name(), problem.detail())))?;
         files.push(File {
             name: file.name().to_owned(),
             package,
@@ -594,11 +584,11 @@ mod tests {
 
     #[test]
     fn an_uninterpreted_option_is_refused_before_the_engine() {
-        // A set carrying a deep `uninterpreted_option`: the descriptor engine would interpret its
-        // value with an unbounded recursive text-format parser (`option_to_message` →
-        // `parse_text_format`), a stack-overflow *abort* containment cannot hold. keryx pre-empts it
-        // at the door with a clean `MalformedDescriptor` — a compiled set carries no
-        // uninterpreted option, so nothing legitimate is refused (§6).
+        // A set carrying an uninterpreted option: keryx refuses *any* uninterpreted option at the
+        // door (a compiled set has none) with a clean `MalformedDescriptor`, pre-empting the engine's
+        // unbounded recursive text-format parse of an option's aggregate value (`option_to_message` →
+        // `parse_text_format`), a stack-overflow *abort* containment cannot hold — for every such
+        // option, not only one that carries a deep aggregate. Nothing legitimate is refused (§6).
         let diagnostics = ingest(&uninterpreted_option_set()).expect_err("a refusal, not a schema");
         assert_eq!(
             diagnostics.iter().next().unwrap().kind(),

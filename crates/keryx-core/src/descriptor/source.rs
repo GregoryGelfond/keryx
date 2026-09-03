@@ -18,7 +18,7 @@
 //!   `SOURCE_NESTING_LIMIT` with a clean `SourceTooDeep` **before** protox parses it. This scan is a
 //!   **bounded departure from R5** ("keryx parses no protobuf"): it reads lexical structure — brackets,
 //!   strings, comments — but builds no tree and assigns no meaning, a *measure*, not a parse (named in
-//!   the source-door design's finding, and in the threat model's property 3).
+//!   the threat model's property 3 and architecture R5).
 //! - **Bounded import graph.** protox resolves imports by recursion as well (`add_import` →
 //!   `add_import`), a second abort axis the per-file brace scan cannot see; keryx's resolver counts the
 //!   files it opens and refuses an import graph past `MAX_IMPORT_FILES` (`SourceImportGraphTooLarge`)
@@ -186,15 +186,9 @@ fn max_nesting_depth(source: &str) -> usize {
 /// — the sentinel `protox::Error` the resolver returns to halt the compile would otherwise surface as
 /// a generic compile error.
 enum Refusal {
-    TooDeep(Overdepth),
+    TooDeep { name: String, depth: usize },
     Outside { name: String },
     TooManyFiles { count: usize },
-}
-
-/// A `.proto` file that nests past [`SOURCE_NESTING_LIMIT`] — its name and measured brace depth.
-struct Overdepth {
-    name: String,
-    depth: usize,
 }
 
 /// keryx's own include-root resolver: **locate** a file under one include root, **confine** it (reject
@@ -278,10 +272,10 @@ impl FileResolver for RootedResolver {
         };
         let depth = max_nesting_depth(&source);
         if depth > self.limit {
-            self.record(Refusal::TooDeep(Overdepth {
+            self.record(Refusal::TooDeep {
                 name: name.to_owned(),
                 depth,
-            }));
+            });
             return Err(too_deep_error(name, depth));
         }
         // Parse the bytes keryx already read and scanned (never a second read of the path).
@@ -314,7 +308,9 @@ pub fn compile(
     let opened: Rc<Cell<usize>> = Rc::new(Cell::new(0));
     // The closure captures only keryx's own `refusal`/`opened` cells (written in brief non-panicking
     // spans, read after the wrap) and the path slices; protox holds no process-global mutable state a
-    // panic could leave inconsistent — the `AssertUnwindSafe` discharge for this site.
+    // panic could leave inconsistent, and the resolver's own logic is total (no `unwrap`/`expect`, its
+    // `Cell` writes panic-free) — so a fault here is protox's. The `AssertUnwindSafe` discharge for
+    // this site, whose frame encloses all of `RootedResolver::open_file`.
     let compiled = crate::fault::contain(
         "protox",
         "compiling .proto source",
@@ -349,7 +345,7 @@ pub fn compile(
     // own clean diagnostic, overriding the sentinel error the resolver returned to halt the compile.
     if let Some(refusal) = refusal.take() {
         return Err(match refusal {
-            Refusal::TooDeep(over) => source_too_deep(&over),
+            Refusal::TooDeep { name, depth } => source_too_deep(&name, depth),
             Refusal::Outside { name } => source_outside_root(&name),
             Refusal::TooManyFiles { count } => source_import_graph_too_large(count),
         });
@@ -372,14 +368,13 @@ fn source_error(error: &protox::Error, locus: Locus) -> Diagnostics {
 /// The clean `SourceTooDeep` diagnostic at the offending file's locus, naming the measured depth, the
 /// admitted bound, and the only remedy that is always true (the scanner cannot tell message depth from
 /// block depth, so it says "flatten," not "supply a descriptor set" — which fails for a deep chain too).
-fn source_too_deep(over: &Overdepth) -> Diagnostics {
+fn source_too_deep(name: &str, depth: usize) -> Diagnostics {
     Diagnostics::from(Diagnostic::new(
         DiagnosticKind::SourceTooDeep,
-        Locus::at(over.name.clone()),
+        Locus::at(name.to_owned()),
         format!(
-            "source nests {} levels deep, beyond keryx's source-nesting limit of {SOURCE_NESTING_LIMIT}: \
-             flatten the schema — nesting must stay at or below {SOURCE_NESTING_LIMIT}",
-            over.depth
+            "source nests {depth} levels deep, beyond keryx's source-nesting limit of {SOURCE_NESTING_LIMIT}: \
+             flatten the schema — nesting must stay at or below {SOURCE_NESTING_LIMIT}"
         ),
     ))
 }
@@ -456,7 +451,7 @@ mod tests {
 
     #[test]
     fn a_backslash_before_a_newline_does_not_swallow_it() {
-        // The N-central case: a `\` immediately before a newline must not keep the scanner in the
+        // The adversarial edge: a `\` immediately before a newline must not keep the scanner in the
         // string — a protobuf string cannot span a line — so the braces after the newline are counted
         // (else a one-line prefix hides deep nesting from the guard and the parser aborts uncaught).
         assert_eq!(

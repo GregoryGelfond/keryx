@@ -63,7 +63,7 @@ fn reject_packageless(schema: &Schema) -> Result<(), Diagnostics> {
         .map(Message::file)
         .chain(schema.enums().iter().map(Enum::file))
         .collect();
-    let mut offenders = schema
+    let offenders = schema
         .files()
         .iter()
         .filter(|file| file.package.is_empty() && with_subjects.contains(file.name.as_str()))
@@ -74,16 +74,7 @@ fn reject_packageless(schema: &Schema) -> Result<(), Diagnostics> {
                 "a package-less .proto is not supported — declare a `package` (keryx generates one file set per package, §13)",
             )
         });
-    match offenders.next() {
-        None => Ok(()),
-        Some(first) => {
-            let mut diagnostics = Diagnostics::one(first);
-            for diagnostic in offenders {
-                diagnostics.push(diagnostic);
-            }
-            Err(diagnostics)
-        }
-    }
+    Diagnostics::collect(offenders).map_or(Ok(()), Err)
 }
 
 /// Group the schema's messages and enums by package into `Unit`s (spec §13), each sort's
@@ -100,12 +91,12 @@ fn assemble(
             .map(|q| q.name.clone())
             .ok_or_else(|| unresolved_reference(path))
     };
-    // Every element's `file()` names a file `ingest` already populated into
-    // `schema.files()`, so the `.get` below cannot miss on a well-formed `Schema`;
-    // `unwrap_or(&empty)` is defensive, and the empty `Package` also happens to coincide with the
-    // legitimate no-package case (a file that declares no `package`). The unit carries the validated
-    // `Package` straight from the file, so no `Unit` re-derives it from a bare string.
-    let empty = Package::default();
+    // Every element's `file()` names a file `ingest` already populated into `schema.files()`, so the
+    // `.get` below cannot miss on a well-formed `Schema`; a miss is diagnosed at the element's locus
+    // — the one failure posture `build_sort` uses for a missing sort — never mapped to a silent empty
+    // `Package`, which is a *valid* value ("no package") and would slip a hidden dotfile past
+    // `reject_packageless`. The unit carries the validated `Package` straight from the file, so no
+    // `Unit` re-derives it from a bare string.
     let package_of: BTreeMap<&str, &Package> = schema
         .files()
         .iter()
@@ -113,7 +104,10 @@ fn assemble(
         .collect();
     let mut units: BTreeMap<&Package, (Vec<SortMapping>, Vec<EnumMapping>)> = BTreeMap::new();
     for message in schema.messages() {
-        let package = package_of.get(message.file()).copied().unwrap_or(&empty);
+        let package = package_of
+            .get(message.file())
+            .copied()
+            .ok_or_else(|| unresolved_reference(message.path()))?;
         let sort = build_sort(message, &sort_of, sorts)?;
         units.entry(package).or_default().0.push(sort);
     }
@@ -121,7 +115,7 @@ fn assemble(
         let package = package_of
             .get(enumeration.file())
             .copied()
-            .unwrap_or(&empty);
+            .ok_or_else(|| unresolved_reference(enumeration.path()))?;
         let mapping = build_enum(enumeration, sorts)?;
         units.entry(package).or_default().1.push(mapping);
     }
