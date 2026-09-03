@@ -43,9 +43,9 @@ change, and the status (open / fixed-in `<rev>` / adopted).
   the exact free-standing `%` block spelling of §13.1's own worked example (the
   `% dispatch.v1.core — signature` block), and (b) the inline `%` prose the
   worked stories show inside generated `.lp` (e.g. §14's `keryx scaffold`
-  example). **morphe** (the estate ASP-formatting library over
+  example). **morphe** (an ASP-formatting library over
   themelios-syntax) is a candidate provider to *evaluate* if/when that inline-
-  prose need is pursued — not adopted at M1 (R2's one-provider posture; its
+  prose need is pursued — not adopted at the gen increment (R2's one-provider posture; its
   capability for this is unverified). No dependency taken on morphe or on any
   themelios change this increment. Status: open, narrowed (the `core.lp`
   signature need is met a different way; free-standing/inline `%` emission
@@ -60,3 +60,11 @@ change, and the status (open / fixed-in `<rev>` / adopted).
   BodyElement` (or `for Literal`) would make the comparison seam as smooth as the
   atom seam. Status: open (surfaced at the `emit` increment; cosmetic — the ladder
   works, it is only bumpy). The one composition seam this increment found rough.
+
+- **`%!` doc-comment spacing.** `render_documented`'s `render_docs` writes each doc line as
+  `%!` immediately followed by the text, with no space — a deliberate render↔raise fixpoint
+  ("nothing is written after the `%!`, so … a marker space would accrue on each pass"). keryx's
+  generated `core.lp`/`views.lp` are thus `%!sort batch/1`, which reads cramped. Needed:
+  `render_docs` emits `%! ` (one space) and the raise strips a single leading space after `%!`,
+  preserving the fixpoint. keryx's signature goldens change on adoption. Status: open (surfaced at
+  the gen review, 2026-09-03; to be done in a dedicated themelios session).

@@ -134,9 +134,9 @@ Everything keryx does here is a pure, deterministic function of the schema — n
 network, golden-comparable. The end-to-end transient solve is wired together at Increment 4;
 this example is the piece that is real today.
 
-## M1 scope
+## Scope at the gen stage
 
-- **`(keryx.set)` is inert at M1.** keryx ingests the annotation (it appears as an `opt/3`
+- **`(keryx.set)` is inert at the gen stage.** keryx ingests the annotation (it appears as an `opt/3`
   descriptor fact) but does not yet read it for translation, so `AlertSet.alerts` is generated
   as a **sequence**, exactly like `ReadingBatch.readings` — `alerts/2` with a sequence view
   `alerts/3`.

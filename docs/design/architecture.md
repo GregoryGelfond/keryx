@@ -36,9 +36,9 @@ The keryx spec was written when aspis (not themelios-solve) was the backend and 
 |---|---|---|---|
 | R1 | **`Sym = themelios::Symbol`** — no keryx `Sym` enum | spec §22 (own `Sym` value type) | themelios's `Symbol` *is* the value type; its `ToSymbol`/`FromSymbol` coverage (`{i8,i16,i32,u8,u16,str,String}`, excluding `u32,i64,u64,bool,f64`) **is** the §6 scalar policy, type-enforced. `Symbol::Ord` = gringo order = the canonical-bytes anchor. |
 | R2 | **Emission is a keryx `emit` module directly over themelios `construct`/`render`** | spec §18 (swappable builder/printer trait + internal fallback AST) | Both motivations for the trait are resolved: ship-before-themelios (themelios is ready) and provider independence vs. a rival syntax effort (OQ-9 — themelios is the blessed sole provider). One provider, no speculative indirection. |
-| R3 | **Stage-1 mapping policy is computed in Rust** | spec §21.3 (ASP program as the production mechanism) | keryx invokes no solver (R4); an ASP-as-production policy would need one. The ASP formulation survives as an *optional inspectable / cross-check co-artifact* (renderable by `explain`, checkable in elenctic under the user's clingo, plus the §21.2 self-application) — the inspection/verification intent preserved without keryx solving. If the co-artifact ships, the Rust policy is sole authority and the ASP form is a *view* generated from the same mapping model (so it cannot disagree) or held to agreement by a gate — never an independently-authored second model. |
+| R3 | **Stage-1 mapping policy is computed in Rust** | spec §21.3 (ASP program as the production mechanism) | keryx invokes no solver (R4); an ASP-as-production policy would need one. The ASP formulation survives as an *optional inspectable / cross-check co-artifact* (renderable by `explain`, checkable via ASP contracts under the user's clingo, plus the §21.2 self-application) — the inspection/verification intent preserved without keryx solving. If the co-artifact ships, the Rust policy is sole authority and the ASP form is a *view* generated from the same mapping model (so it cannot disagree) or held to agreement by a gate — never an independently-authored second model. |
 | R4 | **keryx invokes no solver and defines no solver backend** — hence no `keryx-driver`; the workspace is `keryx-core` (library), `keryx-cli` (tool), `keryx-protoc` (plugin). A consuming tool (in any language) invokes the solver and composes keryx's translation — `facts` (message → `.lp`), reassembly (answer-set → message) — around it. | **Supersedes:** §17's backend-injection production path; §19's `keryx-driver` row, `protoc-gen-keryx`-crate row, and `PolicyEval` paragraph; §23 entire; §25's `keryx solve`; §26's solve-path envelope and domain-UNSAT exit class; §27's driver-run fixture harness; §31's M2 solve half and M5; §33's lazy-grounding note; Appendix B's `SolveResponse`/`Model`; Appendix D's episode. (§18's aspis and §22's driver mapping are already R2's and R1's.) | Sessions, episodes, ring/horizon, the domain model, and the solver call are how a tool *runs* an oracle over keryx's vocabulary; keryx provides only the bidirectional translation. |
-| R5 | **keryx parses no protobuf** — protox produces `FileDescriptorSet`, prost-reflect reads it | (affirms spec P9, §20) | `FileDescriptorSet` is the interface; the dynamic layer (prost-reflect) is mandatory because keryx's annotations are custom options that typed `prost` structs silently drop (§20, load-bearing). Symmetry: keryx parses nothing — protobuf via protox/prost-reflect, ASP text via themelios `raise`. |
+| R5 | **keryx parses no protobuf** — protox produces `FileDescriptorSet`, prost-reflect reads it | (affirms spec P9, §20) | `FileDescriptorSet` is the interface; the dynamic layer (prost-reflect) is mandatory because keryx's annotations are custom options that typed `prost` structs silently drop (§20, load-bearing). Symmetry: keryx parses nothing — protobuf via protox/prost-reflect, ASP text via themelios `raise`. (prost/prost-types decode the set once to read its `syntax` for editions before the engine — the decoded struct is discarded, so no typed struct feeds the schema, §18/§20.) |
 | R6 | **G7's "no text on the production path" is the library seam's, not the CLI's** | spec §17, G7, P10 | The library delivers inbound facts as a `Vec<Symbol>` — no text, no parse, no grounding pass — which a consuming tool feeds its solver directly; the CLI delivers them as a `.lp` text module, which the tool's own solver parses and grounds. G7 was written for a solve path keryx no longer owns: a consumer needing the text-free path links `keryx-core` and passes symbols; a CLI consumer accepts the text seam. keryx realises "ground by construction" (P10) on both; the "no text" half (G7) is the library seam's. |
 
 ---
@@ -53,7 +53,8 @@ keryx/                     bidirectional bridge: Protocol Buffers ⇄ ASP ; solv
 │     ├─ themelios-program    construct · render/render_documented · raise · Symbol/To|FromSymbol · provenance
 │     ├─ themelios-syntax     parse: text → AST  (front half of raise; admission; text-facts)
 │     ├─ themelios-analysis   Analysis/Constructs scan · Atom::signatures · dependency facets
-│     └─ prost-reflect, protox   descriptor ingestion (dynamic options — the §20 rule)
+│     ├─ prost-reflect, protox   descriptor ingestion (dynamic options — the §20 rule)
+│     └─ prost, prost-types    editions inspection only — decode a set's `syntax`; the struct is discarded, never feeds the schema (§18/§20)
 ├─ keryx-cli      the TOOL — the `keryx` command that composes the library; the language-agnostic
 │                 interface a consuming tool (in any language) drives keryx through
 └─ keryx-protoc   the protoc/buf plugin — the `protoc-gen-keryx` binary, a bytes→bytes shim over keryx-core
@@ -66,7 +67,7 @@ keryx/                     bidirectional bridge: Protocol Buffers ⇄ ASP ; solv
 | module | job | themelios surface |
 |---|---|---|
 | `descriptor` | ingest `FileDescriptorSet` → de-sugar → **schema model** (stable interface; carries fq-path + field number, presence, type, annotations, doc comment, field-path location) | — (prost-reflect dynamic pool; protox front door) |
-| `facts` | schema model → descriptor facts (Appendix C) — a rendered artifact for `explain` + §21.2 self-application (not a policy input under Rust policy) | via `emit` |
+| `facts` | schema model → **descriptor** facts (Appendix C) — a rendered artifact for `explain` + §21.2 self-application (not a policy input under Rust policy); surfaced by `keryx schema-facts`, distinct from the Increment-3 `keryx facts` command that renders a *payload's* ground facts to `facts.lp` | via `emit` |
 | `policy` | stage 1 (**Rust**): names · qualification · presence classification · treatment · reserved-word escapes → **mapping model** (stable interface) | — |
 | `emit` | stage 2: `core`/`views`/`shape` modules, manifest, scaffolds | **`construct` + `render`/`render_documented`** — direct |
 | `codec` | payload ⇄ `themelios::Symbol` ground facts; validation | **`Symbol` + `ToSymbol`/`FromSymbol`**; the Symbol→`Atom`→`Rule::fact`→`render` bridge |
@@ -114,7 +115,7 @@ enum Exit { Success=0, Internal=1, Usage=2, Input=3, Schema=4, Admission=5, Shap
 impl From<Exit> for std::process::ExitCode { /* … */ }   // integers live ONLY here (exact values tunable)
 ```
 
-Human-readable by default; `--format json` (or when stdout isn't a TTY) emits structured `Diagnostic`s; respect `NO_COLOR` and TTY detection. Broken pipe / `SIGPIPE` exits cleanly (no `EPIPE` panic); a top-level panic hook maps any escaped panic to a clean internal-error report + exit `1`, never a raw backtrace. Fix-it hints travel with the error.
+Human-readable by default; `--format json` (or when stderr — the stream diagnostics travel on — isn't a TTY) emits structured `Diagnostic`s; respect `NO_COLOR` and TTY detection. Broken pipe / `SIGPIPE` exits cleanly (no `EPIPE` panic); a top-level panic hook maps any escaped panic to a clean internal-error report + exit `1`, never a raw backtrace. Fix-it hints travel with the error.
 
 **No magic numbers.** Semantic named constants/enums throughout: exit codes in `Exit`, error kinds in `DiagnosticKind` (rendered to the wire string only at the boundary), domain bounds named (`i32::MAX`, not `2147483647`), custom-option field-numbers resolved by *extension identity* from the vendored `keryx/options.proto` (the number lives in the `.proto` alone), infrastructure names (`reach`, `violates`, `emit_*`, `ep`, reserved words) as named tables. Enforcement is structural + review (there is no true magic-number lint).
 
@@ -129,7 +130,7 @@ The founding arc is testable end to end **without a solver**:
 - **Self-application cross-check (§21.2):** hand-written stage-0 vs. `keryx(descriptor.proto)`.
 - **Fixture harness (§27):** `examples/<name>/{request, expect}` (see §8); the reassembly path runs solver-free.
 - **The gate** (§8) enforced per change.
-- **The honest boundary:** keryx's *runtime* invokes no solver; keryx's *test harness / examples* may drive the user's clingo in CI to validate that the generated programs behave (the ASP-policy co-artifact and elenctic fixture contracts). That is test infrastructure, not keryx code — the guard-rail holds.
+- **The honest boundary:** keryx's *runtime* invokes no solver; keryx's *test harness / examples* may drive the user's clingo in CI to validate that the generated programs behave (the ASP-policy co-artifact and its fixture contracts). That is test infrastructure, not keryx code — the guard-rail holds.
 
 The **clingo-run examples** exercise the generated theory end to end — the worked scenarios run clingo over the vocabulary, facts, and a model in CI, checking the fixtures behave. They test the translation, not the theory's semantics: the correctness argument for the emitted theory (§12.2's serializability, §12.3's inverse) is owed by the increment plan that emits it. Test infrastructure, not keryx code — §7's honest boundary.
 
@@ -186,7 +187,7 @@ Each increment leaves the workspace green and demonstrable and lands its worked 
 | 4 | Outbound + shape | `shape.lp` (strict/diagnostic); reassemble from answer sets; `--emit`; field-path diagnostics | **thermal *(complete E2E)*** |
 | 5 | Annotations + overlays | Appendix A vocabulary; TOML overlays; scalar policies; `keryx diff`; `scaffold` | dispatch; diagnosis *(translation)* |
 | 6 | Admit + plugin | `.lp` admission/lint (`keryx check`); `keryx-protoc` (the `protoc-gen-keryx` plugin; editions handshake) | — |
-| 7 | Targets | `--profile clingcon`; `--target flint` + degradation report (emission only) | — |
+| 7 | Targets | `--profile clingcon`; `--target <typed-dialect>` + degradation report (emission only) | — |
 
 keryx's boundary is the translation: schema → vocabulary, message → facts, answer-set → message, plus the shape contract and the manifest. Everything past it — the solver, the domain model, stateful serving — is the consuming tool's (R4).
 
@@ -196,7 +197,7 @@ keryx's boundary is the translation: schema → vocabulary, message → facts, a
 
 - **Tuned at scaffolding (Increment 0):** exact exit-code integers; the coverage tool + floor (matched to themelios's); the MIT holder/year line; the CI workflow specifics; the themelios-repo CI credential mechanism.
 - **Settled at the `gen` increment (2), emission:** the §13.1 honorary signature ships as `%!` docs on `#defined` declarations (themelios has no free-standing `%` block — `docs/themelios-gaps.md`); a message-typed field's functional signature (its occupant access-path term, §4.1) rides on its parent sort's `#defined`, keeping `core.lp` the complete functional canon, while the relational view is an additive `views.lp` layer that opens with `#include "<pkg>.core.lp".`.
-- **Settled at the `gen` increment (2):** the shape of the Rust mapping-policy module; the manifest names a message field by its occupant term with the view noted (`readings/2 ; view readings/3`); `keryx/options.proto` resolves from keryx's embedded registry (like the well-known types), so importing it needs no `-I`. Whether/when to add the ASP policy co-artifact + elenctic cross-check stays open.
+- **Settled at the `gen` increment (2):** the shape of the Rust mapping-policy module; the manifest names a message field by its occupant term with the view noted (`readings/2 ; view readings/3`); `keryx/options.proto` resolves from keryx's embedded registry (like the well-known types), so importing it needs no `-I`. Whether/when to add the ASP policy co-artifact + its cross-check stays open.
 - **Carried from the spec (§32), unchanged:** `(keryx.reify)`, `(keryx.mirror)`, the oneof discriminator view, Timestamp/Duration conveniences, `Any` registry ergonomics, manifest wire format, static per-spec codec codegen — all additive, none founding-blocking.
 - **Family-level:** themelios crates.io publication (triggers the dependency-form transition, §8).
 - **Candidate gap-log entry #1:** `themelios_program::raise_source(&Source) -> Raised`.
