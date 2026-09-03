@@ -3,7 +3,7 @@
 //! profile, shape), then per package one `sort` line per message/enum and one record per
 //! field/value, binding the fully-qualified proto path and field number to the emitted
 //! name/arity/shape and recording qualifier/escape divergence. A pure, deterministic
-//! function of the [`Mapping`] (P3); *write* only at M1 — read/diff (`keryx diff`) is
+//! function of the [`Mapping`] (P3); *write* only at present — read/diff (`keryx diff`) is
 //! Increment 5. The final grammar is open (spec §32 item 7); this is the v0 form.
 //!
 //! [`Mapping`]: crate::policy::model::Mapping
@@ -105,7 +105,7 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 /// - `kind` is a function of the field's `EmitForm` alone: `fn` (singular), `fam` (repeated
 ///   or map), `oneof` (an oneof arm, regardless of what its value is — a message-typed arm is
 ///   still `oneof`, never demoted to `fn`), `rel` (a `(keryx.set)` membership relation,
-///   Appendix B's shape; `EmitForm::Set` is reserved and never produced at M1, so this arm is
+///   Appendix B's shape; `EmitForm::Set` is reserved and never produced at present, so this arm is
 ///   presently unreachable but correctly labeled).
 /// - `target` is a function of the field's `ValueMapping` alone: `-> <target>` names the
 ///   referent sort only for a message-typed occupant (an enum referent shows only in
@@ -116,8 +116,8 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 /// noting the view predicate (`views.lp`, §13.2) a model author joins on. `<declared>` is the
 /// proto-declared type regardless of `kind`/target
 /// (`declared`). `<descriptor>` is the family's shape — `seq` (sequence), `map<key>` (map), or
-/// `set` (a `(keryx.set)` membership relation, reserved at M1) — or, for a singular field or
-/// oneof arm, its `Totality` (§5), not the finer presence (the M1 fidelity the `Mapping`
+/// `set` (a `(keryx.set)` membership relation, reserved at present) — or, for a singular field or
+/// oneof arm, its `Totality` (§5), not the finer presence (the gen-stage fidelity the `Mapping`
 /// carries; `LEGACY_REQUIRED`'s distinct outbound obligation is a shape concern, Increment 4).
 /// A map's `<key>` is the *declared* key type (§13.4): the default-string treatment of an
 /// integer key (§7.2) is classified, not enforced, until the codec (Increment 5), so
@@ -433,7 +433,7 @@ mod tests {
     #[test]
     fn field_line_labels_a_set_form_as_rel() {
         // `EmitForm::Set` is reserved for `(keryx.set)` membership relations (Appendix B) and
-        // never produced by `policy` at M1, but `kind`'s match is exhaustive over every
+        // never produced by `policy` at present, but `kind`'s match is exhaustive over every
         // `EmitForm` variant with no wildcard, so this label is already correct today.
         let field = FieldMapping {
             proto: FqName::new("keryx.t.Tags.name"),

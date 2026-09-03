@@ -32,7 +32,7 @@ pub(super) fn version(file: &FileDescriptor) -> SchemaVersion {
 /// the editions default) open. prost-reflect exposes no openness accessor, and the
 /// explicit editions `enum_type = CLOSED` override is deferred to the increment
 /// that consumes open-enum semantics — recorded in `docs/proto-support.md`. Exact
-/// for every M0 fixture. Same-crate, so the match needs no wildcard; adding an
+/// for every proto2/proto3 fixture. Same-crate, so the match needs no wildcard; adding an
 /// `Edition` version later makes this a compile error, forcing the decision.
 pub(super) fn openness(version: SchemaVersion) -> Openness {
     match version {

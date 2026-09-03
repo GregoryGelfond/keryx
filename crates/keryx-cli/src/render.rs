@@ -2,7 +2,7 @@
 //! prose (default when stderr is a terminal) or structured JSON (`--format json`, or when
 //! stderr — the stream diagnostics travel on — is not a terminal). stdout carries the product;
 //! a broken pipe on either stream exits/continues cleanly rather than panicking with EPIPE.
-//! `NO_COLOR` is honored by construction — the human form is uncolored at M1. The JSON view of a
+//! `NO_COLOR` is honored by construction — the human form is uncolored at present. The JSON view of a
 //! library `Diagnostic` is the library's own ([`keryx_core::diagnostics::Diagnostics::wire`]); a
 //! CLI-adapter error (file I/O, usage) renders in the same shape with the exit class as its kind.
 

@@ -19,7 +19,7 @@ use crate::descriptor::model::{FqName, MapKey, Openness, Scalar};
 
 /// A field's emitted form (spec §4.1, §7): the ASP shape its predicate takes. Closed —
 /// the treatment classification (`ValueMapping`) rides beside it, never inside it. At
-/// M1 every `repeated` is a `Sequence`; the `Set` form lands when `(keryx.set)` gains
+/// at present every `repeated` is a `Sequence`; the `Set` form lands when `(keryx.set)` gains
 /// meaning (Increment 5). `OneofArm` is an ordinary partial function that also records
 /// its oneof (spec §7.3).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,7 +29,7 @@ pub enum EmitForm {
     /// A repeated field — an index-keyed family (spec §7.1).
     Sequence,
     /// A repeated field under `(keryx.set)` — a membership relation (spec §7.1);
-    /// reserved for Increment 5, never produced at M1.
+    /// reserved for Increment 5, never produced at present.
     Set,
     /// A map field — a key-keyed family (spec §7.2).
     Map {
@@ -45,13 +45,13 @@ pub enum EmitForm {
 
 /// A field value's emitted treatment (spec §6, §4.1). A scalar's *default* §6
 /// classification, or a reference to the referent's emitted sort predicate. The scalar
-/// classification is recorded for the codec/shape (Increments 3–4); nothing in M1 emit
-/// reads it (the signature shows the proto type; the views concern message fields).
+/// classification is recorded for the codec/shape (Increments 3–4); nothing in the gen-stage
+/// emit reads it (the signature shows the proto type; the views concern message fields).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValueMapping {
     /// A scalar — its proto `kind` (the §13.1 signature shows the proto type) and its §6
-    /// default `treatment` (consumed by the codec/shape at Increments 3–4; not read by M1
-    /// emit).
+    /// default `treatment` (consumed by the codec/shape at Increments 3–4; not read by the
+    /// gen-stage emit).
     Scalar {
         /// The proto scalar kind (for the signature).
         kind: Scalar,
@@ -64,7 +64,7 @@ pub enum ValueMapping {
     Enum(Name),
 }
 
-/// The §6 default treatment of a scalar (the classification, **not enforced** at M1 —
+/// The §6 default treatment of a scalar (the classification, **not enforced** at present —
 /// range checks, the float error, and annotation overrides land at Increment 5). The
 /// families follow §6: the machine-int family is `Native` (uint32/fixed32 carry a
 /// downstream range obligation); the 64-bit family is `DecimalString`; float/double have
@@ -213,7 +213,7 @@ impl FieldMapping {
         &self.predicate
     }
 
-    /// The emitted arity (2 or 3 at M1).
+    /// The emitted arity (2 or 3 at present).
     #[must_use]
     pub fn arity(&self) -> u32 {
         self.arity

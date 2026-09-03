@@ -93,7 +93,7 @@ fn dispatch(cli: Cli) -> Exit {
 
 /// Load, map, and write `<out>/<pkg>.core.lp`, `.views.lp`, and `.keryx-manifest` per package
 /// (spec §13, §28). stdout stays clean; written paths are reported to stderr. The schema hash
-/// is not computed at M1 (`-`); content hashing lands with `keryx diff` (Increment 5).
+/// is not computed at present (`-`); content hashing lands with `keryx diff` (Increment 5).
 fn generate(args: &GenArgs, format: Format) -> Exit {
     let schema = match load_schema(&args.protos, &args.includes, format) {
         Ok(schema) => schema,

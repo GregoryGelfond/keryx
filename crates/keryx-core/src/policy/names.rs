@@ -108,7 +108,7 @@ pub(super) fn totality(presence: Presence) -> Totality {
     }
 }
 
-/// The §6 default scalar treatment (the classification; not enforced at M1).
+/// The §6 default scalar treatment (the classification; not enforced at present).
 pub(super) fn scalar_treatment(scalar: Scalar) -> ScalarTreatment {
     match scalar {
         Scalar::Int32 | Scalar::Sint32 | Scalar::Sfixed32 | Scalar::Uint32 | Scalar::Fixed32 => {
@@ -154,7 +154,7 @@ pub(super) fn field_mapping(
 }
 
 /// The (form, arity, value) for a field shape (spec §4.1, §7). Repeated is always a
-/// `Sequence` at M1; `Set` waits for `(keryx.set)` semantics (Increment 5).
+/// `Sequence` at present; `Set` waits for `(keryx.set)` semantics (Increment 5).
 fn shape(
     shape: &FieldShape,
     oneof: Option<&str>,

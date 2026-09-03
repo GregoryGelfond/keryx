@@ -175,7 +175,7 @@ fn build_enum(
     // values may still lower to one constant (a case-only difference, e.g. `FOO_BAR`/
     // `FooBar`, or a separator-run difference, e.g. `FOO__BAR`/`FOO_BAR`, since
     // `lower_snake` collapses `_` runs). §7.4 resolves such residuals by qualification —
-    // the codec increment's (Increment 5); at M1 a residual is reported (loud), never a
+    // the codec increment's (Increment 5); at present a residual is reported (loud), never a
     // silent duplicate constant.
     let mut seen = BTreeSet::new();
     for value in &values {

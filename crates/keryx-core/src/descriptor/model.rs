@@ -33,7 +33,7 @@ impl FqName {
 /// edition is added as a variant, not a redesign — an `Edition(u32)` variant lands
 /// with the editions increment and its first consumer (proto2/proto3 files already
 /// ingest correctly, and an editions file resolves as its proto3-equivalent
-/// defaults at M0). Produced by `desugar::version`, consumed by openness
+/// defaults at ingestion). Produced by `desugar::version`, consumed by openness
 /// resolution; read only to *resolve* features, never to branch translation,
 /// which keys on resolved features alone (§5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -457,7 +457,7 @@ pub struct EnumValue {
 
 /// A keryx annotation — one applied custom option (§15), keyed by its option name
 /// with `keryx.` stripped (`set`, `numeric`, …). A repeated option expands to one
-/// `Annotation` per element. Inline-sourced at M0; overlay provenance (§16) is
+/// `Annotation` per element. Inline-sourced at ingestion; overlay provenance (§16) is
 /// added with overlays at Increment 5.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Annotation {

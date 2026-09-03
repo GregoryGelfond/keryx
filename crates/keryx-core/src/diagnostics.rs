@@ -111,7 +111,7 @@ pub enum DiagnosticKind {
     /// case, `X_FOO`/`X_Foo`, both `x_foo`; or names differing only in a separator run,
     /// `FOO__BAR`/`FOO_BAR`, both `foo_bar`, since `lower_snake` collapses `_` runs). §7.4
     /// resolves residual collisions by *qualification*, which is the codec increment's
-    /// (Increment 5); at M1 the collision is reported (loud, §6) rather than silently
+    /// (Increment 5); at present the collision is reported (loud, §6) rather than silently
     /// producing a duplicate constant. Names the enum's locus.
     AmbiguousConstant,
 }

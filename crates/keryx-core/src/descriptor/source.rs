@@ -1,4 +1,4 @@
-//! The `.proto` front door (architecture §5; spec §20, §31 M1): compile source files
+//! The `.proto` front door (architecture §5; spec §20, §31): compile source files
 //! to a descriptor set with protox — the pure-Rust compiler, no `protoc` — and ingest
 //! it. The sole adapter over the `.proto` compiler; no `protox` type escapes this
 //! module (the descriptor-engine boundary). Bytes are the seam: protox encodes the
@@ -6,7 +6,7 @@
 //! prost-reflect in `ingest_subjects`, so the two crates' prost versions never couple.
 //! The *subjects* are the explicitly-opened (root) files, carried across the seam by name
 //! so a subject named like a well-known type (the §21.2 `descriptor.proto` self-application)
-//! is ingested, not treated as a dependency. Editions gate (spec §31 M1): a file protox
+//! is ingested, not treated as a dependency. Editions gate (spec §31): a file protox
 //! cannot compile (editions is DEFERRED for protox 0.9.1, `docs/proto-support.md`) composes
 //! a `UncompilableSource` diagnostic telling the caller to supply a descriptor set — a front-door
 //! limit, not a translation one.
