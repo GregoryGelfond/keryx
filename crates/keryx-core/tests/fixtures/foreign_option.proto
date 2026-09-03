@@ -8,7 +8,7 @@ import "google/protobuf/descriptor.proto";
 // options are resolved by extension identity (architecture §6), never by a
 // `keryx.`-prefixed name alone. `Evil` is a legal proto field name but not a
 // themelios identifier (`Name::new` requires a lowercase-initial identifier),
-// so admitting this option by name would panic `facts::render`; identity
+// so admitting this option by name would panic `schema_facts::render`; identity
 // resolution excludes it before it ever reaches an `Annotation`.
 extend google.protobuf.FieldOptions {
   optional bool Evil = 60001;

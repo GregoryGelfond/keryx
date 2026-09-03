@@ -7,12 +7,12 @@
 //! ingestion, so its non-identifier field name never reaches an `Annotation`. The render check
 //! is a backstop on §6 totality: were such a key ever to reach `facts`, it lowers through
 //! `terms::try_constant` (not the vocabulary `expect`), which diagnoses a non-identifier rather
-//! than panicking — so `facts::render` stays total either way.
+//! than panicking — so `schema_facts::render` stays total either way.
 
 use keryx_test_support as support;
 
 use keryx_core::descriptor::ingest;
-use keryx_core::facts;
+use keryx_core::schema_facts;
 
 #[test]
 fn a_foreign_keryx_prefixed_extension_is_excluded() {
@@ -38,5 +38,5 @@ fn a_foreign_keryx_prefixed_extension_is_excluded() {
 
     // A backstop: even had a foreign key reached `facts`, it lowers through `terms::try_constant`,
     // which diagnoses a non-identifier rather than panicking, so render stays total (§6).
-    facts::render(&schema).expect("renders");
+    schema_facts::render(&schema).expect("renders");
 }

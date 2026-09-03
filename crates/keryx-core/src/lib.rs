@@ -12,7 +12,7 @@
 
 pub mod diagnostics;
 pub mod descriptor;
-pub mod facts;
+pub mod schema_facts;
 pub mod policy;
 pub mod emit;
 pub mod manifest;

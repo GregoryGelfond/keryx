@@ -6,10 +6,11 @@
 use keryx_test_support as support;
 
 use keryx_core::descriptor::ingest;
-use keryx_core::facts;
+use keryx_core::schema_facts;
 
 fn rendered(fixture: &str) -> String {
-    facts::render(&ingest(&support::compile_fixture(fixture)).expect("ingests")).expect("renders")
+    schema_facts::render(&ingest(&support::compile_fixture(fixture)).expect("ingests"))
+        .expect("renders")
 }
 
 macro_rules! golden {

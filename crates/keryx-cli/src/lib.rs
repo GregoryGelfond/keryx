@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 use keryx_core::descriptor::{Schema, compile, ingest};
 use keryx_core::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use keryx_core::policy::Mapping;
-use keryx_core::{emit, facts, manifest, policy};
+use keryx_core::{emit, manifest, policy, schema_facts};
 
 use crate::exit::Exit;
 use crate::render::{Format, note, product, report};
@@ -88,7 +88,7 @@ fn dispatch(cli: Cli) -> Exit {
     match cli.command {
         Command::Gen(args) => generate(&args, cli.format),
         Command::Explain(args) => explain(&args, cli.format),
-        Command::SchemaFacts(args) => schema_facts(&args, cli.format),
+        Command::SchemaFacts(args) => dump_schema_facts(&args, cli.format),
     }
 }
 
@@ -184,7 +184,7 @@ fn explain_element(mapping: &Mapping, path: &str, format: Format) -> Exit {
 
 /// Read a serialized `FileDescriptorSet` and dump its descriptor facts (internal; Increment
 /// 1's deliverable, kept). stdout = facts, stderr = diagnostics.
-fn schema_facts(args: &SchemaFactsArgs, format: Format) -> Exit {
+fn dump_schema_facts(args: &SchemaFactsArgs, format: Format) -> Exit {
     let bytes = match std::fs::read(&args.set) {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -199,7 +199,7 @@ fn schema_facts(args: &SchemaFactsArgs, format: Format) -> Exit {
         Ok(schema) => schema,
         Err(diagnostics) => return report(format, Exit::Schema, &diagnostics),
     };
-    match facts::render(&schema) {
+    match schema_facts::render(&schema) {
         Ok(text) => product(format, &text),
         Err(diagnostics) => report(format, Exit::Internal, &diagnostics),
     }

@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use keryx_core::descriptor::compile;
-use keryx_core::{emit, facts, policy};
+use keryx_core::{emit, policy, schema_facts};
 
 fn includes() -> Vec<PathBuf> {
     // Any include dir; the bundled GoogleFileResolver resolves google/protobuf/*.
@@ -43,7 +43,7 @@ fn keryx_ingests_and_gens_descriptor_proto_totally() {
 #[test]
 fn descriptor_proto_stage0_facts_are_pinned() {
     let schema = compile(&["google/protobuf/descriptor.proto"], &includes()).expect("ingests");
-    let facts = facts::render(&schema).expect("renders");
+    let facts = schema_facts::render(&schema).expect("renders");
     // Non-vacuous: an empty golden (the pre-fix vacuous case) could never contain this.
     assert!(
         facts.contains(r#"message("google.protobuf.FieldDescriptorProto""#),
