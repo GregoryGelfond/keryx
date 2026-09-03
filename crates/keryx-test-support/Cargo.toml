@@ -9,8 +9,9 @@ license.workspace = true
 [dependencies]
 # The pure-Rust .proto compiler, to turn a fixture into a serialized FileDescriptorSet.
 # This is a dev-dependency library, so its helpers are public API and no suite pays a
-# dead-code allow for the ones it does not use.
-protox = "0.9.1"
+# dead-code allow for the ones it does not use. Pinned exact (`=`) to match keryx-core:
+# the fixtures compile through the same protox the source door mirrors.
+protox = "=0.9.1"
 # For hand-building adversarial descriptor sets protoc/protox would never emit — e.g. the
 # fault-provoking set that drives a real contained engine fault through `ingest` and the CLI.
 prost = "0.14"

@@ -16,14 +16,23 @@ themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", r
 # The dynamic protobuf-descriptor engine — the ingestion path (§20). Read only
 # through the `descriptor` module's private internals; no prost-reflect type
 # escapes into a keryx-core public signature (the descriptor-engine boundary).
-# The full patch is named; Cargo.lock (committed) is the exact-pin anchor.
-prost-reflect = "0.16.5"
+# Pinned exact (`=`): the descriptor door's pre-emption catalogue is a statement
+# about this crate's *internals* at exactly this version — which shapes it panics
+# on (a leading-dot name), its `options()` lazy decode, its unbounded text-format
+# parse of an option aggregate — so a silent patch bump could invalidate it. As
+# the estate pins a coupled parser/formatter exact (themelios-syntax's `rowan`,
+# morphe's `ruff`); the pre-empt catalogue is re-owed on any deliberate bump.
+prost-reflect = "=0.16.5"
 
 # The pure-Rust `.proto` compiler — the `keryx gen` front door (§20, spec §31 M1).
 # Read only through `descriptor::source`'s private internals; bytes are the seam to
 # `ingest`, so protox's prost and keryx's prost-reflect never couple, and no protox
 # type reaches a keryx-core public signature (the descriptor-engine boundary).
-protox = "0.9.1"
+# Pinned exact (`=`) for the same reason as prost-reflect: the source door mirrors
+# protox-parse's lexer state machine and its import-recursion budget is calibrated
+# to this version's behaviour, so the mirror is a claim about protox-parse 0.9.0
+# (protox 0.9.1's pin) exactly.
+protox = "=0.9.1"
 
 # The generated descriptor types and prost decode — used only to *inspect* a serialized
 # `FileDescriptorSet` (editions detection) before handing it to the descriptor engine, a
