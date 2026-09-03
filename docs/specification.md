@@ -17,7 +17,7 @@ keryx is a bidirectional bridge between Protocol Buffers and clingo-family Answe
 - **Inbound:** protobuf messages can provide facts to an ASP model — "the world talks to the model."
 - **Outbound:** an ASP model can communicate results to the world as protobuf messages — "the model talks back."
 
-The tool is general-purpose. A likely eventual consumer is a remote solver service (working name Pythia, out of scope here), but keryx is designed and justified as a standalone tool: any environment where structured data crosses into and out of ASP reasoning.
+The tool is general-purpose. A likely eventual consumer is a remote solver service (out of scope here), but keryx is designed and justified as a standalone tool: any environment where structured data crosses into and out of ASP reasoning.
 
 A protobuf schema, correctly read, yields **three artifacts**, and keryx generates all three:
 
@@ -41,7 +41,7 @@ The spec contributes types and pre-discharged constraints; definitions and defau
 
 **Non-goals**
 
-- N1. Networking, transport, RPC, service deployment (Pythia's territory). keryx defines library-level codecs and solve profiles; framing them over a wire is a consumer concern.
+- N1. Networking, transport, RPC, service deployment (a downstream consumer's territory). keryx defines library-level codecs and solve profiles; framing them over a wire is a consumer concern.
 - N2. Function-free targets (Datalog engines, term-depth-limited tools). The design commits to function symbols. A function-free compilation target would be a distinct target with a distinct contract, not a style option; it is explicitly out of scope for v0 and may never be built.
 - N3. Other IDLs (JSON Schema, Avro, Thrift). The descriptor-facts layer (§21) would admit them later; nothing in v0 accommodates them.
 - N4. gRPC service definitions in `.proto` files are ignored in v0 (messages only).
@@ -686,7 +686,7 @@ Tracked here so refinement sessions burn them down deliberately.
 
 ### 33. Deferred and out of scope (restated)
 
-Networking/transport/service (Pythia); function-free targets; non-protobuf IDLs; gRPC service sections; editor/LSP duties. Lazy-grounding interactions (the non-CDCL solver line) are horizon-only: if that solver ever hosts keryx episodes, its design enters this spec explicitly at that time.
+Networking/transport/service (a downstream consumer's concern); function-free targets; non-protobuf IDLs; gRPC service sections; editor/LSP duties. Lazy-grounding interactions (the non-CDCL solver line) are horizon-only: if that solver ever hosts keryx episodes, its design enters this spec explicitly at that time.
 
 ### 34. Editorial notes — consolidations made in drafting
 

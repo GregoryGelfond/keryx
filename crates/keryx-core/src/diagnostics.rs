@@ -6,7 +6,7 @@
 //! compose as `std::error::Error`; the CLI renders them at the boundary and the
 //! library invents no error semantics. The shape mirrors the envelope's wire
 //! `Diagnostic` (Appendix B), and [`Diagnostics::wire`] is that wire view — so the
-//! value produced here and the value pythia reads over the wire are one shape.
+//! value produced here and the value a consumer reads over the wire are one shape.
 //! This is the seed the codec, admission, and shape layers grow in later increments.
 
 use std::fmt::{self, Write as _};
@@ -225,7 +225,7 @@ impl Diagnostics {
     /// `field_path`, `kind`, `detail`), hand-rolled so keryx-core stays serde-free
     /// (the estate's minimal-closure posture). The whole-input locus flattens to an
     /// empty `field_path`, as Appendix B's proto3 string forces the wire to. This is
-    /// the view a library consumer (the CLI today, pythia over the wire) reads.
+    /// the view a library consumer (the CLI today, a service over the wire) reads.
     #[must_use]
     pub fn wire(&self) -> String {
         let mut out = String::from("[");

@@ -70,9 +70,9 @@ and [`docs/specification.md`](docs/specification.md) for the full design.
 ## Built on
 
 [themelios](https://github.com/GregoryGelfond/themelios) — the ASP program
-representation keryx builds on. keryx is itself the foundation for pythia, a
-mission-critical ASP-solver-as-a-service that invokes the solver and uses keryx
-for the protobuf↔ASP translation.
+representation keryx builds on. keryx is a translation library: a consuming tool
+composes it around its own solver, using keryx for the protobuf↔ASP bridge on
+both sides.
 
 ## License
 
