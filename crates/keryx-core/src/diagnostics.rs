@@ -140,6 +140,20 @@ pub enum DiagnosticKind {
     /// user's schema error. The dependency and operation keryx knows with certainty ride in the
     /// `detail` prose; the wire shape (Appendix B `{field_path, kind, detail}`) is unchanged.
     DependencyFault,
+    /// A `.proto` source file nests more deeply than keryx's source-nesting guard admits — refused
+    /// *before* protox parses it, so protox's unbounded recursive-descent parser cannot overflow the
+    /// stack and abort. Like `UnsupportedEdition`, a capability limit of the descriptor engine applied
+    /// early (keryx bounds source nesting at the engine's own decode-recursion limit), not malformed
+    /// input; named at the offending file's locus. The guard is defense-in-depth — a sub-standard
+    /// thread stack can abort below its bound, closed by the consuming service's process isolation
+    /// (the threat model's division of labor).
+    SourceTooDeep,
+    /// A `.proto` `import` resolves outside its include root — keryx's confining resolver canonicalises
+    /// the resolved path and refuses one that escapes, notably a **symlinked** escape protox's own
+    /// import-name validation does not catch (protox rejects a bare `..`/absolute import *name* itself,
+    /// `UncompilableSource`). So protox reads only within the include roots the operator grants (the
+    /// source door's confidentiality). Named at the offending import's locus.
+    SourceOutsideRoot,
 }
 
 impl DiagnosticKind {
@@ -158,6 +172,8 @@ impl DiagnosticKind {
             DiagnosticKind::UnmappableName => "unmappable_name",
             DiagnosticKind::AmbiguousConstant => "ambiguous_constant",
             DiagnosticKind::DependencyFault => "dependency_fault",
+            DiagnosticKind::SourceTooDeep => "source_too_deep",
+            DiagnosticKind::SourceOutsideRoot => "source_outside_root",
         }
     }
 }
@@ -445,6 +461,11 @@ mod tests {
             "ambiguous_constant"
         );
         assert_eq!(DiagnosticKind::DependencyFault.as_str(), "dependency_fault");
+        assert_eq!(DiagnosticKind::SourceTooDeep.as_str(), "source_too_deep");
+        assert_eq!(
+            DiagnosticKind::SourceOutsideRoot.as_str(),
+            "source_outside_root"
+        );
         // A new kind must be added above: this exhaustive match (no wildcard,
         // allowed in-crate despite #[non_exhaustive]) fails to compile otherwise.
         match DiagnosticKind::UnreadableDescriptorSet {
@@ -458,7 +479,9 @@ mod tests {
             | DiagnosticKind::PackagelessFile
             | DiagnosticKind::UnmappableName
             | DiagnosticKind::AmbiguousConstant
-            | DiagnosticKind::DependencyFault => {}
+            | DiagnosticKind::DependencyFault
+            | DiagnosticKind::SourceTooDeep
+            | DiagnosticKind::SourceOutsideRoot => {}
         }
     }
 

@@ -93,6 +93,13 @@ pub(crate) const EDITIONS_UNSUPPORTED: &str = "editions (edition 2023+) are not 
      support, so neither a .proto source nor a protoc-compiled descriptor set is accepted. \
      Transliterate the schema to proto3, or track editions support in docs/proto-support.md";
 
+/// prost's decode recursion limit (`prost::RECURSION_LIMIT`, not public API): `DescriptorPool::decode`
+/// and the prost-types pre-read refuse a lexical message chain this deep or deeper as
+/// `UnreadableDescriptorSet`, so the deepest chain the descriptor door admits is `RECURSION_LIMIT - 1`.
+/// The one engine constant both the descriptor door's boundary test and the source door's nesting
+/// guard (`source::SOURCE_NESTING_LIMIT`) derive from — named once, not re-derived per door.
+pub(crate) const RECURSION_LIMIT: usize = 100;
+
 /// Decode a serialized `FileDescriptorSet` into a `DescriptorPool`, or the typed reason it did not
 /// — the one decode door both `ingest` paths share.
 ///
@@ -428,13 +435,8 @@ mod tests {
         MessageOptions,
     };
 
-    use super::{DescriptorPool, ingest, subject_messages};
+    use super::{DescriptorPool, RECURSION_LIMIT, ingest, subject_messages};
     use crate::diagnostics::DiagnosticKind;
-
-    /// prost's decode recursion limit (`prost::RECURSION_LIMIT`, not public API): the descriptor door
-    /// admits a lexical message chain one shallower, and refuses a `DECODE_RECURSION_LIMIT`-deep one as
-    /// `UnreadableDescriptorSet`. The source door's nesting guard derives from the same limit.
-    const DECODE_RECURSION_LIMIT: usize = 100;
 
     fn encode(files: Vec<FileDescriptorProto>) -> Vec<u8> {
         FileDescriptorSet { file: files }.encode_to_vec()
@@ -573,11 +575,11 @@ mod tests {
         // The deepest lexical message chain the door admits is one shallower than the engine's decode
         // recursion limit; one deeper is refused as `UnreadableDescriptorSet` (the engine's own
         // limit), not a panic — the managed walk is defense-in-depth behind this.
-        let deepest = DECODE_RECURSION_LIMIT - 1;
+        let deepest = RECURSION_LIMIT - 1;
         let schema = ingest(&lexical_chain_typed(deepest).encode_to_vec())
             .expect("at the deepest admitted depth, the door admits and the walk runs");
         assert_eq!(schema.messages.len(), deepest);
-        let refused = ingest(&lexical_chain_typed(DECODE_RECURSION_LIMIT).encode_to_vec())
+        let refused = ingest(&lexical_chain_typed(RECURSION_LIMIT).encode_to_vec())
             .expect_err("one deeper is refused");
         assert_eq!(
             refused.iter().next().unwrap().kind(),
