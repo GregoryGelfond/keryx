@@ -50,3 +50,13 @@ change, and the status (open / fixed-in `<rev>` / adopted).
   themelios change this increment. Status: open, narrowed (the `core.lp`
   signature need is met a different way; free-standing/inline `%` emission
   itself is still absent from themelios).
+
+- **`From<Comparison> for BodyElement` (or `Literal`).** Composing a comparison
+  into a rule body (`emit::build::view_rule`, the relational-view `E = f(P, I)`)
+  takes the full ladder — `BodyElement::from(Literal { negation:
+  DefaultNegation::None, inner: LiteralInner::Comparison(
+  WithProvenance::constructed(Comparison::new(…))) })` — where an atom composes in
+  one step (`BodyElement::from(atom)`). A themelios `From<Comparison> for
+  BodyElement` (or `for Literal`) would make the comparison seam as smooth as the
+  atom seam. Status: open (surfaced at the `emit` increment; cosmetic — the ladder
+  works, it is only bumpy). The one composition seam this increment found rough.

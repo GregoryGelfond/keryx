@@ -5,6 +5,9 @@
 //! (architecture §6); that taxonomy is the foundation the ingestion spine (the
 //! schema model and descriptor facts) and, later, the codec build upon. The
 //! themelios binding is proven in `tests/themelios_binding.rs`.
+//!
+//! Design of record: `docs/design/architecture.md` (the architecture) over
+//! `docs/specification.md` (the spec).
 #![forbid(unsafe_code)]
 
 pub mod diagnostics;

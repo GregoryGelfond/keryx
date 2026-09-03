@@ -3,8 +3,8 @@
 //! de-sugared [`Schema`] to the [`Mapping`] — name assignment and qualification, presence
 //! classification, treatment selection, and reserved-word escapes. The optional ASP
 //! co-artifact and its cross-check (spec §21.3) wait for the estate's own
-//! elenctic-on-themelios (below the D1 solve boundary); `explain` renders the `Mapping`
-//! directly for inspection meanwhile. Submodules: `model` (the mapping model), `names`
+//! elenctic-on-themelios; `explain` renders the `Mapping` directly for inspection meanwhile.
+//! Submodules: `model` (the mapping model), `names`
 //! (un-collided base assignment and reserved-word escapes), `qualify` (the injectivity
 //! optimization only — the table it resolves already carries `names`' escapes).
 //!

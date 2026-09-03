@@ -1,9 +1,12 @@
-//! The keryx command-line frontend as a library — the driver lives here so the suite can name
-//! the exit contract ([`exit::Exit`]) rather than a raw process code (architecture §3: the CLI
-//! is a satellite that composes the library; §6: stdout is the product, stderr is
+//! The keryx command-line frontend as a library — the command logic lives here so the suite can
+//! name the exit contract ([`exit::Exit`]) rather than a raw process code (architecture §3: the
+//! CLI is a satellite that composes the library; §6: stdout is the product, stderr is
 //! diagnostics/progress, exit codes are stable and class-distinguishing). The public surface
 //! (§25) is `gen` (schema → ASP vocabulary) and `explain` (mapping verdicts), with the internal
 //! `schema-facts` dump kept. The `keryx` binary is a shim over [`run`].
+//!
+//! Design of record: `docs/design/architecture.md` (the architecture) over
+//! `docs/specification.md` (the spec).
 #![forbid(unsafe_code)]
 
 pub mod exit;

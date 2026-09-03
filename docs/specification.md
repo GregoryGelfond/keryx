@@ -117,7 +117,7 @@ Term shapes are type-directed (P5). Range violations are structured translation-
 | proto type | default mapping | notes / annotations |
 |---|---|---|
 | `int32`, `sint32`, `sfixed32` | native clingo integer | always fits; clingo integers are machine-bounded (32-bit signed) |
-| `uint32`, `fixed32` | native, **range-checked** (must fit in signed 31 bits… i.e. ≤ 2³¹−1) | `(keryx.numeric) = DECIMAL_STRING` for fields that genuinely use the top bit |
+| `uint32`, `fixed32` | native, **range-checked** (must fit in `i32` — clingo's integer width — i.e. ≤ 2³¹−1 = `i32::MAX`) | `(keryx.numeric) = DECIMAL_STRING` for fields that genuinely use the top bit |
 | `int64`, `uint64`, `fixed64`, `sfixed64`, `sint64` | **decimal-string constant** (opaque; e.g. `"9007199254740993"`) | `(keryx.numeric) = NATIVE_CHECKED` (small-count fields) or `= CLINGCON` (constraint-participating fields; clingcon profile only, lowered to `&dom`/`&sum` variables) |
 | `float`, `double` | **no default — annotation required** | `(keryx.scale) = n` → fixed-point integer (value × 10ⁿ, range-checked), or `(keryx.opaque) = true` → decimal-string constant. Unannotated float fields are a translation error with a two-choice fix-it message. |
 | `bool` | constants `true` / `false` as term | under `(keryx.zero)=ABSENT`: unary predicate, atom iff true (§5) |

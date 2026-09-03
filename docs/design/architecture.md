@@ -21,7 +21,7 @@ This is **the mandate**, and it is the whole reason keryx does not invoke a solv
 **What keryx is:** the translation layer — schema→vocabulary compilation (the ASP predicate specification model-writers reason over), the message→facts ingest, and the answer-set→message reassembly, over one shared vocabulary (spec P2).
 
 **What keryx is not:**
-- **keryx does not solve — by mandate, not omission.** Solving is not the bridge's concern. So keryx links no `libclingo`, spawns no `clingo`, and invokes no concrete solver — at run time or compile time. Solving is external: the user's own clingo today, themelios-solve (behind a trait) tomorrow.
+- **keryx does not solve — by mandate, not omission.** Solving is not the bridge's concern. keryx links no `libclingo`, spawns no `clingo`, and invokes no concrete solver — at run time or compile time. It is the **translation** between protobuf and ASP, in both directions; a consuming tool (pythia, or any tool in any language) invokes the solver over keryx's vocabulary and composes keryx's `facts`/reassembly around it. keryx therefore defines no solver backend and never depends on themelios-solve.
 - **keryx does not do stateful composition.** Sessions, episodes, profiles (ring / horizon), selection, retention, blame — the runtime orchestration of a served oracle — are pythia's, built *on* keryx.
 
 keryx is designed and justified as a **standalone tool** (spec §1) and, in the same stroke, as the **enabler for pythia** (pythia §3) and the **first-consumer checkpoint** for themelios's program + analysis tiers.
@@ -38,7 +38,7 @@ The keryx spec was written when aspis (not themelios-solve) was the backend and 
 | R2 | **Emission is a keryx `emit` module directly over themelios `construct`/`render`** | spec §18 (swappable builder/printer trait + internal fallback AST) | Both motivations for the trait are resolved: ship-before-themelios (themelios is ready) and provider independence vs. a rival syntax effort (OQ-9 — themelios is the blessed sole provider). One provider, no speculative indirection. |
 | R3 | **Stage-1 mapping policy is computed in Rust** | spec §21.3 (ASP program as the production mechanism) | keryx invokes no solver (R4); an ASP-as-production policy would need one. The ASP formulation survives as an *optional inspectable / cross-check co-artifact* (renderable by `explain`, checkable in elenctic under the user's clingo, plus the §21.2 self-application) — the inspection/verification intent preserved without keryx solving. If the co-artifact ships, the Rust policy is sole authority and the ASP form is a *view* generated from the same mapping model (so it cannot disagree) or held to agreement by a gate — never an independently-authored second model. |
 | R4 | **keryx invokes no concrete solver, ever** (compile-time included) | spec §18–§23 (aspis-driven) | keryx is translation glue; solving is themelios-solve's / the user's. This makes keryx-core solver-free and the whole founding arc solver-free. |
-| R5 | **Thinner keryx-driver:** one-shot lifecycle + backend trait + envelope + §7.2 fact-delivery; **all stateful composition is pythia's** | spec §23 ("episodic library API in keryx-driver"); pythia §3/§7.4 framing | Profiles/sessions/episodes are how pythia *runs* an oracle. keryx provides the mechanism (the backend trait) and the translation; pythia composes them. The episodic *mechanism* lives in the trait; the episodic *session orchestration* is pythia (as pythia already corrected the §23 fact-path in C-K1). |
+| R5 | **keryx is a translation library; it invokes no solver and defines no solver backend.** A consuming tool (pythia, or any tool, in any language) invokes the solver and composes keryx's translation — `facts` (message → `.lp`) and reassembly (answer-set → message) — around it. | spec §23; pythia §3/§7.4 framing | Sessions, episodes, ring/horizon, the domain model, and the solver call are how a tool *runs* an oracle over keryx's vocabulary; keryx provides only the bidirectional translation. The `keryx-driver` crate's former solver-backend role is therefore removed — it dissolves, or narrows to a translation-I/O helper (fate TBD, principal's call). |
 | R6 | **keryx parses no protobuf** — protox produces `FileDescriptorSet`, prost-reflect reads it | (affirms spec P9, §20) | `FileDescriptorSet` is the interface; the dynamic layer (prost-reflect) is mandatory because keryx's annotations are custom options that typed `prost` structs silently drop (§20, load-bearing). Symmetry: keryx parses nothing — protobuf via protox/prost-reflect, ASP text via themelios `raise`. |
 
 ---
@@ -187,7 +187,7 @@ The backend trait is designed to pythia §8 from the start (defined + tested aga
 
 ## 10. Build spine & the first increment
 
-Each increment leaves the workspace green and demonstrable and lands its worked example. **Rust policy makes `gen` solver-free**, and **the full driver *surface* is buildable now** — only the real backend binding sits below the line.
+Each increment leaves the workspace green and demonstrable and lands its worked example. keryx is **translation, end to end** — it never invokes a solver (R4); a consuming tool (pythia, or any tool in any language) invokes the solver and composes keryx's `facts`/reassembly around it. So there is no keryx `solve` and no solver-backend increment: keryx finishes *above* the solve line entirely.
 
 | # | increment | delivers | example |
 |---|---|---|---|
@@ -199,13 +199,8 @@ Each increment leaves the workspace green and demonstrable and lands its worked 
 | 5 | Annotations + overlays | Appendix A vocabulary; TOML overlays; scalar policies; `keryx diff`; `scaffold` | dispatch; diagnosis *(translation)* |
 | 6 | Admit + plugin | `.lp` admission/lint (`keryx check`, C-K4); `protoc-gen-keryx` (editions handshake) | — |
 | 7 | Targets | `--profile clingcon`; `--target flint` + degradation report (emission only) | — |
-| 8 | Driver surface | backend trait (§8) + test double; envelope + brave/cautious; the one-shot choreography tested vs. the double | — |
-| | **═══ solve-deferral boundary — below needs themelios-solve ═══** | | |
-| D1 | Real backend + solve | implement the trait on themelios-solve; one-shot `keryx solve`; the P10 fact path | — |
 
-Ring / horizon and all stateful serving are **pythia's**, not keryx increments (R5, C-K2).
-
-**The first increment to plan is Increment 0 — the walking skeleton.** It front-loads the founding arc's real integration risk: that the arm's-length git-deps resolve, the gate/CI go green fetching the public themelios dependency with no credentials, and the themelios API is usable from keryx exactly as recorded — proven by a smoke test that construct→renders a trivial `Program` and round-trips a `Symbol`, before any feature.
+The solver, the domain model, and all stateful serving (sessions, episodes, ring / horizon, retention, blame) belong to the **consuming tool** — pythia is the canonical one — not to keryx (R4, R5). keryx's boundary is the translation: schema → vocabulary, message → facts, answer-set → message, plus the shape contract and the manifest. There is no keryx `solve`, and keryx never depends on themelios-solve.
 
 ---
 
