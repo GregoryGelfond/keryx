@@ -1,6 +1,6 @@
 //! Stable, class-distinguishing process exit codes (architecture §6) — the single home of the
 //! integers, and the top-level panic containment that maps an escaped panic to one. Variants
-//! are added as commands need them (the values fixed); the later `Admission`/`Shape`/`DomainUnsat`
+//! are added as commands need them (the values fixed); the later `Admission`/`Shape`
 //! classes land with their increments.
 
 use std::io::Write as _;
