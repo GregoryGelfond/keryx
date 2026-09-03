@@ -37,15 +37,13 @@ impl FqName {
 pub(crate) const MAX_PACKAGE_SEGMENTS: usize = 64;
 
 /// A validated protobuf package — empty, or a dot-separated sequence of proto identifiers
-/// (`[A-Za-z_][A-Za-z0-9_]*`, e.g. `dispatch.v1`), within [`MAX_PACKAGE_SEGMENTS`]. Adversary-chosen
-/// at the descriptor door yet consumed by two sinks that each assume an identifier shape — the
-/// emitted `#include` operand (`emit::views`) and the CLI's per-package output path — so the shape is
-/// *represented* here: a `Package` is constructed only at the door ([`parse`], through
+/// (`[A-Za-z_][A-Za-z0-9_]*`, e.g. `dispatch.v1`), within `MAX_PACKAGE_SEGMENTS`. Adversary-chosen at
+/// the descriptor door yet consumed by two sinks that each assume an identifier shape — the emitted
+/// `#include` operand (`emit::views`) and the CLI's per-package output path — so the shape is
+/// *represented* here: a `Package` is constructed only at the door (`parse`, through
 /// `descriptor::pre_validate`, which refuses every other shape before a `Schema` is built), so no
 /// sink re-derives trust from a bare `String`. The leading-`.` package the engine panics on is one
 /// refused shape among these.
-///
-/// [`parse`]: Package::parse
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Package(String);
 
