@@ -51,7 +51,7 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// [`Diagnostics`]: crate::diagnostics::Diagnostics
 pub fn ingest(bytes: &[u8]) -> Result<Schema, Diagnostics> {
     let pool = decode(bytes)?;
-    build_schema(&pool, |name| !desugar::is_dependency_file(name))
+    walk(&pool, |name| !desugar::is_dependency_file(name))
 }
 
 /// Ingest a serialized `FileDescriptorSet`, treating exactly the files named in
@@ -65,7 +65,22 @@ pub fn ingest(bytes: &[u8]) -> Result<Schema, Diagnostics> {
 /// As [`ingest`].
 pub(crate) fn ingest_subjects(bytes: &[u8], subjects: &[String]) -> Result<Schema, Diagnostics> {
     let pool = decode(bytes)?;
-    build_schema(&pool, |name| subjects.iter().any(|subject| subject == name))
+    walk(&pool, |name| subjects.iter().any(|subject| subject == name))
+}
+
+/// Walk the built pool into a [`Schema`], containing an unforeseen accessor fault as a
+/// `DependencyFault` (the threat model's dependency boundary). The post-decode walk reads the engine's
+/// descriptor through its accessors — `messages()`, `field.kind()`, and `options()`, which in
+/// prost-reflect is a **lazy decode** — any of which can fault on a decodable-but-adversarial set.
+/// keryx holds **no `unwrap`/`expect` of its own** across the walk (`build_schema`, `desugar`, `docs`,
+/// `options`, `recursion`), so a fault here is the engine's accessor faulting — correctly a
+/// `DependencyFault`, not a misattributed keryx bug. The closure borrows only the pool (nothing keryx
+/// observes after a fault), and prost-reflect reads its global well-known-type pool only across an
+/// infallible `Arc` clone (as at decode), so the `AssertUnwindSafe` is sound.
+fn walk(pool: &DescriptorPool, is_subject: impl Fn(&str) -> bool) -> Result<Schema, Diagnostics> {
+    crate::fault::contain("prost-reflect", "walking the descriptor set", || {
+        build_schema(pool, is_subject)
+    })?
 }
 
 /// keryx's editions refusal message, in one place — every `UnsupportedEdition` diagnostic (one per
@@ -81,42 +96,100 @@ pub(crate) const EDITIONS_UNSUPPORTED: &str = "editions (edition 2023+) are not 
 /// Decode a serialized `FileDescriptorSet` into a `DescriptorPool`, or the typed reason it did not
 /// — the one decode door both `ingest` paths share.
 ///
-/// The descriptor engine (prost-reflect 0.16.5) has no editions `Syntax`, and it **panics**
-/// building a pool from an editions `FileDescriptorSet` rather than returning an error. keryx does
-/// not catch that panic — it avoids provoking it: [`unsupported_editions`] inspects the set with a
-/// plain decode (which cannot panic) and refuses each editions file with an `UnsupportedEdition`
-/// diagnostic at that file's locus, so the engine only ever sees input it can represent. Ingestion
-/// is thus total (§6) by construction, not by masking a panic. A set that does not decode at all is
-/// the engine's own `UnreadableDescriptorSet`.
+/// The descriptor engine (prost-reflect 0.16.5) **panics**, rather than returning an error, on input
+/// it cannot represent: a `syntax` it has no `Syntax` for (editions, or any value that is not
+/// proto2/proto3), and a package or top-level name the engine's table cannot look up (one beginning
+/// with `.`). keryx does not catch *those* panics — it pre-empts the shapes it can foresee:
+/// [`pre_validate`] inspects the set with a plain decode (which cannot panic) and refuses each such
+/// file at its locus, so the engine only ever sees a shape it can represent. What remains is an
+/// *unforeseen* engine fault — on this decode, or on the later accessor walk ([`walk`]) — which
+/// crosses into code keryx does not own on a foreign-input path: each is wrapped in
+/// [`crate::fault::contain`], so it becomes a typed `DependencyFault` rather than unwinding into
+/// keryx's caller (the threat model's dependency boundary). Ingestion is thus total (§6) — the
+/// foreseeable shapes by pre-emption, the unforeseen by containment — not by masking a panic. A set
+/// that does not decode at all is the engine's own `UnreadableDescriptorSet`.
 fn decode(bytes: &[u8]) -> Result<DescriptorPool, Diagnostics> {
-    if let Some(diagnostics) = unsupported_editions(bytes) {
+    // The pre-read: the closure borrows only `bytes`, and prost-types' decode holds no process-global
+    // mutable state a panic could leave inconsistent, so the `AssertUnwindSafe` is sound.
+    if let Some(diagnostics) =
+        crate::fault::contain("prost-types", "inspecting the descriptor set", || {
+            pre_validate(bytes)
+        })?
+    {
         return Err(diagnostics);
     }
-    DescriptorPool::decode(bytes).map_err(|error| unreadable_set(error.to_string()))
+    // The pool decode: the closure borrows only `bytes`. prost-reflect reads its global well-known-type
+    // pool — here and at accessor time — only across an infallible `Arc` clone, never across panic-prone
+    // work, and keryx never calls the pool's global mutators, so a contained panic cannot poison it.
+    // (A same-process consumer that *does* call those mutators with a panicking set is the residual,
+    // recorded under the threat model's Open items.) Verified against the pinned prost-reflect.
+    crate::fault::contain("prost-reflect", "decoding the descriptor set", || {
+        DescriptorPool::decode(bytes)
+    })?
+    .map_err(|error| unreadable_set(error.to_string()))
 }
 
-/// The `UnsupportedEdition` diagnostics for a set that declares one or more editions files — one per
-/// file at that file's locus (§6, totality) — or `None` if it declares none, or the bytes do not
-/// decode. A plain protobuf decode of the `FileDescriptorSet` (no feature resolution, so it cannot
-/// panic the way the engine's pool build can); the marker is a file whose `syntax` is `"editions"`,
-/// which `descriptor.proto` requires on every editions file (this prost-types does not carry the
-/// `edition` field). Total: `?` yields `None` on a non-decoding blob — the engine's own decode then
-/// composes the malformed-input diagnostic — and on a set with no editions files.
-fn unsupported_editions(bytes: &[u8]) -> Option<Diagnostics> {
-    let mut editions = prost_types::FileDescriptorSet::decode(bytes)
-        .ok()?
-        .file
-        .into_iter()
-        .filter(|file| file.syntax() == "editions")
-        .map(|file| {
+/// Refuse — before the descriptor engine builds a pool — the shapes prost-reflect cannot represent
+/// and **panics** on rather than rejecting, so the engine only ever sees input it can represent:
+///
+/// - a file whose `syntax` is not proto2/proto3 — editions (an engine capability limit,
+///   `UnsupportedEdition`), or any unrecognised value such as `proto4` or an empty string (a
+///   `MalformedDescriptor`); `syntax` is read raw, since the `syntax()` getter cannot tell `None`
+///   from `""`; and
+/// - a package or **top-level** message/enum name beginning with `.` — the engine stores the
+///   scope-joined name verbatim but looks it up with one leading dot stripped, so it cannot find it
+///   and panics (`MalformedDescriptor`). Nested names carry a non-empty namespace and are safe.
+///
+/// A plain prost-types decode (no feature resolution, so it cannot panic the way the pool build can)
+/// whose typed result is discarded — a pre-read that gates the engine and feeds nothing to the schema
+/// (§18/§20), as the editions check it grew from did. Returns the refusals for every offending file,
+/// or `None` when the set has nothing to refuse or does not decode (the engine's own decode then
+/// composes `UnreadableDescriptorSet`).
+fn pre_validate(bytes: &[u8]) -> Option<Diagnostics> {
+    let set = prost_types::FileDescriptorSet::decode(bytes).ok()?;
+    let mut refusals: Vec<Diagnostic> = Vec::new();
+    for file in &set.file {
+        let malformed = |detail: String| {
             Diagnostic::new(
+                DiagnosticKind::MalformedDescriptor,
+                Locus::at(file.name().to_owned()),
+                detail,
+            )
+        };
+        match file.syntax.as_deref() {
+            None | Some("proto2" | "proto3") => {}
+            Some("editions") => refusals.push(Diagnostic::new(
                 DiagnosticKind::UnsupportedEdition,
                 Locus::at(file.name().to_owned()),
                 EDITIONS_UNSUPPORTED,
+            )),
+            Some(other) => refusals.push(malformed(format!(
+                "unrecognised syntax {other:?}: keryx's descriptor engine reads proto2 and proto3"
+            ))),
+        }
+        if file.package().starts_with('.') {
+            refusals.push(malformed("package name begins with '.'".to_owned()));
+        }
+        for name in file
+            .message_type
+            .iter()
+            .map(prost_types::DescriptorProto::name)
+            .chain(
+                file.enum_type
+                    .iter()
+                    .map(prost_types::EnumDescriptorProto::name),
             )
-        });
-    let mut diagnostics = Diagnostics::one(editions.next()?);
-    for diagnostic in editions {
+        {
+            if name.starts_with('.') {
+                refusals.push(malformed(format!(
+                    "a top-level type name begins with '.': {name:?}"
+                )));
+            }
+        }
+    }
+    let mut refusals = refusals.into_iter();
+    let mut diagnostics = Diagnostics::one(refusals.next()?);
+    for diagnostic in refusals {
         diagnostics.push(diagnostic);
     }
     Some(diagnostics)
@@ -345,4 +418,186 @@ fn build_enum_value(value: &EnumValueDescriptor) -> Result<EnumValue, Diagnostic
         options: options::read(&value.options(), value.full_name())?,
         doc: docs::for_path(&value.parent_file(), value.path()),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use prost::Message as _;
+    use prost_types::{
+        DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
+        MessageOptions, UninterpretedOption, uninterpreted_option::NamePart,
+    };
+
+    use super::ingest;
+    use crate::diagnostics::DiagnosticKind;
+
+    fn encode(files: Vec<FileDescriptorProto>) -> Vec<u8> {
+        FileDescriptorSet { file: files }.encode_to_vec()
+    }
+
+    /// A set redefining `descriptor.proto`'s `MessageOptions` with a self-referential message field,
+    /// and a message whose options carry a `depth`-deep uninterpreted-option name path. The set
+    /// decodes and the pool builds (the nesting is created by option navigation and encoded with no
+    /// limit); reading `options()` on the message re-decodes past prost's recursion limit and unwraps
+    /// — an engine fault at the accessor *walk*, which the walk's containment turns into a value.
+    fn deep_option_set(depth: usize) -> Vec<u8> {
+        let mut name: Vec<NamePart> = (0..depth)
+            .map(|_| NamePart {
+                name_part: "self_".to_owned(),
+                is_extension: false,
+            })
+            .collect();
+        name.push(NamePart {
+            name_part: "x".to_owned(),
+            is_extension: false,
+        });
+        encode(vec![
+            FileDescriptorProto {
+                name: Some("google/protobuf/descriptor.proto".to_owned()),
+                package: Some("google.protobuf".to_owned()),
+                message_type: vec![DescriptorProto {
+                    name: Some("MessageOptions".to_owned()),
+                    field: vec![
+                        FieldDescriptorProto {
+                            name: Some("self_".to_owned()),
+                            number: Some(1000),
+                            label: Some(1),   // optional
+                            r#type: Some(11), // message
+                            type_name: Some(".google.protobuf.MessageOptions".to_owned()),
+                            ..Default::default()
+                        },
+                        FieldDescriptorProto {
+                            name: Some("x".to_owned()),
+                            number: Some(1001),
+                            label: Some(1),
+                            r#type: Some(5), // int32
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            FileDescriptorProto {
+                name: Some("m.proto".to_owned()),
+                package: Some("my".to_owned()),
+                dependency: vec!["google/protobuf/descriptor.proto".to_owned()],
+                message_type: vec![DescriptorProto {
+                    name: Some("M".to_owned()),
+                    options: Some(MessageOptions {
+                        uninterpreted_option: vec![UninterpretedOption {
+                            name,
+                            positive_int_value: Some(1),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        ])
+    }
+
+    #[test]
+    fn an_unforeseen_engine_fault_at_the_walk_is_a_dependency_fault() {
+        // A real engine fault through `ingest`, at the accessor walk (`options()` is a lazy decode
+        // past prost's recursion limit): contained as a `DependencyFault`, not a panic escaping as a
+        // keryx bug — totality across the walk (§6, the dependency boundary).
+        let diagnostics = ingest(&deep_option_set(120)).expect_err("a fault, not a schema");
+        let diagnostic = diagnostics.iter().next().expect("one diagnostic");
+        assert_eq!(diagnostic.kind(), DiagnosticKind::DependencyFault);
+        assert!(
+            diagnostic.detail().contains("prost-reflect")
+                && diagnostic.detail().contains("walking"),
+            "the fault names the dependency and the walk: {diagnostic}"
+        );
+    }
+
+    #[test]
+    fn an_unforeseen_engine_fault_at_decode_is_a_dependency_fault() {
+        // A set retyping `MessageOptions` field 1 as repeated int32, then setting it: the engine
+        // panics decoding the options during the pool build — contained at the decode (§6).
+        let set = encode(vec![
+            FileDescriptorProto {
+                name: Some("google/protobuf/descriptor.proto".to_owned()),
+                package: Some("google.protobuf".to_owned()),
+                syntax: Some("proto3".to_owned()),
+                message_type: vec![DescriptorProto {
+                    name: Some("MessageOptions".to_owned()),
+                    field: vec![FieldDescriptorProto {
+                        name: Some("message_set_wire_format".to_owned()),
+                        number: Some(1),
+                        label: Some(3),  // repeated
+                        r#type: Some(5), // int32
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            FileDescriptorProto {
+                name: Some("m.proto".to_owned()),
+                package: Some("my".to_owned()),
+                dependency: vec!["google/protobuf/descriptor.proto".to_owned()],
+                message_type: vec![DescriptorProto {
+                    name: Some("M".to_owned()),
+                    options: Some(MessageOptions {
+                        message_set_wire_format: Some(true),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        ]);
+        let diagnostics = ingest(&set).expect_err("a fault, not a schema");
+        assert_eq!(
+            diagnostics.iter().next().unwrap().kind(),
+            DiagnosticKind::DependencyFault
+        );
+    }
+
+    #[test]
+    fn an_unrecognised_syntax_is_refused_before_the_engine() {
+        // prost-reflect panics on any syntax that is not proto2/proto3; keryx pre-empts it with a
+        // clean `MalformedDescriptor` refusal (for a non-editions value), never letting it reach the
+        // engine — where it would panic.
+        for syntax in ["proto4", ""] {
+            let set = encode(vec![FileDescriptorProto {
+                name: Some("m.proto".to_owned()),
+                syntax: Some(syntax.to_owned()),
+                message_type: vec![DescriptorProto {
+                    name: Some("M".to_owned()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }]);
+            let diagnostics = ingest(&set).expect_err("an unrecognised syntax is refused");
+            assert_eq!(
+                diagnostics.iter().next().unwrap().kind(),
+                DiagnosticKind::MalformedDescriptor,
+                "syntax {syntax:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_leading_dot_name_is_refused_before_the_engine() {
+        // A top-level name beginning with `.` makes prost-reflect's name lookup panic; keryx pre-empts
+        // it with a `MalformedDescriptor` at the file's locus.
+        let set = encode(vec![FileDescriptorProto {
+            name: Some("m.proto".to_owned()),
+            message_type: vec![DescriptorProto {
+                name: Some(".Foo".to_owned()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]);
+        let diagnostics = ingest(&set).expect_err("a leading-dot name is refused");
+        assert_eq!(
+            diagnostics.iter().next().unwrap().kind(),
+            DiagnosticKind::MalformedDescriptor
+        );
+    }
 }

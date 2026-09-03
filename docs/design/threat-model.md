@@ -29,7 +29,7 @@ Where a passage serves one reader, the door sections below place it under that d
 
 Each property is stated once here, generically. Its *status* per door is in *The doors*.
 
-1. **Totality.** Every door returns a value or a typed `Diagnostic`; it never panics, aborts, or hangs. keryx's own logic is total *by construction* — no partial result beside a diagnosis, no panic reachable from foreign input (`expect`s only where an invariant discharges them), a known foreign-code panic trigger pre-empted (the editions check refuses before prost-reflect's editions panic). Where totality crosses into foreign code that can fault unforeseeably, *The dependency boundary* holds it.
+1. **Totality.** Every door returns a value or a typed `Diagnostic`; it never panics, aborts, or hangs. keryx's own logic is total *by construction* — no partial result beside a diagnosis, no panic reachable from foreign input (`expect`s only where an invariant discharges them), known foreign-code panic triggers pre-empted (the descriptor pre-read refuses editions, an unrepresentable `syntax`, and a leading-dot package or top-level name before prost-reflect would panic on them). Where totality crosses into foreign code that can fault unforeseeably, *The dependency boundary* holds it.
    *Instrument.* Two generators, because one does not reach keryx: **arbitrary bytes** exercise the decoder's totality (they overwhelmingly fail at `DescriptorPool::decode`), and **valid encodings of structurally-invalid descriptors** exercise keryx's own refusals (`MalformedDescriptor`, `MalformedOption`, the option-key path), which arbitrary bytes never reach. The second is the one that tests keryx.
 
 2. **Bounded work — allocation and time.** No count or length read from the input sizes an allocation before it is checked against what the input carries — the "small message declaring a huge length" attack buys no memory. That is the committed allocation property, and it is what the allocation instrument holds. keryx's *own* allocation is **not** linear in the input: every schema element owns its fully-qualified name (`FqName::new(…full_name())`), Θ(*d*) long at nesting depth *d*, and the containment analysis clones full names per node and edge — so the schema is Θ(*n*·*d*). Time is likewise not linear everywhere: `recursion::mark` is quadratic in the message count by its own account. What bounds *d* is the depth property below; whether Θ(*n*·*d*) and the cycle analysis are *acceptable* against a deployment's limits is measurement, not commitment (recorded under *Open*).
@@ -56,8 +56,8 @@ Each property is stated once here, generically. Its *status* per door is in *The
 
 Foreign code sits on more than one path, and only some carry foreign input. Containment sits at every foreign-code-meets-foreign-input crossing, and only there — by argument, not omission:
 
-- **Descriptor-set door:** prost-reflect decodes bytes; prost-types pre-reads `syntax`. Foreign input — *contained here.*
-- **Source door:** protox compiles source. Foreign input — *contained here.*
+- **Descriptor-set door:** prost-reflect decodes bytes, and its accessors lazily decode as keryx's walk reads them; prost-types pre-reads for the shapes the engine cannot represent. Foreign input — *contained at both the decode and the walk.*
+- **Source door:** protox compiles source. Foreign input — *contained as the door lands (this pass).*
 - **Payload door (Increment 3):** prost-reflect decodes the payload; the codec's `ToSymbol`/`FromSymbol` convert values. Foreign input — *contained as the door lands.*
 - **`.lp` / answer-set doors (Increments 4, 6):** themelios `parse`/`raise`. Foreign input — *contained as the doors land.*
 - **Emission:** themelios `construct`/`render` runs over keryx-**constructed** values, never foreign input — interior code, trusted by the interior's own trust, needing no containment.
@@ -85,9 +85,9 @@ Each door: its input, its trust in the typical deployment, the foreign code it i
 
 ### Descriptor-set door — `descriptor::ingest(&[u8])` — shipped
 
-- **Input.** A serialized `FileDescriptorSet`. **Trust.** Schema (operator, typically). **Foreign code.** prost-reflect (`DescriptorPool::decode`); prost-types (the editions pre-read). **Walks.** `collect_messages` (gathers nested message types); `recursion::reaches_self` (the containment-cycle walk); the per-element `build_*` pass.
+- **Input.** A serialized `FileDescriptorSet`. **Trust.** Schema (operator, typically). **Foreign code.** prost-reflect (`DescriptorPool::decode`, and the lazily-decoding accessors the walk reads); prost-types (the pre-read). **Walks.** `collect_messages` (gathers nested message types); `recursion::reaches_self` (the containment-cycle walk); the per-element `build_*` pass.
 - **Status.**
-  - *Totality:* the editions trigger is pre-empted, and the structural refusals `MalformedDescriptor`/`MalformedOption` hold — *held at `b093008`*; the `DependencyFault` containment of an unforeseen decode panic, and the two totality generators, are *this pass*.
+  - *Totality:* the structural refusals `MalformedDescriptor`/`MalformedOption` hold — *held at `b093008`*; *this pass* pre-empts every shape the engine panics on rather than rejects (editions, an unrecognised `syntax`, a leading-dot package or top-level name), and **contains an unforeseen engine fault at both the decode and the accessor walk** — the accessors lazily decode, and keryx's walk holds no `unwrap`/`expect` of its own, so a walk fault is the engine's (`DependencyFault`), not a keryx bug (containing the decode alone was found to leave the walk exposed). The two totality generators are *this pass* too.
   - *Bounded depth:* `recursion::reaches_self` is an explicit managed stack already — *held at `b093008`*; `collect_messages` is native recursion today, and its conversion to a managed stack is *this pass*.
   - *Bounded work:* the Θ(*n*·*d*) profile is the truth today; the allocation-budget instrument is *this pass*.
   - *Integrity, determinism:* *held at `b093008`* (the refusal set; the golden tests).

@@ -22,8 +22,11 @@ serialized set for `syntax = "editions"` *before* handing it to the engine (`des
 and returns a specific `UnsupportedEdition` diagnostic, one per editions file at that file's locus
 ("editions … are not supported yet: keryx's descriptor engine has no editions support, so neither
 a .proto source nor a protoc-compiled descriptor set is accepted"), rather than provoking the
-panic. This is §6 totality by construction, not by catching a panic; the prost-reflect
-panic-on-editions is worth reporting upstream.
+panic. This is §6 totality by construction: keryx pre-empts the editions panic rather than catching it. (An
+*unforeseen* engine fault on a foreign-input path is the different case — *contained* as a typed
+dependency fault at the descriptor door (its decode and its accessor walk), the threat model's
+dependency boundary, not masked.) The
+prost-reflect panic-on-editions is worth reporting upstream.
 
 Editions support arrives when the engine does — prost-reflect gaining an editions syntax (a
 deliberate dependency bump) — at which point keryx's own presence/`enum_type` logic, already
