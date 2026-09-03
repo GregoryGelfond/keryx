@@ -6,9 +6,46 @@
 
 use keryx_test_support as support;
 
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use support::{fixtures, vendored};
+
+// A fresh dir under the target tmp dir (parallel-safe).
+fn tmp_dir(name: &str) -> PathBuf {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn rejects_a_package_less_source() {
+    // The package-less refusal lives in the library (`policy::map`), so `explain` refuses it too —
+    // not only `gen`. A package-less file has no valid file set to name, so its mapping is not
+    // shown; the cause is named at the file's locus.
+    let dir = tmp_dir("explain_nopkg_src");
+    std::fs::write(
+        dir.join("bare.proto"),
+        "syntax = \"proto3\";\nmessage Bare { string x = 1; }\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_keryx"))
+        .arg("explain")
+        .arg("bare.proto")
+        .args(["-I".as_ref(), dir.as_os_str()])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(4), "a schema error");
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        stderr.contains("package-less"),
+        "the cause is named: {stderr}"
+    );
+    assert!(
+        out.stdout.is_empty(),
+        "no verdicts are printed for a rejected schema"
+    );
+}
 
 #[test]
 fn renders_the_records_without_the_manifest_header() {

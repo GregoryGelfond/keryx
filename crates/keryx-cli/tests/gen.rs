@@ -68,7 +68,7 @@ fn writes_the_three_files_per_package() {
 #[test]
 fn accepts_a_binpb_descriptor_set() {
     // §25 gives the arg as `<spec.proto|spec.binpb>`: a serialized descriptor set is read and
-    // ingested, not fed to protox. This is what the editions fix-it hint points the user to.
+    // ingested, not fed to protox — the route for a source protox cannot parse but protoc can.
     let set = tmp("gen_proto3.binpb");
     std::fs::write(&set, support::compile_fixture("proto3.proto")).unwrap();
     let out = out_dir("gen_binpb");

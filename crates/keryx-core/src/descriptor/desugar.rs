@@ -18,9 +18,10 @@ pub(super) fn is_dependency_file(name: &str) -> bool {
 }
 
 /// The file's declared version (§5, §20). prost-reflect's `Syntax` distinguishes
-/// proto2 from proto3; an editions file resolves to its proto3-equivalent feature
-/// defaults here, which are correct for edition 2023 (a distinct `Edition` version
-/// and the `enum_type` override arrive with the editions increment).
+/// proto2 from proto3; an editions file never reaches here — `decode` refuses it up
+/// front (`UnsupportedEdition`), since prost-reflect has no editions `Syntax`. A
+/// distinct `Edition` version and the `enum_type` override arrive with the editions
+/// increment.
 pub(super) fn version(file: &FileDescriptor) -> SchemaVersion {
     match file.syntax() {
         Syntax::Proto2 => SchemaVersion::Proto2,

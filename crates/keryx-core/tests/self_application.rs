@@ -1,8 +1,8 @@
 //! Self-application (spec §21.2): descriptor.proto describes itself, so the tool's input
-//! language runs through the tool. M1 proves the dogfood — keryx ingests and gens the
-//! schema-of-schemas totally, and its hand-written stage-0 facts are golden-pinned. The
-//! deeper equivalence (stage-0 definable as a view over keryx(descriptor.proto)) waits for
-//! the estate's elenctic-on-themelios (below the D1 solve boundary).
+//! language runs through the tool. The gen increment proves the dogfood — keryx ingests and
+//! gens the schema-of-schemas totally, and its hand-written stage-0 facts are golden-pinned. The
+//! deeper equivalence (stage-0 definable as a view over keryx(descriptor.proto)) is deferred to a
+//! future ASP-contract checker over themelios.
 
 use std::path::{Path, PathBuf};
 

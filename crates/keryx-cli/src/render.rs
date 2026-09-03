@@ -28,7 +28,7 @@ impl Format {
     /// Whether diagnostics render as JSON: forced by `json`/`human`, else resolved by whether
     /// stderr — the stream the diagnostics travel on, so a `| jq` consumer of stdout still sees
     /// human errors on its terminal — is not a terminal (architecture §6).
-    fn is_json(self) -> bool {
+    pub(crate) fn is_json(self) -> bool {
         match self {
             Format::Json => true,
             Format::Human => false,
@@ -50,24 +50,22 @@ pub fn progress(message: &str) {
 }
 
 /// Write the product to stdout; a broken pipe (a closed downstream, e.g. `| head`) exits
-/// cleanly (§6 — no EPIPE panic), any other write error is internal.
+/// cleanly (§6 — no EPIPE panic), any other write error is internal (rendered in `format`).
 #[must_use]
-pub fn product(text: &str) -> Exit {
-    write_product(&mut std::io::stdout().lock(), text)
+pub fn product(format: Format, text: &str) -> Exit {
+    write_product(format, &mut std::io::stdout().lock(), text)
 }
 
 /// Write `text` to `out`, mapping a broken pipe (a closed downstream) to a clean success
-/// (§6 — no EPIPE panic) and any other write error to an internal error. Split from
-/// [`product`] so the pipe/error handling is unit-testable over an arbitrary writer, rather
-/// than only against a real closed pipe.
-fn write_product<W: std::io::Write>(out: &mut W, text: &str) -> Exit {
+/// (§6 — no EPIPE panic) and any other write error to an internal error rendered through [`note`]
+/// in `format` — so the `Internal` class is structured under `--format json` like every other
+/// (§6, §26). Split from [`product`] so the pipe/error handling is unit-testable over an arbitrary
+/// writer, rather than only against a real closed pipe.
+fn write_product<W: std::io::Write>(format: Format, out: &mut W, text: &str) -> Exit {
     match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
         Ok(()) => Exit::Success,
         Err(error) if error.kind() == ErrorKind::BrokenPipe => Exit::Success,
-        Err(error) => {
-            line(&format!("keryx: write failed: {error}"));
-            Exit::Internal
-        }
+        Err(error) => note(format, Exit::Internal, &format!("write failed: {error}")),
     }
 }
 
@@ -85,29 +83,52 @@ pub fn report(format: Format, exit: Exit, diagnostics: &Diagnostics) -> Exit {
     exit
 }
 
-/// Render one CLI-adapter error to stderr (a file-I/O or usage failure — not a library
+/// Render one CLI-adapter error to stderr (a file-I/O, usage, or internal failure — not a library
 /// `Diagnostic`), returning `exit`. Under `--format json` it renders as a one-element wire array
-/// with the exit class as its `kind`, so structured stderr is uniform across every error class
-/// (§6, §26); otherwise a `keryx:` line.
+/// with the exit class as its `kind`, so structured stderr is uniform across keryx's own error
+/// classes (§6, §26); clap's own usage errors, which precede `--format` parsing, are the one
+/// inherent exception. Otherwise a `keryx:` line.
 #[must_use]
 pub fn note(format: Format, exit: Exit, message: &str) -> Exit {
-    if format.is_json() {
-        // The same wire-object serializer the library uses (`diagnostics::wire_object`), framed
-        // as a one-element array — so a CLI-adapter error is byte-shaped exactly like a library
-        // diagnostic. The exit class is the `kind`; a CLI-adapter error has an empty field path.
-        line(&format!("[{}]", wire_object("", exit.slug(), message)));
-    } else {
-        line(&format!("keryx: {message}"));
-    }
+    line(&note_line(format, exit, message));
     exit
+}
+
+/// The one line [`note`] renders: under `--format json` a one-element wire array (the same
+/// `wire_object` serializer the library uses — the exit class is the `kind`, a CLI-adapter error's
+/// field path empty, so it is byte-shaped exactly like a library diagnostic), else a `keryx:` prose
+/// line. Pure, so the JSON form is unit-testable.
+fn note_line(format: Format, exit: Exit, message: &str) -> String {
+    if format.is_json() {
+        format!("[{}]", wire_object("", exit.slug(), message))
+    } else {
+        format!("keryx: {message}")
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::io::{self, Write};
 
-    use super::write_product;
+    use super::{Format, note_line, write_product};
     use crate::exit::Exit;
+
+    #[test]
+    fn a_json_adapter_error_is_a_one_line_wire_array_naming_the_class() {
+        // The `--format json` `note` path (the `Internal` write-failure travels it): a single-line
+        // one-element wire array carrying the exit class as `kind` and the message as `detail`.
+        let json = note_line(Format::Json, Exit::Internal, "write failed");
+        assert!(!json.contains('\n'), "one line: {json}");
+        assert!(
+            json.contains(r#""kind":"internal""#),
+            "carries the exit class: {json}"
+        );
+        assert!(
+            json.contains(r#""detail":"write failed""#),
+            "carries the message: {json}"
+        );
+        assert_eq!(note_line(Format::Human, Exit::Internal, "x"), "keryx: x");
+    }
 
     /// A writer whose every write fails with a chosen kind — drives `write_product`'s
     /// broken-pipe and internal-error arms deterministically, with no real pipe.
@@ -126,24 +147,29 @@ mod tests {
     fn a_broken_pipe_writes_as_a_clean_success() {
         // The headline §6 hardening: `keryx … | head` closing early must exit 0, never
         // an EPIPE panic. A mutant deleting the `BrokenPipe => Success` arm fails here.
-        let exit = write_product(&mut FailingWriter(io::ErrorKind::BrokenPipe), "product");
-        assert_eq!(exit as u8, Exit::Success as u8);
+        let exit = write_product(
+            Format::Human,
+            &mut FailingWriter(io::ErrorKind::BrokenPipe),
+            "product",
+        );
+        assert_eq!(exit, Exit::Success);
     }
 
     #[test]
     fn any_other_write_error_is_internal() {
         let exit = write_product(
+            Format::Human,
             &mut FailingWriter(io::ErrorKind::PermissionDenied),
             "product",
         );
-        assert_eq!(exit as u8, Exit::Internal as u8);
+        assert_eq!(exit, Exit::Internal);
     }
 
     #[test]
     fn a_good_write_delivers_the_product() {
         let mut buffer = Vec::new();
-        let exit = write_product(&mut buffer, "hello");
-        assert_eq!(exit as u8, Exit::Success as u8);
+        let exit = write_product(Format::Human, &mut buffer, "hello");
+        assert_eq!(exit, Exit::Success);
         assert_eq!(buffer, b"hello");
     }
 }

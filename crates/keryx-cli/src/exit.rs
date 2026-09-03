@@ -6,8 +6,10 @@
 use std::io::Write as _;
 use std::process::{ExitCode, Termination};
 
+use keryx_core::diagnostics::wire_object;
+
 /// The process exit code, by error class (architecture §6).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Exit {
     /// Success — the product was produced; stderr quiet.
@@ -50,47 +52,123 @@ impl Termination for Exit {
     }
 }
 
-/// Run `run`, containing an escaped panic (architecture §6): a top-level hook prints a calm,
-/// user-facing line — never a raw `panicked at …` backtrace — and any panic maps to `Internal`
-/// (exit 1). A panic is a bug in keryx, not a fault in the user's input, and the line says so; the
-/// panic detail is shown only when the user opts in with `RUST_BACKTRACE`, for a bug report. The
-/// hook swallows a broken stderr pipe rather than re-panicking, so an escaped panic never
+/// The calm bug notice keryx prints when it panics (architecture §6) — no raw `panicked at …`
+/// backtrace by default. The one moment more detail is wanted is a bug report, so it says how to
+/// get it.
+const PANIC_BUG_NOTICE: &str = "internal error — this is a bug in keryx, not a problem with your \
+     input; please report it (set RUST_BACKTRACE=1 for a backtrace)";
+
+/// The panic report's detail text, composed as a pure value so the "no raw `panicked at` by
+/// default" property is a unit test rather than a prose claim (architecture §6). Calm by default;
+/// under `RUST_BACKTRACE` it is the panic's own message, location, and a real backtrace, for a bug
+/// report. [`contain`] frames this as a `keryx:` line (human) or a wire `detail` (JSON) — one text
+/// either way, so both forms honor the notice's `RUST_BACKTRACE=1` cue.
+fn panic_detail(info: &dyn std::fmt::Display, detailed: bool) -> String {
+    if detailed {
+        format!(
+            "internal error (bug): {info}\n{}",
+            std::backtrace::Backtrace::force_capture()
+        )
+    } else {
+        PANIC_BUG_NOTICE.to_owned()
+    }
+}
+
+/// Run `run`, containing an escaped panic (architecture §6): a top-level hook reports the panic and
+/// any panic maps to `Internal` (exit 1). A panic is a bug in keryx, not a fault in the user's
+/// input; by default the report is a calm line saying so — never a raw `panicked at …` backtrace —
+/// and under `RUST_BACKTRACE` it is the panic's message, location, and a real backtrace, for a bug
+/// report (`panic_detail` composes that text). `json` (the resolved `--format`) frames it as a
+/// one-element wire array (kind `internal`) instead of a `keryx:` line, so a keryx bug does not
+/// break a JSON consumer's parser — the backtrace rides in the escaped `detail`, valid on one line.
+/// The hook swallows a broken stderr pipe rather than re-panicking, so an escaped panic never
 /// double-panics into an abort. The one place the process's panic posture is set, so `main` is a
 /// shim over it.
 #[must_use]
-pub fn contain(run: impl FnOnce() -> Exit) -> Exit {
-    std::panic::set_hook(Box::new(|info| {
-        if std::env::var_os("RUST_BACKTRACE").is_some() {
-            let _ = writeln!(std::io::stderr(), "keryx: internal error (bug): {info}");
+pub fn contain(json: bool, run: impl FnOnce() -> Exit) -> Exit {
+    std::panic::set_hook(Box::new(move |info| {
+        let detailed = std::env::var("RUST_BACKTRACE").is_ok_and(|value| value != "0");
+        let detail = panic_detail(info, detailed);
+        let report = if json {
+            format!("[{}]", wire_object("", Exit::Internal.slug(), &detail))
         } else {
-            let _ = writeln!(
-                std::io::stderr(),
-                "keryx: internal error — this is a bug in keryx, not a problem with your input; \
-                 please report it (set RUST_BACKTRACE=1 for detail)"
-            );
-        }
+            format!("keryx: {detail}")
+        };
+        let _ = writeln!(std::io::stderr(), "{report}");
     }));
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
         Ok(exit) => exit,
-        Err(_) => Exit::Internal, // the hook printed the friendly line; map to a clean exit 1
+        Err(_) => Exit::Internal, // the hook printed the report; map to a clean exit 1
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Exit, contain};
+    use super::{Exit, contain, panic_detail, wire_object};
 
     #[test]
-    fn contain_maps_a_panic_to_internal() {
-        // The §6 top-level hook: a panic anywhere under `contain` becomes a clean exit 1, not a
-        // raw backtrace or an abort — proven with a real panic (a command body cannot be driven
-        // into one deterministically), the estate's containment-test posture. The hook prints an
-        // internal-error line to stderr as it runs; that is the mechanism under test.
-        assert_eq!(contain(|| panic!("boom")) as u8, Exit::Internal as u8);
+    fn a_calm_report_is_a_bug_notice_without_the_raw_panic_text() {
+        // The §6 "no scary line" property, made executable: the default (no RUST_BACKTRACE) report
+        // never echoes the panic's `panicked at …` text, and names it a keryx bug. A regression
+        // that printed the panic info by default fails here.
+        let info = "panicked at src/foo.rs:12:5:\nboom";
+        let calm = panic_detail(&info, false);
+        assert!(
+            !calm.contains("panicked at"),
+            "no raw panic text in the calm report: {calm}"
+        );
+        assert!(
+            calm.contains("bug in keryx"),
+            "the calm report names it a keryx bug: {calm}"
+        );
     }
 
     #[test]
-    fn contain_returns_a_clean_exit_unchanged() {
-        assert_eq!(contain(|| Exit::Schema) as u8, Exit::Schema as u8);
+    fn a_detailed_report_carries_the_location_and_a_backtrace() {
+        // Under RUST_BACKTRACE the report echoes the panic's message and location, and a real
+        // backtrace (more than one line), for a bug report.
+        let info = "panicked at src/foo.rs:12:5:\nboom";
+        let detailed = panic_detail(&info, true);
+        assert!(
+            detailed.contains("src/foo.rs:12:5"),
+            "the detailed report carries the location: {detailed}"
+        );
+        assert!(
+            detailed.lines().count() > 1,
+            "the detailed report includes a backtrace, not just the location: {detailed}"
+        );
+    }
+
+    #[test]
+    fn the_json_panic_report_is_one_valid_line_even_with_a_multiline_detail() {
+        // The JSON `Internal` path must not break a consumer's parser: a multi-line detail (the
+        // detailed report carries a backtrace) is escaped into a single-line one-element wire array.
+        let info = "panicked at src/foo.rs:12:5:\nboom";
+        let json = format!(
+            "[{}]",
+            wire_object("", Exit::Internal.slug(), &panic_detail(&info, true))
+        );
+        assert!(
+            !json.contains('\n'),
+            "the JSON panic report is a single line: {json}"
+        );
+        assert!(
+            json.contains(r#""kind":"internal""#),
+            "the JSON panic report names the internal class: {json}"
+        );
+    }
+
+    #[test]
+    fn contain_maps_a_panic_to_internal_and_passes_clean_exits() {
+        // `contain` installs a process-global panic hook (main's one-time setup). This one test
+        // drives both a real panic and a clean exit through it and checks only the mapping — the
+        // report wording is `panic_detail`'s to prove. Merged into one test, the hook saved and
+        // restored once, so the global install does not bleed into sibling tests in this binary.
+        let saved = std::panic::take_hook();
+        let panicked = contain(false, || panic!("boom"));
+        let clean = contain(false, || Exit::Schema);
+        std::panic::set_hook(saved);
+        assert_eq!(panicked, Exit::Internal);
+        assert_eq!(clean, Exit::Schema);
     }
 }

@@ -42,8 +42,9 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// # Errors
 ///
 /// Returns [`Diagnostics`] when the bytes do not decode as a `FileDescriptorSet` or
-/// an import is unresolved (`UnreadableDescriptorSet`), when a decodable descriptor
-/// violates a protobuf structural invariant (`MalformedDescriptor`), or when a
+/// an import is unresolved (`UnreadableDescriptorSet`), when the set declares a Protobuf
+/// edition the descriptor engine cannot yet read (`UnsupportedEdition`), when a decodable
+/// descriptor violates a protobuf structural invariant (`MalformedDescriptor`), or when a
 /// custom option carries an unlowerable value (`MalformedOption`).
 ///
 /// [`Schema`]: model::Schema
@@ -67,41 +68,62 @@ pub(crate) fn ingest_subjects(bytes: &[u8], subjects: &[String]) -> Result<Schem
     build_schema(&pool, |name| subjects.iter().any(|subject| subject == name))
 }
 
-/// Decode a serialized `FileDescriptorSet` into a `DescriptorPool`, or the typed reason it did
-/// not (`UnreadableDescriptorSet`, §6) — the one decode door both `ingest` paths share.
+/// keryx's editions refusal message, in one place — every `UnsupportedEdition` diagnostic (one per
+/// editions file) carries it. Both routes fail today: protox does not parse an editions `.proto`,
+/// and the descriptor engine (prost-reflect 0.16.5) has no editions `Syntax`, so a protoc-compiled
+/// descriptor set is refused too. The descriptor-set route opens when the engine gains editions
+/// (`docs/proto-support.md`). The front-door compile hint (`keryx-cli`) gives a brief pointer to
+/// the same story; keep them consistent.
+pub(crate) const EDITIONS_UNSUPPORTED: &str = "editions (edition 2023+) are not supported yet: keryx's descriptor engine has no editions \
+     support, so neither a .proto source nor a protoc-compiled descriptor set is accepted. \
+     Transliterate the schema to proto3, or track editions support in docs/proto-support.md";
+
+/// Decode a serialized `FileDescriptorSet` into a `DescriptorPool`, or the typed reason it did not
+/// — the one decode door both `ingest` paths share.
 ///
 /// The descriptor engine (prost-reflect 0.16.5) has no editions `Syntax`, and it **panics**
 /// building a pool from an editions `FileDescriptorSet` rather than returning an error. keryx does
-/// not catch that panic — it avoids provoking it: [`is_editions`] inspects the set with a plain
-/// decode (which cannot panic) and refuses editions with a specific diagnostic, so the engine only
-/// ever sees input it can represent. Ingestion is thus total (§6) by construction, not by masking
-/// a panic. Editions support waits on the engine gaining it (`docs/proto-support.md`).
+/// not catch that panic — it avoids provoking it: [`unsupported_editions`] inspects the set with a
+/// plain decode (which cannot panic) and refuses each editions file with an `UnsupportedEdition`
+/// diagnostic at that file's locus, so the engine only ever sees input it can represent. Ingestion
+/// is thus total (§6) by construction, not by masking a panic. A set that does not decode at all is
+/// the engine's own `UnreadableDescriptorSet`.
 fn decode(bytes: &[u8]) -> Result<DescriptorPool, Diagnostics> {
-    if is_editions(bytes) {
-        return Err(unreadable_set(
-            "editions descriptor sets (edition 2023+) are not supported yet — keryx's descriptor \
-             engine has no editions support; transliterate the schema to proto3, or track \
-             editions in docs/proto-support.md"
-                .to_owned(),
-        ));
+    if let Some(diagnostics) = unsupported_editions(bytes) {
+        return Err(diagnostics);
     }
     DescriptorPool::decode(bytes).map_err(|error| unreadable_set(error.to_string()))
 }
 
-/// Whether the serialized set declares editions (edition 2023+): a plain protobuf decode of the
-/// `FileDescriptorSet` (no feature resolution, so it cannot panic the way the engine's pool build
-/// can), then a scan for a file whose `syntax` is `"editions"` — which `descriptor.proto` requires
-/// on every file that carries an `edition`, so it is the definitive marker even though this
-/// prost-types predates the `edition` field itself. A blob that does not decode as a
-/// `FileDescriptorSet` is not treated as editions — the engine's own decode then composes the
-/// malformed-input diagnostic.
-fn is_editions(bytes: &[u8]) -> bool {
-    prost_types::FileDescriptorSet::decode(bytes)
-        .is_ok_and(|set| set.file.iter().any(|file| file.syntax() == "editions"))
+/// The `UnsupportedEdition` diagnostics for a set that declares one or more editions files — one per
+/// file at that file's locus (§6, totality) — or `None` if it declares none, or the bytes do not
+/// decode. A plain protobuf decode of the `FileDescriptorSet` (no feature resolution, so it cannot
+/// panic the way the engine's pool build can); the marker is a file whose `syntax` is `"editions"`,
+/// which `descriptor.proto` requires on every editions file (this prost-types does not carry the
+/// `edition` field). Total: `?` yields `None` on a non-decoding blob — the engine's own decode then
+/// composes the malformed-input diagnostic — and on a set with no editions files.
+fn unsupported_editions(bytes: &[u8]) -> Option<Diagnostics> {
+    let mut editions = prost_types::FileDescriptorSet::decode(bytes)
+        .ok()?
+        .file
+        .into_iter()
+        .filter(|file| file.syntax() == "editions")
+        .map(|file| {
+            Diagnostic::new(
+                DiagnosticKind::UnsupportedEdition,
+                Locus::at(file.name().to_owned()),
+                EDITIONS_UNSUPPORTED,
+            )
+        });
+    let mut diagnostics = Diagnostics::one(editions.next()?);
+    for diagnostic in editions {
+        diagnostics.push(diagnostic);
+    }
+    Some(diagnostics)
 }
 
-/// An `UnreadableDescriptorSet` diagnostic at the whole-input locus (§6) — the shared reason
-/// composer for [`decode`]'s failure paths (an editions refusal, and an engine decode error).
+/// An `UnreadableDescriptorSet` diagnostic at the whole-input locus (§6) — the set as a whole did
+/// not decode, the engine's own decode error composed into the detail.
 fn unreadable_set(detail: String) -> Diagnostics {
     Diagnostic::new(
         DiagnosticKind::UnreadableDescriptorSet,

@@ -54,13 +54,13 @@ fn editions_source_is_gated_by_the_compiler_verdict() {
             diagnostics
                 .iter()
                 .any(|d| d.kind() == DiagnosticKind::UncompilableSource),
-            "editions: DEFERRED — the front door says supply a descriptor set"
+            "editions: DEFERRED — protox cannot compile it (→ UncompilableSource)"
         ),
     }
 }
 
 // keryx's own option registry resolves from the embedded copy — no `-I` for the vendored
-// `proto/` dir (architecture §11, D6), the way `google/protobuf/*` does. Only the fixtures dir
+// `proto/` dir (architecture §11), the way `google/protobuf/*` does. Only the fixtures dir
 // is on the include path, and it holds no `keryx/options.proto`, so the import can resolve only
 // through the embedded registry.
 #[test]

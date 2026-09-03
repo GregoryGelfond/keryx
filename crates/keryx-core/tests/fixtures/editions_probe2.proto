@@ -1,0 +1,6 @@
+edition = "2023";
+package keryx.editions_probe2;
+
+message Second {
+  int32 field = 1;
+}

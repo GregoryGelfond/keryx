@@ -19,7 +19,7 @@ use crate::descriptor::model::{FqName, MapKey, Openness, Scalar};
 
 /// A field's emitted form (spec §4.1, §7): the ASP shape its predicate takes. Closed —
 /// the treatment classification (`ValueMapping`) rides beside it, never inside it. At
-/// at present every `repeated` is a `Sequence`; the `Set` form lands when `(keryx.set)` gains
+/// present every `repeated` is a `Sequence`; the `Set` form lands when `(keryx.set)` gains
 /// meaning (Increment 5). `OneofArm` is an ordinary partial function that also records
 /// its oneof (spec §7.3).
 #[derive(Clone, Debug, PartialEq, Eq)]

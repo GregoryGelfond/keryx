@@ -80,7 +80,8 @@ struct SchemaFactsArgs {
 #[must_use]
 pub fn run() -> Exit {
     let cli = Cli::parse();
-    exit::contain(move || dispatch(cli))
+    let json = cli.format.is_json();
+    exit::contain(json, move || dispatch(cli))
 }
 
 fn dispatch(cli: Cli) -> Exit {
@@ -104,20 +105,6 @@ fn generate(args: &GenArgs, format: Format) -> Exit {
         Err(diagnostics) => return report(format, Exit::Schema, &diagnostics),
     };
     for unit in mapping.units() {
-        // keryx generates one file set per package (§13); a package-less source would write
-        // hidden dotfiles (`.core.lp`, …). Refuse it as a typed schema diagnostic (so it renders
-        // in both the human and JSON forms), not a bare string.
-        if unit.package().is_empty() {
-            return report(
-                format,
-                Exit::Schema,
-                &Diagnostics::from(Diagnostic::new(
-                    DiagnosticKind::PackagelessFile,
-                    Locus::whole(),
-                    "a package-less .proto is not supported — declare a `package` (keryx generates one file set per package, §13)",
-                )),
-            );
-        }
         let core = match emit::core(unit) {
             Ok(text) => text,
             Err(diagnostics) => return report(format, Exit::Internal, &diagnostics),
@@ -177,7 +164,7 @@ fn explain(args: &ExplainArgs, format: Format) -> Exit {
             );
         }
     }
-    product(&out)
+    product(format, &out)
 }
 
 /// Render the verdict for the one schema element named by `path` — a sort, field, enum, or enum
@@ -192,7 +179,7 @@ fn explain_element(mapping: &Mapping, path: &str, format: Format) -> Exit {
             &format!("no schema element has the proto path `{path}`"),
         );
     };
-    product(&manifest::element_record(&element))
+    product(format, &manifest::element_record(&element))
 }
 
 /// Read a serialized `FileDescriptorSet` and dump its descriptor facts (internal; Increment
@@ -213,7 +200,7 @@ fn schema_facts(args: &SchemaFactsArgs, format: Format) -> Exit {
         Err(diagnostics) => return report(format, Exit::Schema, &diagnostics),
     };
     match facts::render(&schema) {
-        Ok(text) => product(&text),
+        Ok(text) => product(format, &text),
         Err(diagnostics) => report(format, Exit::Internal, &diagnostics),
     }
 }
@@ -247,9 +234,10 @@ fn load_schema(specs: &[PathBuf], includes: &[PathBuf], format: Format) -> Resul
 }
 
 /// A front-door compile failure carries a fix-it hint (architecture §6: fix-it hints travel
-/// with the error): a source keryx cannot compile — e.g. a Protobuf edition, which protox does
-/// not yet cover (spec §31) — can be compiled to a descriptor set and supplied here as a
-/// `.binpb`, which `gen`/`explain` now accept. Appended as a further diagnostic so it renders
+/// with the error): a source protox cannot parse but protoc can may be compiled to a descriptor
+/// set and supplied here as a `.binpb`, which `gen`/`explain` accept. Editions are the exception —
+/// the descriptor engine cannot read them either (`UnsupportedEdition`), so the hint says so
+/// rather than promising a route that also fails. Appended as a further diagnostic so it renders
 /// in both the human and JSON forms; a non-`UncompilableSource` failure is returned unchanged.
 fn with_descriptor_set_hint(mut diagnostics: Diagnostics) -> Diagnostics {
     if diagnostics
@@ -259,7 +247,7 @@ fn with_descriptor_set_hint(mut diagnostics: Diagnostics) -> Diagnostics {
         diagnostics.push(Diagnostic::new(
             DiagnosticKind::UncompilableSource,
             Locus::whole(),
-            "compile this source to a descriptor set and supply that instead — keryx accepts a <spec>.binpb",
+            "if protoc can compile this source, supply the descriptor set instead — keryx accepts a <spec>.binpb (editions are not yet supported by either route; see docs/proto-support.md)",
         ));
     }
     diagnostics

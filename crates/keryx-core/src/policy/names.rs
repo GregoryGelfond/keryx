@@ -325,9 +325,9 @@ pub(super) fn lower_snake(name: &str) -> String {
 /// lowercase letter; `lower_snake` yields that for nearly every proto name, but not for one
 /// that is one or more leading underscores immediately followed by a digit (see
 /// [`lower_snake`]) — a real, if rare, *live* rejection, which is exactly why this is
-/// checked, not `expect`ed: the input is schema-derived (the estate posture: the one
-/// runtime-derived string that reaches a `Name::new` door is checked, cf.
-/// `facts::terms::try_constant`).
+/// checked, not `expect`ed: the input is schema-derived, and a runtime-derived string that
+/// reaches a `Name::new` door is validated rather than assumed, cf.
+/// `facts::terms::try_constant`.
 pub(super) fn identifier(text: &str, locus: &FqName) -> Result<Name, Diagnostics> {
     Name::new(text).map_err(|_: NotAnIdentifier| {
         Diagnostics::from(Diagnostic::new(

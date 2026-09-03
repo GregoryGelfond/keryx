@@ -4,9 +4,10 @@
 //! partial result is never delivered beside them. Errors are values in
 //! themelios's idiom (spec §26): they render themselves through `Display` and
 //! compose as `std::error::Error`; the CLI renders them at the boundary and the
-//! library invents no error semantics. The shape mirrors the envelope's wire
-//! `Diagnostic` (Appendix B), and [`Diagnostics::wire`] is that wire view — so the
-//! value produced here and the value a consumer reads over the wire are one shape.
+//! library invents no error semantics. The shape is the wire `Diagnostic`
+//! (Appendix B) — the shape a consuming tool's result envelope may carry — and
+//! [`Diagnostics::wire`] is that view, so the value produced here and the value a
+//! consumer reads over the wire are one shape.
 //! This is the seed the codec, admission, and shape layers grow in later increments.
 
 use std::fmt::{self, Write as _};
@@ -22,8 +23,9 @@ pub enum Locus {
     /// The whole-input locus — no finer path than the descriptor set itself.
     #[default]
     Whole,
-    /// A fully-qualified proto path (e.g. `dispatch.v1.Shipment.tags`), or a file
-    /// path for a source-compile failure. The path may be empty — a caller that
+    /// A fully-qualified proto path (e.g. `dispatch.v1.Shipment.tags`), or a file's
+    /// name for a source-compile, editions, or packageless failure. The path may be
+    /// empty — a caller that
     /// opened an empty spec path (`keryx gen ""`) locates the failure at that path;
     /// it is still a located diagnostic, distinct from `Whole`.
     At(String),
@@ -68,6 +70,12 @@ pub enum DiagnosticKind {
     /// import was unresolved — the whole input is unusable (§20). The engine's
     /// own message is *composed into* the detail, never exposed as its type.
     UnreadableDescriptorSet,
+    /// The descriptor set decoded, but a file declares a Protobuf edition (edition 2023+)
+    /// that keryx's descriptor engine (prost-reflect 0.16.5) cannot yet read — a capability
+    /// limit, not malformed input (the file's `syntax` is `"editions"`). Named at the
+    /// offending file's locus (§6), one per editions file; the descriptor-set route opens
+    /// when the engine gains editions (`docs/proto-support.md`).
+    UnsupportedEdition,
     /// A decodable set carried a structurally-malformed element — e.g. a map entry
     /// missing its key or value field, or a map key of a non-key kind. Keeps
     /// ingestion total over an adversarial descriptor that decodes but violates a
@@ -84,10 +92,10 @@ pub enum DiagnosticKind {
     /// A `.proto` source could not be compiled to a descriptor set by the front-door
     /// compiler (protox) — a parse, type, or import error, or a file whose edition the
     /// compiler does not yet cover (`docs/proto-support.md`). A front-door capability
-    /// limit, not a translation error: keryx branches on resolved features, so an
-    /// editions file is ingestible once a descriptor set for it is supplied by another
-    /// producer. The compiler's own message is composed into the detail (§6), never
-    /// exposed as its type.
+    /// limit, not a translation error: for a source protox cannot parse but protoc can,
+    /// a protoc-compiled descriptor set is the route in — except editions, which the
+    /// descriptor engine also cannot yet read (`UnsupportedEdition`). The compiler's own
+    /// message is composed into the detail (§6), never exposed as its type.
     UncompilableSource,
     /// A `.proto` schema has no package (a package-less file), which keryx does not
     /// emit for — the generated `.lp`/manifest files would be hidden dotfiles. Named
@@ -122,6 +130,7 @@ impl DiagnosticKind {
     pub fn as_str(self) -> &'static str {
         match self {
             DiagnosticKind::UnreadableDescriptorSet => "unreadable_descriptor_set",
+            DiagnosticKind::UnsupportedEdition => "unsupported_edition",
             DiagnosticKind::MalformedDescriptor => "malformed_descriptor",
             DiagnosticKind::MalformedOption => "malformed_option",
             DiagnosticKind::UnrenderableFacts => "unrenderable_facts",
@@ -222,10 +231,11 @@ impl Diagnostics {
     }
 
     /// The wire view: the diagnostics as a JSON array (Appendix B `Diagnostic`:
-    /// `field_path`, `kind`, `detail`), hand-rolled so keryx-core stays serde-free
-    /// (the estate's minimal-closure posture). The whole-input locus flattens to an
-    /// empty `field_path`, as Appendix B's proto3 string forces the wire to. This is
-    /// the view a library consumer (the CLI today, a service over the wire) reads.
+    /// `field_path`, `kind`, `detail`), hand-rolled so keryx-core takes no serde
+    /// dependency — a JSON array of three strings does not earn one. The whole-input
+    /// locus flattens to an empty `field_path`, as Appendix B's proto3 string forces
+    /// the wire to. This is the view a library consumer (the CLI today, a service over
+    /// the wire) reads.
     #[must_use]
     pub fn wire(&self) -> String {
         let mut out = String::from("[");
@@ -328,6 +338,10 @@ mod tests {
             "unreadable_descriptor_set"
         );
         assert_eq!(
+            DiagnosticKind::UnsupportedEdition.as_str(),
+            "unsupported_edition"
+        );
+        assert_eq!(
             DiagnosticKind::MalformedDescriptor.as_str(),
             "malformed_descriptor"
         );
@@ -350,6 +364,7 @@ mod tests {
         // allowed in-crate despite #[non_exhaustive]) fails to compile otherwise.
         match DiagnosticKind::UnreadableDescriptorSet {
             DiagnosticKind::UnreadableDescriptorSet
+            | DiagnosticKind::UnsupportedEdition
             | DiagnosticKind::MalformedDescriptor
             | DiagnosticKind::MalformedOption
             | DiagnosticKind::UnrenderableFacts

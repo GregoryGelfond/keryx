@@ -2,8 +2,8 @@
 //! (keryx invokes no solver, R4), a pure, deterministic, unique function from the
 //! de-sugared [`Schema`] to the [`Mapping`] — name assignment and qualification, presence
 //! classification, treatment selection, and reserved-word escapes. The optional ASP
-//! co-artifact and its cross-check (spec §21.3) wait for the estate's own
-//! elenctic-on-themelios; `explain` renders the `Mapping` directly for inspection meanwhile.
+//! co-artifact and its cross-check (spec §21.3) are deferred; `explain` renders the `Mapping`
+//! directly for inspection meanwhile.
 //! Submodules: `model` (the mapping model), `names`
 //! (un-collided base assignment and reserved-word escapes), `qualify` (the injectivity
 //! optimization only — the table it resolves already carries `names`' escapes).
@@ -36,14 +36,54 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 ///
 /// # Errors
 ///
-/// [`Diagnostics`] when a lowered name is not a valid ASP identifier, or a field's value
-/// type references a message/enum path absent from the schema (both near-impossible on a
-/// well-formed `Schema`; checked rather than assumed, §6) — and, reachably from valid input,
-/// when two distinct sorts collapse to one predicate qualification cannot separate (§4.2), or
-/// two values of one enum lower to a single constant (§7.4).
+/// [`Diagnostics`] when a subject file declares no `package` (`PackagelessFile`), when a lowered
+/// name is not a valid ASP identifier, or a field's value type references a message/enum path
+/// absent from the schema (both near-impossible on a well-formed `Schema`; checked rather than
+/// assumed, §6) — and, reachably from valid input, when two distinct sorts collapse to one
+/// predicate qualification cannot separate (§4.2), or two values of one enum lower to a single
+/// constant (§7.4).
 pub fn map(schema: &Schema) -> Result<Mapping, Diagnostics> {
+    reject_packageless(schema)?;
     let sorts = qualify::resolve(&names::sort_table(schema)?)?; // path -> resolved name + decisions
     assemble(schema, &sorts)
+}
+
+/// Refuse a package-less subject file before any mapping (spec §13, §6): keryx generates one file
+/// set per package, so a file with no `package` has no set to name — its generated `.lp`/manifest
+/// would be hidden dotfiles. Diagnosed in the library (not only the CLI), one per offending file at
+/// that file's locus, so a consumer that links `keryx-core` is told, and told which file — before
+/// any `Unit` is formed, so no package-less unit reaches emission. Only a file that contributes a
+/// sort or enum can produce a unit, so only those are refused. Both `keryx gen` and `keryx explain`
+/// refuse here — `map` is their shared gate — so a package-less file's mapping is neither emitted
+/// nor shown.
+fn reject_packageless(schema: &Schema) -> Result<(), Diagnostics> {
+    let with_subjects: BTreeSet<&str> = schema
+        .messages()
+        .iter()
+        .map(Message::file)
+        .chain(schema.enums().iter().map(Enum::file))
+        .collect();
+    let mut offenders = schema
+        .files()
+        .iter()
+        .filter(|file| file.package.is_empty() && with_subjects.contains(file.name.as_str()))
+        .map(|file| {
+            Diagnostic::new(
+                DiagnosticKind::PackagelessFile,
+                Locus::at(file.name.clone()),
+                "a package-less .proto is not supported — declare a `package` (keryx generates one file set per package, §13)",
+            )
+        });
+    match offenders.next() {
+        None => Ok(()),
+        Some(first) => {
+            let mut diagnostics = Diagnostics::one(first);
+            for diagnostic in offenders {
+                diagnostics.push(diagnostic);
+            }
+            Err(diagnostics)
+        }
+    }
 }
 
 /// Group the schema's messages and enums by package into `Unit`s (spec §13), each sort's

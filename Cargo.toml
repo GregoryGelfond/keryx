@@ -8,7 +8,7 @@ rust-version = "1.97"
 license = "MIT"
 
 # Denied workspace-wide: unused code is a defect or a false claim; missing
-# docs break the executable-claims posture. Mirrors themelios.
+# docs leave a claim unstated. Mirrors themelios.
 [workspace.lints.rust]
 unsafe_code = "deny"
 missing_docs = "deny"

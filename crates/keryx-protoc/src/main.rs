@@ -4,4 +4,9 @@
 //! plugin increment.
 #![forbid(unsafe_code)]
 
-fn main() {}
+fn main() -> std::process::ExitCode {
+    // Until the plugin increment, refuse honestly rather than exit 0 with an empty response —
+    // which protoc reads as a successful, empty CodeGeneratorResponse (a gate that lies).
+    eprintln!("keryx: the protoc plugin is not implemented yet");
+    std::process::ExitCode::FAILURE
+}

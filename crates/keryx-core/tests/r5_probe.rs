@@ -1,7 +1,7 @@
-//! R6 proven end to end at M0: protox produces the descriptor set, prost-reflect
-//! reads it dynamically, keryx parses no protobuf. Engine-direct at the test level;
-//! the production wrap `descriptor::ingest` will be exercised by the ingestion
-//! tests at a later step.
+//! R5 proven end to end in the ingestion increment: protox produces the descriptor set,
+//! prost-reflect reads it dynamically, keryx parses no protobuf. Engine-direct at the test
+//! level; the production wrap `descriptor::ingest` will be exercised by the ingestion tests at
+//! a later step.
 
 use keryx_test_support as support;
 

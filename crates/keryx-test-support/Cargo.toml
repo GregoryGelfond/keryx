@@ -9,7 +9,7 @@ license.workspace = true
 [dependencies]
 # The pure-Rust .proto compiler, to turn a fixture into a serialized FileDescriptorSet.
 # This is a dev-dependency library, so its helpers are public API and no suite pays a
-# dead-code allow for the ones it does not use (the morphe-test-support shape).
+# dead-code allow for the ones it does not use.
 protox = "0.9.1"
 
 [lints]

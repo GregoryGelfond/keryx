@@ -8,8 +8,9 @@
 //! so a subject named like a well-known type (the §21.2 `descriptor.proto` self-application)
 //! is ingested, not treated as a dependency. Editions gate (spec §31): a file protox
 //! cannot compile (editions is DEFERRED for protox 0.9.1, `docs/proto-support.md`) composes
-//! a `UncompilableSource` diagnostic telling the caller to supply a descriptor set — a front-door
-//! limit, not a translation one.
+//! a `UncompilableSource` diagnostic. For a source protox cannot parse but protoc can, the caller
+//! can supply a protoc-compiled descriptor set — but not for editions, which the descriptor engine
+//! cannot read either (`UnsupportedEdition`, `docs/proto-support.md`).
 
 use std::path::Path;
 

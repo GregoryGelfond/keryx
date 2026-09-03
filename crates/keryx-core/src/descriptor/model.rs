@@ -31,11 +31,11 @@ impl FqName {
 
 /// The syntax era a file declares (spec §5, §20). `#[non_exhaustive]` so a future
 /// edition is added as a variant, not a redesign — an `Edition(u32)` variant lands
-/// with the editions increment and its first consumer (proto2/proto3 files already
-/// ingest correctly, and an editions file resolves as its proto3-equivalent
-/// defaults at ingestion). Produced by `desugar::version`, consumed by openness
-/// resolution; read only to *resolve* features, never to branch translation,
-/// which keys on resolved features alone (§5).
+/// with the editions increment and its first consumer. Today only proto2/proto3 reach
+/// here: an editions set is refused up front (`UnsupportedEdition`), since the
+/// descriptor engine has no editions `Syntax`. Produced by `desugar::version`, consumed
+/// by openness resolution; read only to *resolve* features, never to branch
+/// translation, which keys on resolved features alone (§5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SchemaVersion {

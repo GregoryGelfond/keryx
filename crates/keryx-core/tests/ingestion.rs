@@ -185,15 +185,49 @@ fn ingestion_is_deterministic() {
 fn an_editions_descriptor_set_is_a_diagnostic_not_a_panic() {
     // The descriptor engine (prost-reflect 0.16.5) has no editions `Syntax` and *panics* building
     // a pool from an editions FileDescriptorSet; keryx detects editions before the engine and
-    // refuses it with a specific diagnostic, so ingestion stays total (§6). This test running to
-    // completion is itself the proof no panic escapes; the fixture was compiled by protoc
-    // (edition 2023).
+    // refuses each editions file with an `UnsupportedEdition` diagnostic at that file's locus, so
+    // ingestion stays total (§6). This test running to completion is itself the proof no panic
+    // escapes.
+    //
+    // `fixtures/editions.binpb` is protoc-compiled from `fixtures/editions_probe.proto` (an
+    // `edition = "2023"` file); regenerate it with:
+    //   protoc --descriptor_set_out=fixtures/editions.binpb --include_imports --include_source_info \
+    //          -I fixtures fixtures/editions_probe.proto
     let error = ingest(include_bytes!("fixtures/editions.binpb"))
-        .expect_err("an editions set keryx cannot decode is a diagnostic, not a panic");
+        .expect_err("an editions set keryx cannot read is a diagnostic, not a panic");
     let diagnostic = error.iter().next().expect("one diagnostic");
-    assert_eq!(diagnostic.kind(), DiagnosticKind::UnreadableDescriptorSet);
+    assert_eq!(diagnostic.kind(), DiagnosticKind::UnsupportedEdition);
+    assert_eq!(
+        diagnostic.locus().path(),
+        Some("editions_probe.proto"),
+        "the diagnostic names the offending file, not the whole input: {diagnostic}"
+    );
     assert!(
         format!("{diagnostic}").contains("editions"),
         "the message names editions specifically: {diagnostic}"
     );
+}
+
+#[test]
+fn every_editions_file_in_a_set_is_reported() {
+    // Totality: `ingest` reports one `UnsupportedEdition` per editions file, at that file's locus —
+    // not only the first. `fixtures/editions_multi.binpb` is protoc-compiled from
+    // `editions_probe.proto` and `editions_probe2.proto` (both `edition = "2023"`); regenerate with:
+    //   protoc --descriptor_set_out=fixtures/editions_multi.binpb --include_imports --include_source_info \
+    //          -I fixtures fixtures/editions_probe.proto fixtures/editions_probe2.proto
+    let error = ingest(include_bytes!("fixtures/editions_multi.binpb"))
+        .expect_err("a two-editions set is a diagnostic, not a panic");
+    assert_eq!(error.iter().count(), 2, "one diagnostic per editions file");
+    let loci: Vec<Option<&str>> = error.iter().map(|d| d.locus().path()).collect();
+    assert!(
+        loci.contains(&Some("editions_probe.proto")),
+        "names the first editions file: {loci:?}"
+    );
+    assert!(
+        loci.contains(&Some("editions_probe2.proto")),
+        "names the second editions file: {loci:?}"
+    );
+    for diagnostic in error.iter() {
+        assert_eq!(diagnostic.kind(), DiagnosticKind::UnsupportedEdition);
+    }
 }

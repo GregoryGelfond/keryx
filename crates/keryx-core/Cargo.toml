@@ -27,7 +27,10 @@ protox = "0.9.1"
 
 # The generated descriptor types and prost decode — used only to *inspect* a serialized
 # `FileDescriptorSet` (editions detection) before handing it to the descriptor engine, a
-# plain decode that cannot panic the way prost-reflect's pool build does on editions.
+# plain decode that cannot panic the way prost-reflect's pool build does on editions. The
+# decoded typed struct is discarded — the pool is still built from the raw bytes — so no
+# prost-types struct ever feeds the schema (the §18/§20 rule; the decode itself sits on the
+# ingestion path, but its typed result is discarded).
 prost = "0.14"
 prost-types = "0.14"
 
