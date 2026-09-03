@@ -119,7 +119,12 @@ fn generate(args: &GenArgs, format: Format) -> Exit {
             ("views.lp", &views),
             ("keryx-manifest", &manifest),
         ] {
-            let path = args.out.join(format!("{}.{suffix}", unit.package()));
+            // `unit.package()` is a validated `Package` (a dotted identifier — no `/`, `..`, or NUL),
+            // so it names one file directly under `-o`, not a path that could traverse out of it (the
+            // threat model's descriptor-door package boundary; the door represents that shape).
+            let path = args
+                .out
+                .join(format!("{}.{suffix}", unit.package().as_str()));
             // A write failure (a bad `-o` directory, permissions, a full disk) is a file-I/O
             // error (§6 `Input`), not an internal bug.
             if let Err(error) = std::fs::write(&path, text) {

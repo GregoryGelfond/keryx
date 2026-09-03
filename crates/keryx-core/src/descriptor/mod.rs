@@ -12,7 +12,7 @@ pub mod source;
 
 pub use model::{
     Annotation, AnnotationValue, Enum, EnumValue, Field, FieldShape, File, FqName, MapKey, Message,
-    Oneof, Openness, Presence, Scalar, Schema, SchemaVersion, ValueType,
+    Oneof, Openness, Package, Presence, Scalar, Schema, SchemaVersion, ValueType,
 };
 pub use source::compile;
 
@@ -138,15 +138,26 @@ fn decode(bytes: &[u8]) -> Result<DescriptorPool, Diagnostics> {
 }
 
 /// Refuse — before the descriptor engine builds a pool — the shapes prost-reflect cannot represent
-/// and **panics** on rather than rejecting, so the engine only ever sees input it can represent:
+/// and **panics or aborts** on rather than rejecting, and the shapes keryx's own sinks cannot carry
+/// safely, so the engine only ever sees input it can represent:
 ///
 /// - a file whose `syntax` is not proto2/proto3 — editions (an engine capability limit,
 ///   `UnsupportedEdition`), or any unrecognised value such as `proto4` or an empty string (a
 ///   `MalformedDescriptor`); `syntax` is read raw, since the `syntax()` getter cannot tell `None`
-///   from `""`; and
-/// - a package or **top-level** message/enum name beginning with `.` — the engine stores the
-///   scope-joined name verbatim but looks it up with one leading dot stripped, so it cannot find it
-///   and panics (`MalformedDescriptor`). Nested names carry a non-empty namespace and are safe.
+///   from `""`;
+/// - a `package` that is not a dotted sequence of proto identifiers within the segment bound
+///   ([`Package::parse`]) — the leading-`.` package the engine panics on is one such shape, and the
+///   check additionally confines the package to the identifier shape the emitted `#include` operand
+///   and the CLI's per-package output path assume (the threat model's descriptor-door package
+///   boundary) and bounds the qualifier depth (`policy::qualify`, bounded work);
+/// - a declared message/enum/field/value/… name that is not a proto identifier
+///   ([`model::is_proto_ident`]) — the leading-`.` top-level name the engine panics on among them; and
+/// - any `uninterpreted_option` the set carries: a *compiled* set has none (protoc and protox
+///   interpret custom options and clear the field), but an unresolved one drives prost-reflect's
+///   **unbounded** recursive text-format parse of its `aggregate_value` at pool build
+///   (`option_to_message` → `DynamicMessage::parse_text_format`), a stack-overflow *abort*
+///   `fault::contain` cannot hold — so refusing it pre-empts that abort at the door, with no
+///   legitimate input lost.
 ///
 /// A plain prost-types decode (no feature resolution, so it cannot panic the way the pool build can)
 /// whose typed result is discarded — a pre-read that gates the engine and feeds nothing to the schema
@@ -157,43 +168,23 @@ fn pre_validate(bytes: &[u8]) -> Option<Diagnostics> {
     let set = prost_types::FileDescriptorSet::decode(bytes).ok()?;
     let mut refusals: Vec<Diagnostic> = Vec::new();
     for file in &set.file {
-        let malformed = |detail: String| {
-            Diagnostic::new(
-                DiagnosticKind::MalformedDescriptor,
-                Locus::at(file.name().to_owned()),
-                detail,
-            )
-        };
+        let name = file.name();
         match file.syntax.as_deref() {
             None | Some("proto2" | "proto3") => {}
             Some("editions") => refusals.push(Diagnostic::new(
                 DiagnosticKind::UnsupportedEdition,
-                Locus::at(file.name().to_owned()),
+                Locus::at(name.to_owned()),
                 EDITIONS_UNSUPPORTED,
             )),
-            Some(other) => refusals.push(malformed(format!(
-                "unrecognised syntax {other:?}: keryx's descriptor engine reads proto2 and proto3"
-            ))),
+            Some(other) => refusals.push(malformed(
+                name,
+                format!("unrecognised syntax {other:?}: keryx's descriptor engine reads proto2 and proto3"),
+            )),
         }
-        if file.package().starts_with('.') {
-            refusals.push(malformed("package name begins with '.'".to_owned()));
+        if let Err(problem) = Package::parse(file.package()) {
+            refusals.push(malformed(name, problem.detail()));
         }
-        for name in file
-            .message_type
-            .iter()
-            .map(prost_types::DescriptorProto::name)
-            .chain(
-                file.enum_type
-                    .iter()
-                    .map(prost_types::EnumDescriptorProto::name),
-            )
-        {
-            if name.starts_with('.') {
-                refusals.push(malformed(format!(
-                    "a top-level type name begins with '.': {name:?}"
-                )));
-            }
-        }
+        check_structure(file, &mut refusals);
     }
     let mut refusals = refusals.into_iter();
     let mut diagnostics = Diagnostics::one(refusals.next()?);
@@ -201,6 +192,126 @@ fn pre_validate(bytes: &[u8]) -> Option<Diagnostics> {
         diagnostics.push(diagnostic);
     }
     Some(diagnostics)
+}
+
+/// A `MalformedDescriptor` at a file's locus — the pre-read's one refusal shape.
+fn malformed(file: &str, detail: impl Into<String>) -> Diagnostic {
+    Diagnostic::new(
+        DiagnosticKind::MalformedDescriptor,
+        Locus::at(file.to_owned()),
+        detail,
+    )
+}
+
+/// Refuse a declared name that is not a proto identifier (the leading-`.` name the engine panics on
+/// among them) — the shape the schema's own name lowering (§4.2) and the door assume.
+fn check_ident(refusals: &mut Vec<Diagnostic>, file: &str, what: &str, decl: &str) {
+    if !model::is_proto_ident(decl) {
+        refusals.push(malformed(
+            file,
+            format!("{what} name {decl:?} is not a proto identifier"),
+        ));
+    }
+}
+
+/// Refuse any `uninterpreted_option` (see [`pre_validate`]) — the text-format abort axis.
+fn check_uninterpreted(
+    refusals: &mut Vec<Diagnostic>,
+    file: &str,
+    uninterpreted: &[prost_types::UninterpretedOption],
+) {
+    if !uninterpreted.is_empty() {
+        refusals.push(malformed(
+            file,
+            "the set carries an uninterpreted option — supply a compiled descriptor set (keryx does \
+             not evaluate custom option values, and an unresolved option's text-format value drives \
+             the descriptor engine's unbounded parser)",
+        ));
+    }
+}
+
+/// Walk a file's declarations, refusing every non-identifier name and every `uninterpreted_option`
+/// (see [`pre_validate`]). The message walk is an explicit managed stack — heap, not the call stack —
+/// so a deeply-nested file cannot exhaust the stack here (the same posture as [`subject_messages`]);
+/// the pre-read decode already bounds the nesting at `RECURSION_LIMIT` regardless.
+fn check_structure(file: &prost_types::FileDescriptorProto, refusals: &mut Vec<Diagnostic>) {
+    let at = file.name();
+    if let Some(options) = &file.options {
+        check_uninterpreted(refusals, at, &options.uninterpreted_option);
+    }
+    for extension in &file.extension {
+        check_ident(refusals, at, "extension", extension.name());
+        if let Some(options) = &extension.options {
+            check_uninterpreted(refusals, at, &options.uninterpreted_option);
+        }
+    }
+    for service in &file.service {
+        check_ident(refusals, at, "service", service.name());
+        if let Some(options) = &service.options {
+            check_uninterpreted(refusals, at, &options.uninterpreted_option);
+        }
+        for method in &service.method {
+            check_ident(refusals, at, "method", method.name());
+            if let Some(options) = &method.options {
+                check_uninterpreted(refusals, at, &options.uninterpreted_option);
+            }
+        }
+    }
+    for enumeration in &file.enum_type {
+        check_enum(refusals, at, enumeration);
+    }
+    let mut stack: Vec<&prost_types::DescriptorProto> = file.message_type.iter().collect();
+    while let Some(message) = stack.pop() {
+        check_ident(refusals, at, "message", message.name());
+        if let Some(options) = &message.options {
+            check_uninterpreted(refusals, at, &options.uninterpreted_option);
+        }
+        for field in &message.field {
+            check_ident(refusals, at, "field", field.name());
+            if let Some(options) = &field.options {
+                check_uninterpreted(refusals, at, &options.uninterpreted_option);
+            }
+        }
+        for oneof in &message.oneof_decl {
+            check_ident(refusals, at, "oneof", oneof.name());
+            if let Some(options) = &oneof.options {
+                check_uninterpreted(refusals, at, &options.uninterpreted_option);
+            }
+        }
+        for extension in &message.extension {
+            check_ident(refusals, at, "extension", extension.name());
+            if let Some(options) = &extension.options {
+                check_uninterpreted(refusals, at, &options.uninterpreted_option);
+            }
+        }
+        for range in &message.extension_range {
+            if let Some(options) = &range.options {
+                check_uninterpreted(refusals, at, &options.uninterpreted_option);
+            }
+        }
+        for enumeration in &message.enum_type {
+            check_enum(refusals, at, enumeration);
+        }
+        stack.extend(message.nested_type.iter());
+    }
+}
+
+/// Refuse an enum's and its values' non-identifier names and any `uninterpreted_option` on them.
+fn check_enum(
+    refusals: &mut Vec<Diagnostic>,
+    file: &str,
+    enumeration: &prost_types::EnumDescriptorProto,
+) {
+    check_ident(refusals, file, "enum", enumeration.name());
+    if let Some(options) = &enumeration.options {
+        check_uninterpreted(refusals, file, &options.uninterpreted_option);
+    }
+    for value in &enumeration.value {
+        check_ident(refusals, file, "enum value", value.name());
+        if let Some(options) = &value.options {
+            check_uninterpreted(refusals, file, &options.uninterpreted_option);
+        }
+    }
 }
 
 /// An `UnreadableDescriptorSet` diagnostic at the whole-input locus (§6) — the set as a whole did
@@ -235,9 +346,19 @@ fn build_schema(
             continue;
         }
         let version = desugar::version(&file);
+        // `pre_validate` already refused any non-identifier package, so this parse cannot fail on a
+        // set that reached the walk; re-derived through the one door (`Package::parse`) rather than
+        // wrapped unchecked, so `File.package` is a proof of shape and a `?` keeps the walk total.
+        let package = Package::parse(file.package_name()).map_err(|problem| {
+            Diagnostics::from(Diagnostic::new(
+                DiagnosticKind::MalformedDescriptor,
+                Locus::at(file.name().to_owned()),
+                problem.detail(),
+            ))
+        })?;
         files.push(File {
             name: file.name().to_owned(),
-            package: file.package_name().to_owned(),
+            package,
         });
         let file_messages = subject_messages(&file);
         for message in &file_messages {
@@ -428,7 +549,7 @@ fn build_enum_value(value: &EnumValueDescriptor) -> Result<EnumValue, Diagnostic
 
 #[cfg(test)]
 mod tests {
-    use keryx_test_support::fault_provoking_set;
+    use keryx_test_support::{decode_fault_set, uninterpreted_option_set};
     use prost::Message as _;
     use prost_types::{
         DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
@@ -469,62 +590,64 @@ mod tests {
     }
 
     #[test]
-    fn an_unforeseen_engine_fault_at_the_walk_is_a_dependency_fault() {
-        // A real engine fault through `ingest`, at the accessor walk (`options()` is a lazy decode
-        // past prost's recursion limit): contained as a `DependencyFault`, not a panic escaping as a
-        // keryx bug — totality across the walk (§6, the dependency boundary).
-        let diagnostics = ingest(&fault_provoking_set()).expect_err("a fault, not a schema");
-        let diagnostic = diagnostics.iter().next().expect("one diagnostic");
-        assert_eq!(diagnostic.kind(), DiagnosticKind::DependencyFault);
-        assert!(
-            diagnostic.detail().contains("prost-reflect")
-                && diagnostic.detail().contains("walking"),
-            "the fault names the dependency and the walk: {diagnostic}"
+    fn an_uninterpreted_option_is_refused_before_the_engine() {
+        // A set carrying a deep `uninterpreted_option`: the descriptor engine would interpret its
+        // value with an unbounded recursive text-format parser (`option_to_message` →
+        // `parse_text_format`), a stack-overflow *abort* containment cannot hold. keryx pre-empts it
+        // at the door with a clean `MalformedDescriptor` — a compiled set carries no
+        // uninterpreted option, so nothing legitimate is refused (§6).
+        let diagnostics = ingest(&uninterpreted_option_set()).expect_err("a refusal, not a schema");
+        assert_eq!(
+            diagnostics.iter().next().unwrap().kind(),
+            DiagnosticKind::MalformedDescriptor
         );
     }
 
     #[test]
     fn an_unforeseen_engine_fault_at_decode_is_a_dependency_fault() {
         // A set retyping `MessageOptions` field 1 as repeated int32, then setting it: the engine
-        // panics decoding the options during the pool build — contained at the decode (§6).
-        let set = encode(vec![
-            FileDescriptorProto {
-                name: Some("google/protobuf/descriptor.proto".to_owned()),
-                package: Some("google.protobuf".to_owned()),
-                syntax: Some("proto3".to_owned()),
-                message_type: vec![DescriptorProto {
-                    name: Some("MessageOptions".to_owned()),
-                    field: vec![FieldDescriptorProto {
-                        name: Some("message_set_wire_format".to_owned()),
-                        number: Some(1),
-                        label: Some(3),  // repeated
-                        r#type: Some(5), // int32
-                        ..Default::default()
-                    }],
-                    ..Default::default()
-                }],
-                ..Default::default()
-            },
-            FileDescriptorProto {
-                name: Some("m.proto".to_owned()),
-                package: Some("my".to_owned()),
-                dependency: vec!["google/protobuf/descriptor.proto".to_owned()],
-                message_type: vec![DescriptorProto {
-                    name: Some("M".to_owned()),
-                    options: Some(MessageOptions {
-                        message_set_wire_format: Some(true),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            },
-        ]);
-        let diagnostics = ingest(&set).expect_err("a fault, not a schema");
+        // panics decoding the options during the pool build — a *real* engine fault (not a synthetic
+        // `panic!`) contained at the decode as a `DependencyFault` (§6, the dependency boundary). It
+        // carries no uninterpreted option and no non-identifier name, so the door's pre-emption lets
+        // it through to the engine, where the fault occurs; the accessor-walk `contain` frame is the
+        // same seam applied a second time, defense-in-depth behind this and the pre-emptions.
+        let diagnostics = ingest(&decode_fault_set()).expect_err("a fault, not a schema");
         assert_eq!(
             diagnostics.iter().next().unwrap().kind(),
             DiagnosticKind::DependencyFault
         );
+    }
+
+    #[test]
+    fn a_non_identifier_package_is_refused_at_the_door() {
+        // The `package` reaches a filesystem path (`gen -o`) and a raw `#include` operand
+        // (`emit::views`); the door refuses any shape but a dotted identifier, so neither sink ever
+        // sees a `..`, a quote, whitespace, or an empty segment (the threat model's package boundary).
+        for package in [
+            "../../etc/x",
+            "x\"y",
+            "a b",
+            "a..b",
+            ".leading",
+            "trailing.",
+        ] {
+            let set = encode(vec![FileDescriptorProto {
+                name: Some("m.proto".to_owned()),
+                package: Some((*package).to_owned()),
+                syntax: Some("proto3".to_owned()),
+                message_type: vec![DescriptorProto {
+                    name: Some("M".to_owned()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }]);
+            let diagnostics = ingest(&set).expect_err("a non-identifier package is refused");
+            assert_eq!(
+                diagnostics.iter().next().unwrap().kind(),
+                DiagnosticKind::MalformedDescriptor,
+                "package {package:?}"
+            );
+        }
     }
 
     #[test]

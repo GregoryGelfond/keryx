@@ -16,7 +16,7 @@ fn tmp(name: &str) -> PathBuf {
 #[test]
 fn a_contained_engine_fault_exits_dependency_with_no_bug_notice() {
     let path = tmp("fault.binpb");
-    std::fs::write(&path, support::fault_provoking_set()).unwrap();
+    std::fs::write(&path, support::decode_fault_set()).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_keryx"))
         .arg("schema-facts")
         .arg(&path)

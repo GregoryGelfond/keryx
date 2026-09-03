@@ -54,21 +54,21 @@ pub fn try_compile_fixture(name: &str) -> Result<Vec<u8>, String> {
     Ok(compiler.encode_file_descriptor_set())
 }
 
-/// A hand-built `FileDescriptorSet` that drives a **real contained engine fault** through keryx's
-/// descriptor door — for the tests that exercise the containment seam end to end, not a synthetic
-/// `panic!`. It redefines `descriptor.proto`'s `MessageOptions` with a self-referential message
-/// field, and gives one message a 120-deep uninterpreted-option name path: the set decodes and the
-/// pool builds (the nesting is created by option navigation and encoded with no limit), but reading
-/// `options()` on the message re-decodes past prost's recursion limit and unwraps — a fault keryx
-/// contains at the accessor walk (`DependencyFault`). protoc/protox would never emit this, so it is
-/// built by hand rather than compiled from a fixture.
+/// A hand-built `FileDescriptorSet` that carries a deep **`uninterpreted_option`** — a message with a
+/// 120-deep option-name path. keryx refuses any `uninterpreted_option` at the door
+/// (`descriptor::pre_validate`): a compiled set has none (protoc/protox interpret and clear them),
+/// and an unresolved one drives the descriptor engine's *unbounded* text-format parse of its value —
+/// a stack-overflow **abort** containment cannot hold — so keryx pre-empts it as a clean
+/// `MalformedDescriptor` rather than letting it reach the engine. protoc/protox would never emit
+/// this, so it is built by hand rather than compiled from a fixture. For the tests that exercise the
+/// door's uninterpreted-option refusal.
 #[must_use]
-pub fn fault_provoking_set() -> Vec<u8> {
+pub fn uninterpreted_option_set() -> Vec<u8> {
     use prost::Message as _;
     use prost_types::uninterpreted_option::NamePart;
     use prost_types::{
-        DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
-        MessageOptions, UninterpretedOption,
+        DescriptorProto, FileDescriptorProto, FileDescriptorSet, MessageOptions,
+        UninterpretedOption,
     };
 
     const DEPTH: usize = 120;
@@ -83,29 +83,59 @@ pub fn fault_provoking_set() -> Vec<u8> {
         is_extension: false,
     });
     FileDescriptorSet {
+        file: vec![FileDescriptorProto {
+            name: Some("m.proto".to_owned()),
+            package: Some("my".to_owned()),
+            syntax: Some("proto3".to_owned()),
+            message_type: vec![DescriptorProto {
+                name: Some("M".to_owned()),
+                options: Some(MessageOptions {
+                    uninterpreted_option: vec![UninterpretedOption {
+                        name,
+                        positive_int_value: Some(1),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    }
+    .encode_to_vec()
+}
+
+/// A hand-built `FileDescriptorSet` that drives a **real contained engine fault** through keryx's
+/// descriptor door — for the tests that exercise the containment seam end to end, not a synthetic
+/// `panic!`. It redefines `descriptor.proto`'s `MessageOptions`, retyping field 1
+/// (`message_set_wire_format`) as a repeated `int32`, and sets that option to a scalar `true` on one
+/// message: the descriptor engine **panics decoding the options** during the pool build — a fault
+/// keryx contains at the *decode* (`DependencyFault`). It carries no `uninterpreted_option` and no
+/// non-identifier name, so it passes the door's pre-emption and reaches the engine, where the real
+/// fault occurs. protoc/protox would never emit this, so it is built by hand.
+#[must_use]
+pub fn decode_fault_set() -> Vec<u8> {
+    use prost::Message as _;
+    use prost_types::{
+        DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
+        MessageOptions,
+    };
+
+    FileDescriptorSet {
         file: vec![
             FileDescriptorProto {
                 name: Some("google/protobuf/descriptor.proto".to_owned()),
                 package: Some("google.protobuf".to_owned()),
+                syntax: Some("proto3".to_owned()),
                 message_type: vec![DescriptorProto {
                     name: Some("MessageOptions".to_owned()),
-                    field: vec![
-                        FieldDescriptorProto {
-                            name: Some("self_".to_owned()),
-                            number: Some(1000),
-                            label: Some(1),   // optional
-                            r#type: Some(11), // message
-                            type_name: Some(".google.protobuf.MessageOptions".to_owned()),
-                            ..Default::default()
-                        },
-                        FieldDescriptorProto {
-                            name: Some("x".to_owned()),
-                            number: Some(1001),
-                            label: Some(1),
-                            r#type: Some(5), // int32
-                            ..Default::default()
-                        },
-                    ],
+                    field: vec![FieldDescriptorProto {
+                        name: Some("message_set_wire_format".to_owned()),
+                        number: Some(1),
+                        label: Some(3),  // repeated
+                        r#type: Some(5), // int32
+                        ..Default::default()
+                    }],
                     ..Default::default()
                 }],
                 ..Default::default()
@@ -117,11 +147,7 @@ pub fn fault_provoking_set() -> Vec<u8> {
                 message_type: vec![DescriptorProto {
                     name: Some("M".to_owned()),
                     options: Some(MessageOptions {
-                        uninterpreted_option: vec![UninterpretedOption {
-                            name,
-                            positive_int_value: Some(1),
-                            ..Default::default()
-                        }],
+                        message_set_wire_format: Some(true),
                         ..Default::default()
                     }),
                     ..Default::default()

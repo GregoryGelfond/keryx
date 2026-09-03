@@ -29,6 +29,97 @@ impl FqName {
     }
 }
 
+/// keryx's bound on a package's dot-separated segment count. A package contributes its segments to
+/// the qualification prefix of every type it holds (§4.2), so an unbounded package depth would let a
+/// crafted schema drive `policy::qualify` past linear work — the qualifier prefix length, and thus
+/// the resolver's round count, is bounded by the nesting cap ([`super::RECURSION_LIMIT`]) *and* this.
+/// No real package approaches it; one deeper is refused at the door (`MalformedDescriptor`).
+pub(crate) const MAX_PACKAGE_SEGMENTS: usize = 64;
+
+/// A validated protobuf package — empty, or a dot-separated sequence of proto identifiers
+/// (`[A-Za-z_][A-Za-z0-9_]*`, e.g. `dispatch.v1`), within [`MAX_PACKAGE_SEGMENTS`]. Adversary-chosen
+/// at the descriptor door yet consumed by two sinks that each assume an identifier shape — the
+/// emitted `#include` operand (`emit::views`) and the CLI's per-package output path — so the shape is
+/// *represented* here: a `Package` is constructed only at the door ([`parse`], through
+/// `descriptor::pre_validate`, which refuses every other shape before a `Schema` is built), so no
+/// sink re-derives trust from a bare `String`. The leading-`.` package the engine panics on is one
+/// refused shape among these.
+///
+/// [`parse`]: Package::parse
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Package(String);
+
+impl Package {
+    /// Parse a package string into a `Package`, or the reason it is not one (§4.2): empty is a
+    /// package-less file (valid here; `policy` refuses it separately with a fix-it), otherwise every
+    /// dot-separated segment must be a proto identifier and the count must be within
+    /// [`MAX_PACKAGE_SEGMENTS`]. The one construction point — the door — so the type is a proof of
+    /// shape.
+    pub(crate) fn parse(text: &str) -> Result<Package, PackageProblem> {
+        if text.is_empty() {
+            return Ok(Package(String::new()));
+        }
+        let segments: Vec<&str> = text.split('.').collect();
+        if segments.len() > MAX_PACKAGE_SEGMENTS {
+            return Err(PackageProblem::TooDeep(segments.len()));
+        }
+        if let Some(segment) = segments.iter().find(|s| !is_proto_ident(s)) {
+            return Err(PackageProblem::Segment((*segment).to_owned()));
+        }
+        Ok(Package(text.to_owned()))
+    }
+
+    /// The package's dotted text — empty when the file declares none.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Whether the file declares no package.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// Why a package string is not a valid [`Package`] — carried to the door's `MalformedDescriptor`
+/// detail (`descriptor::pre_validate`); the model composes no diagnostics itself.
+#[derive(Debug)]
+pub(crate) enum PackageProblem {
+    /// A dot-separated segment is not a proto identifier — an empty segment (a leading, trailing, or
+    /// doubled `.`, the leading-`.` the engine panics on among them), or one carrying a character an
+    /// identifier cannot (`/`, `"`, whitespace), the shapes that reach the path and `#include` sinks.
+    Segment(String),
+    /// More dot-separated segments than [`MAX_PACKAGE_SEGMENTS`].
+    TooDeep(usize),
+}
+
+impl PackageProblem {
+    /// The diagnostic detail naming the refusal.
+    pub(crate) fn detail(&self) -> String {
+        match self {
+            PackageProblem::Segment(segment) => {
+                format!("package name segment {segment:?} is not a proto identifier")
+            }
+            PackageProblem::TooDeep(count) => format!(
+                "package has {count} dot-separated segments, beyond keryx's limit of {MAX_PACKAGE_SEGMENTS}"
+            ),
+        }
+    }
+}
+
+/// Whether `s` is a proto identifier `[A-Za-z_][A-Za-z0-9_]*` (§4.2) — the shape a package segment,
+/// and a declared message/enum/field/value name, must have (the reference protobuf grammar's
+/// `ident`). Read at the door by `descriptor::pre_validate`.
+pub(crate) fn is_proto_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c == '_' || c.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+    chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+}
+
 /// The syntax era a file declares (spec §5, §20). `#[non_exhaustive]` so a future
 /// edition is added as a variant, not a redesign — an `Edition(u32)` variant lands
 /// with the editions increment and its first consumer. Today only proto2/proto3 reach
@@ -247,8 +338,8 @@ pub enum AnnotationValue {
 pub struct File {
     /// The file's name (Appendix C `file/2`).
     pub name: String,
-    /// The file's package; empty when the file declares none.
-    pub package: String,
+    /// The file's [`Package`] — validated at the door; empty when the file declares none.
+    pub package: Package,
 }
 
 /// A message type — a sort (§4.1). Identity is `path`; `outer` is its lexical

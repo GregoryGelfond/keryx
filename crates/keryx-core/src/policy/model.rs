@@ -15,7 +15,7 @@
 
 use themelios_program::Name;
 
-use crate::descriptor::model::{FqName, MapKey, Openness, Scalar};
+use crate::descriptor::model::{FqName, MapKey, Openness, Package, Scalar};
 
 /// A field's emitted form (spec §4.1, §7): the ASP shape its predicate takes. Closed —
 /// the treatment classification (`ValueMapping`) rides beside it, never inside it. At
@@ -372,15 +372,17 @@ impl EnumValueMapping {
 /// fq-path order, `enums` in fq-path order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Unit {
-    pub(crate) package: String,
+    pub(crate) package: Package,
     pub(crate) sorts: Vec<SortMapping>,
     pub(crate) enums: Vec<EnumMapping>,
 }
 
 impl Unit {
-    /// The proto package this unit generates for.
+    /// The validated proto [`Package`] this unit generates for — carried, not re-derived, so a sink
+    /// (the `#include` operand, the CLI's output path) reads a proof of identifier shape, not a bare
+    /// string (the threat model's descriptor-door package boundary).
     #[must_use]
-    pub fn package(&self) -> &str {
+    pub fn package(&self) -> &Package {
         &self.package
     }
 
@@ -464,7 +466,7 @@ mod tests {
         EmitForm, EnumMapping, EnumValueMapping, FieldMapping, Mapping, ScalarTreatment,
         SortMapping, Totality, Unit, ValueMapping,
     };
-    use crate::descriptor::model::{FqName, MapKey, Openness, Scalar};
+    use crate::descriptor::model::{FqName, MapKey, Openness, Package, Scalar};
 
     fn name(text: &str) -> Name {
         Name::new(text).expect("test name is a valid identifier")
@@ -554,7 +556,7 @@ mod tests {
             }],
         };
         let unit = Unit {
-            package: "keryx.test".to_owned(),
+            package: Package::parse("keryx.test").expect("valid package"),
             sorts: vec![sort],
             enums: vec![enumeration],
         };
@@ -562,7 +564,7 @@ mod tests {
 
         assert_eq!(mapping.units().len(), 1);
         let unit = &mapping.units()[0];
-        assert_eq!(unit.package(), "keryx.test");
+        assert_eq!(unit.package().as_str(), "keryx.test");
         assert_eq!(unit.sorts().len(), 1);
         assert_eq!(unit.enums().len(), 1);
 

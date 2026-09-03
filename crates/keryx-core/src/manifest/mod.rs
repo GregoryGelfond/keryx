@@ -31,7 +31,7 @@ pub fn write(unit: &Unit, schema_hash: &str) -> String {
     let _ = writeln!(
         out,
         "schema-hash {schema_hash}  package {}  target clingo  profile -  shape -  keryx {}",
-        unit.package(),
+        unit.package().as_str(),
         env!("CARGO_PKG_VERSION"),
     );
     out.push_str(&records(unit));
@@ -252,7 +252,7 @@ mod tests {
     use themelios_program::Name;
 
     use super::{decision_note, declared, field_line, totality_word, write};
-    use crate::descriptor::model::{FqName, Openness, Scalar};
+    use crate::descriptor::model::{FqName, Openness, Package, Scalar};
     use crate::policy::model::{
         EmitForm, EnumMapping, EnumValueMapping, FieldMapping, ScalarTreatment, SortMapping,
         Totality, Unit, ValueMapping,
@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn write_includes_the_normalized_header() {
         let unit = Unit {
-            package: "keryx.t".to_owned(),
+            package: Package::parse("keryx.t").expect("valid package"),
             sorts: vec![],
             enums: vec![],
         };
@@ -350,7 +350,7 @@ mod tests {
             }],
         };
         let unit = Unit {
-            package: "keryx.t".to_owned(),
+            package: Package::parse("keryx.t").expect("valid package"),
             sorts: vec![sort],
             enums: vec![],
         };
@@ -378,7 +378,7 @@ mod tests {
             }],
         };
         let unit = Unit {
-            package: "keryx.t".to_owned(),
+            package: Package::parse("keryx.t").expect("valid package"),
             sorts: vec![],
             enums: vec![enumeration],
         };
@@ -417,7 +417,7 @@ mod tests {
             }],
         };
         let unit = Unit {
-            package: "keryx.t".to_owned(),
+            package: Package::parse("keryx.t").expect("valid package"),
             sorts: vec![sort],
             enums: vec![],
         };
@@ -475,7 +475,7 @@ mod tests {
             values: vec![],
         };
         let unit = Unit {
-            package: "keryx.t".to_owned(),
+            package: Package::parse("keryx.t").expect("valid package"),
             sorts: vec![sort],
             enums: vec![enumeration],
         };
@@ -499,7 +499,7 @@ mod tests {
             fields: vec![],
         };
         let unit = Unit {
-            package: "keryx.t".to_owned(),
+            package: Package::parse("keryx.t").expect("valid package"),
             sorts: vec![sort],
             enums: vec![],
         };

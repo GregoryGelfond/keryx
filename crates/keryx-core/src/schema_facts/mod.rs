@@ -50,7 +50,7 @@ fn statements(schema: &Schema) -> Result<Vec<WithProvenance<Statement>>, Diagnos
     for file in schema.files() {
         out.push(terms::fact(
             "file",
-            vec![terms::text(&file.name), terms::text(&file.package)],
+            vec![terms::text(&file.name), terms::text(file.package.as_str())],
         ));
     }
     for message in schema.messages() {

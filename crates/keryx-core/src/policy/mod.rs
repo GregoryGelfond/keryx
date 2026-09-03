@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use themelios_program::Name;
 
-use crate::descriptor::model::{Enum, FqName, Message, Schema};
+use crate::descriptor::model::{Enum, FqName, Message, Package, Schema};
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 
 /// Compute the [`Mapping`] for a schema (spec §21.3) — a pure, deterministic, unique
@@ -102,21 +102,26 @@ fn assemble(
     };
     // Every element's `file()` names a file `ingest` already populated into
     // `schema.files()`, so the `.get` below cannot miss on a well-formed `Schema`;
-    // `unwrap_or("")` is defensive, and its default also happens to coincide with the
-    // legitimate no-package case (a file that declares no `package`).
-    let package_of: BTreeMap<&str, &str> = schema
+    // `unwrap_or(&empty)` is defensive, and the empty `Package` also happens to coincide with the
+    // legitimate no-package case (a file that declares no `package`). The unit carries the validated
+    // `Package` straight from the file, so no `Unit` re-derives it from a bare string.
+    let empty = Package::default();
+    let package_of: BTreeMap<&str, &Package> = schema
         .files()
         .iter()
-        .map(|file| (file.name.as_str(), file.package.as_str()))
+        .map(|file| (file.name.as_str(), &file.package))
         .collect();
-    let mut units: BTreeMap<&str, (Vec<SortMapping>, Vec<EnumMapping>)> = BTreeMap::new();
+    let mut units: BTreeMap<&Package, (Vec<SortMapping>, Vec<EnumMapping>)> = BTreeMap::new();
     for message in schema.messages() {
-        let package = package_of.get(message.file()).copied().unwrap_or("");
+        let package = package_of.get(message.file()).copied().unwrap_or(&empty);
         let sort = build_sort(message, &sort_of, sorts)?;
         units.entry(package).or_default().0.push(sort);
     }
     for enumeration in schema.enums() {
-        let package = package_of.get(enumeration.file()).copied().unwrap_or("");
+        let package = package_of
+            .get(enumeration.file())
+            .copied()
+            .unwrap_or(&empty);
         let mapping = build_enum(enumeration, sorts)?;
         units.entry(package).or_default().1.push(mapping);
     }
@@ -124,7 +129,7 @@ fn assemble(
         units: units
             .into_iter()
             .map(|(package, (sorts, enums))| Unit {
-                package: package.to_owned(),
+                package: package.clone(),
                 sorts,
                 enums,
             })
@@ -258,7 +263,7 @@ fn unresolved_reference(path: &FqName) -> Diagnostics {
 mod tests {
     use super::map;
     use crate::descriptor::model::{
-        Field, FieldShape, File, FqName, Message, Presence, Scalar, Schema, ValueType,
+        Field, FieldShape, File, FqName, Message, Package, Presence, Scalar, Schema, ValueType,
     };
     use crate::diagnostics::DiagnosticKind;
 
@@ -283,7 +288,7 @@ mod tests {
         let schema = Schema {
             files: vec![File {
                 name: "m.proto".to_owned(),
-                package: "m".to_owned(),
+                package: Package::parse("m").expect("valid package"),
             }],
             messages: vec![Message {
                 path: FqName::new("m.Clash"),

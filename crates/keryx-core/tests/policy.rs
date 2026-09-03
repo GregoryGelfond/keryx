@@ -383,7 +383,7 @@ fn map_is_pure_and_deterministically_ordered() {
 
     assert_eq!(first.units().len(), 1);
     let unit = &first.units()[0];
-    assert_eq!(unit.package(), "keryx.p3");
+    assert_eq!(unit.package().as_str(), "keryx.p3");
 
     let sort_paths: Vec<&str> = unit.sorts().iter().map(|s| s.proto().as_str()).collect();
     assert_eq!(sort_paths, vec!["keryx.p3.Detail", "keryx.p3.Reading"]);
