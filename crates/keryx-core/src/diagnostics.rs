@@ -154,6 +154,14 @@ pub enum DiagnosticKind {
     /// `UncompilableSource`). So protox reads only within the include roots the operator grants (the
     /// source door's confidentiality). Named at the offending import's locus.
     SourceOutsideRoot,
+    /// A `.proto` compile pulls in more files (root plus transitive imports) than keryx's source door
+    /// admits — refused *before* protox's **recursive** import resolution (`add_import` → `add_import`,
+    /// one live parser frame per level) descends deep enough to overflow the stack and abort. Like
+    /// `SourceTooDeep`, a bound keryx imposes because the compiler's recursion is unbounded; the
+    /// import-chain length is bounded by the file count, so the count is what the resolver caps. Named
+    /// at the whole-input locus. Defense-in-depth with the same residual as `SourceTooDeep` (a
+    /// sub-standard thread stack), retired when protox bounds its own import recursion.
+    SourceImportGraphTooLarge,
 }
 
 impl DiagnosticKind {
@@ -174,6 +182,7 @@ impl DiagnosticKind {
             DiagnosticKind::DependencyFault => "dependency_fault",
             DiagnosticKind::SourceTooDeep => "source_too_deep",
             DiagnosticKind::SourceOutsideRoot => "source_outside_root",
+            DiagnosticKind::SourceImportGraphTooLarge => "source_import_graph_too_large",
         }
     }
 }
@@ -466,6 +475,10 @@ mod tests {
             DiagnosticKind::SourceOutsideRoot.as_str(),
             "source_outside_root"
         );
+        assert_eq!(
+            DiagnosticKind::SourceImportGraphTooLarge.as_str(),
+            "source_import_graph_too_large"
+        );
         // A new kind must be added above: this exhaustive match (no wildcard,
         // allowed in-crate despite #[non_exhaustive]) fails to compile otherwise.
         match DiagnosticKind::UnreadableDescriptorSet {
@@ -481,7 +494,8 @@ mod tests {
             | DiagnosticKind::AmbiguousConstant
             | DiagnosticKind::DependencyFault
             | DiagnosticKind::SourceTooDeep
-            | DiagnosticKind::SourceOutsideRoot => {}
+            | DiagnosticKind::SourceOutsideRoot
+            | DiagnosticKind::SourceImportGraphTooLarge => {}
         }
     }
 
