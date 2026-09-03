@@ -19,9 +19,9 @@ themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", r
 # Pinned exact (`=`): the descriptor door's pre-emption catalogue is a statement
 # about this crate's *internals* at exactly this version — which shapes it panics
 # on (a leading-dot name), its `options()` lazy decode, its unbounded text-format
-# parse of an option aggregate — so a silent patch bump could invalidate it. As
-# the estate pins a coupled parser/formatter exact (themelios-syntax's `rowan`,
-# morphe's `ruff`); the pre-empt catalogue is re-owed on any deliberate bump.
+# parse of an option aggregate — so a silent patch bump could invalidate it, as
+# themelios pins its coupled parser `rowan` exact; the pre-empt catalogue is
+# re-owed on any deliberate bump.
 prost-reflect = "=0.16.5"
 
 # The pure-Rust `.proto` compiler — the `keryx gen` front door (§20, spec §31 M1).

@@ -111,9 +111,9 @@ pub enum DiagnosticKind {
     /// Raised in four cases (§6). Three are near-impossible on a well-formed `Schema` but
     /// checked rather than assumed: (1) a schema element's lowered name is not a themelios
     /// identifier — after §4.2/§7.4 lowering, a name that cannot be an ASP predicate/constant
-    /// symbol; (2) a field's value type references a message or enum path absent from the
-    /// schema (unreachable from `ingest`, which never leaves a dangling reference, but the
-    /// lookup is checked, not assumed); and (3) an element's declaring file is absent from the
+    /// symbol; (2) a message or enum path has no entry in the resolved sort table — a field's
+    /// value-type referent absent from the schema, or an element's own entry (both unreachable
+    /// from a well-formed `Schema`, the lookup checked not assumed); and (3) an element's declaring file is absent from the
     /// schema's file list (`policy::missing_file`; `ingest` populates every subject file first,
     /// so unreachable from it, but checked not assumed). The fourth is genuinely reachable:
     /// (4) two distinct sorts, or two distinct fields on one message, collapse to one

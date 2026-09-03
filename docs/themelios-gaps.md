@@ -23,8 +23,8 @@ change, and the status (open / fixed-in `<rev>` / adopted).
   no free-standing `%` block or inline `%` prose, and canonical `render` is
   provenance-blind. keryx's §13.1 honorary signature is a free-standing comment
   block, and the worked stories show inline `%` prose in generated `.lp`. Needed:
-  a rendering path for plain `%` comments. Status: open (surfaced at the founding
-  design review; the emit shape is decided at the `emit` increment).
+  a rendering path for plain `%` comments. Status: open (surfaced in the founding
+  design; the emit shape is decided at the `emit` increment).
 
   **Resolution in `gen` (`emit::core`/`emit::views`).** The §13.1 honorary
   signature ships as documented `#defined name/arity.` declarations, one per
@@ -66,5 +66,5 @@ change, and the status (open / fixed-in `<rev>` / adopted).
   ("nothing is written after the `%!`, so … a marker space would accrue on each pass"). keryx's
   generated `core.lp`/`views.lp` are thus `%!sort batch/1`, which reads cramped. Needed:
   `render_docs` emits `%! ` (one space) and the raise strips a single leading space after `%!`,
-  preserving the fixpoint. keryx's signature goldens change on adoption. Status: open (surfaced at
-  the gen review, 2026-09-03; to be done in a dedicated themelios session).
+  preserving the fixpoint. keryx's signature goldens change on adoption. Status: open (surfaced
+  during the gen increment, 2026-09-03; to be done in a dedicated themelios session).

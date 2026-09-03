@@ -243,20 +243,24 @@ fn build_enum(
     })
 }
 
-/// A reference to a type absent from the schema (§6 — total: a well-formed `Schema` from
-/// `ingest` never triggers it, but `map` stays total rather than panicking on a lookup miss).
+/// A message or enum path with no entry in the resolved sort table (§6 — total: a well-formed
+/// `Schema` from `ingest` never triggers it, but `map` stays total rather than panicking on a lookup
+/// miss). Two lookups miss into this: a field's value-type referent absent from the schema (the
+/// `sort_of` closure), and an element's own entry absent from `qualify::resolve`'s output
+/// (`build_sort`/`build_enum`) — the detail names the mechanism both share, not a "reference" the
+/// self-lookup does not make. `UnmappableName` at the path's locus.
 fn unresolved_reference(path: &FqName) -> Diagnostics {
     Diagnostics::from(Diagnostic::new(
         DiagnosticKind::UnmappableName,
         Locus::at(path.as_str()),
-        format!("`{}` references a type not in the schema", path.as_str()),
+        format!("`{}` has no resolved sort entry", path.as_str()),
     ))
 }
 
 /// An element whose declaring `file` is absent from `schema.files()` (§6 — total: `ingest` pushes a
 /// `File` for every subject file before its elements, so a well-formed `Schema` never triggers it, but
-/// the lookup is checked, not assumed). `UnmappableName` at the element's locus, as the sort miss;
-/// distinct prose, since the element references nothing — its *file* is what is missing.
+/// the lookup is checked, not assumed). `UnmappableName` at the element's locus; the absence named is
+/// the *file*, distinct from a missing sort entry (`unresolved_reference`) or an unmappable name.
 fn missing_file(path: &FqName, file: &str) -> Diagnostics {
     Diagnostics::from(Diagnostic::new(
         DiagnosticKind::UnmappableName,
