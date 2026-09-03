@@ -36,12 +36,10 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 ///
 /// # Errors
 ///
-/// [`Diagnostics`] when a subject file declares no `package` (`PackagelessFile`), when a lowered
-/// name is not a valid ASP identifier, or a field's value type references a message/enum path
-/// absent from the schema (both near-impossible on a well-formed `Schema`; checked rather than
-/// assumed, §6) — and, reachably from valid input, when two distinct sorts collapse to one
-/// predicate qualification cannot separate (§4.2), or two values of one enum lower to a single
-/// constant (§7.4).
+/// [`Diagnostics`] when a subject file declares no `package` (`PackagelessFile`); when a schema name
+/// cannot map to an ASP symbol (`UnmappableName` — its four cases, three near-impossible on a
+/// well-formed `Schema` and the sort/field collision reachable, enumerated in that kind's doc); or
+/// when two values of one enum lower to a single constant (`AmbiguousConstant`, §7.4).
 pub fn map(schema: &Schema) -> Result<Mapping, Diagnostics> {
     reject_packageless(schema)?;
     let sorts = qualify::resolve(&names::sort_table(schema)?)?; // path -> resolved name + decisions
@@ -89,7 +87,7 @@ fn assemble(
         sorts
             .get(path.as_str())
             .map(|q| q.name.clone())
-            .ok_or_else(|| unresolved_reference(path))
+            .ok_or_else(|| missing_sort_entry(path))
     };
     // Every element's `file()` names a file `ingest` already populated into `schema.files()`, so the
     // `.get` below cannot miss on a well-formed `Schema`; a miss is diagnosed (`missing_file`, at the
@@ -155,12 +153,12 @@ fn build_sort(
     if let Some(collision) = first_field_collision(&fields) {
         return Err(field_collision(collision));
     }
-    // One lookup, one failure posture: a missing entry is `unresolved_reference` (§6), never a
+    // One lookup, one failure posture: a missing entry is `missing_sort_entry` (§6), never a
     // silent default that could drop a real qualifier/escape decision. The `sort_of` closure
     // stays for this message's field referents, which resolve *other* sorts' paths.
     let resolved = sorts
         .get(message.path().as_str())
-        .ok_or_else(|| unresolved_reference(message.path()))?;
+        .ok_or_else(|| missing_sort_entry(message.path()))?;
     Ok(SortMapping {
         proto: message.path().clone(),
         predicate: resolved.name.clone(),
@@ -231,7 +229,7 @@ fn build_enum(
     }
     let resolved = sorts
         .get(enumeration.path().as_str())
-        .ok_or_else(|| unresolved_reference(enumeration.path()))?;
+        .ok_or_else(|| missing_sort_entry(enumeration.path()))?;
     Ok(EnumMapping {
         proto: enumeration.path().clone(),
         predicate: resolved.name.clone(),
@@ -247,9 +245,9 @@ fn build_enum(
 /// `Schema` from `ingest` never triggers it, but `map` stays total rather than panicking on a lookup
 /// miss). Two lookups miss into this: a field's value-type referent absent from the schema (the
 /// `sort_of` closure), and an element's own entry absent from `qualify::resolve`'s output
-/// (`build_sort`/`build_enum`) — the detail names the mechanism both share, not a "reference" the
-/// self-lookup does not make. `UnmappableName` at the path's locus.
-fn unresolved_reference(path: &FqName) -> Diagnostics {
+/// (`build_sort`/`build_enum`). `UnmappableName` at the path's locus — for the referent lookup, the
+/// referent's; for the self-lookup, the element's own.
+fn missing_sort_entry(path: &FqName) -> Diagnostics {
     Diagnostics::from(Diagnostic::new(
         DiagnosticKind::UnmappableName,
         Locus::at(path.as_str()),
@@ -260,7 +258,7 @@ fn unresolved_reference(path: &FqName) -> Diagnostics {
 /// An element whose declaring `file` is absent from `schema.files()` (§6 — total: `ingest` pushes a
 /// `File` for every subject file before its elements, so a well-formed `Schema` never triggers it, but
 /// the lookup is checked, not assumed). `UnmappableName` at the element's locus; the absence named is
-/// the *file*, distinct from a missing sort entry (`unresolved_reference`) or an unmappable name.
+/// the *file*, not a sort entry (`missing_sort_entry`) or a lowered name (`names::identifier`).
 fn missing_file(path: &FqName, file: &str) -> Diagnostics {
     Diagnostics::from(Diagnostic::new(
         DiagnosticKind::UnmappableName,
@@ -348,5 +346,44 @@ mod tests {
         let diagnostic = error.iter().next().expect("one diagnostic");
         assert_eq!(diagnostic.kind(), DiagnosticKind::UnmappableName);
         assert_eq!(diagnostic.locus().path(), Some("m.M"));
+    }
+
+    #[test]
+    fn a_dangling_field_referent_is_diagnosed_at_the_referent() {
+        // A field whose value type names a message the schema lacks: the referent lookup (`sort_of`)
+        // misses and composes `missing_sort_entry` at the *referent's* locus (`UnmappableName`) — the
+        // locus the kind's contract promises for this case. Unreachable through `ingest` (which never
+        // leaves a dangling reference); a hand-built `Schema` reaches it.
+        let schema = Schema {
+            files: vec![File {
+                name: "m.proto".to_owned(),
+                package: Package::parse("m").expect("valid package"),
+            }],
+            messages: vec![Message {
+                path: FqName::new("m.M"),
+                file: "m.proto".to_owned(),
+                outer: None,
+                fields: vec![Field {
+                    number: 1,
+                    name: "f".to_owned(),
+                    path: FqName::new("m.M.f"),
+                    shape: FieldShape::Singular {
+                        value: ValueType::Message(FqName::new("m.Absent")),
+                        presence: Presence::Implicit,
+                    },
+                    options: Vec::new(),
+                    doc: None,
+                }],
+                oneofs: Vec::new(),
+                options: Vec::new(),
+                doc: None,
+                recursive: false,
+            }],
+            enums: Vec::new(),
+        };
+        let error = map(&schema).expect_err("a dangling field referent is diagnosed");
+        let diagnostic = error.iter().next().expect("one diagnostic");
+        assert_eq!(diagnostic.kind(), DiagnosticKind::UnmappableName);
+        assert_eq!(diagnostic.locus().path(), Some("m.Absent"));
     }
 }

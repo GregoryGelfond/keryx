@@ -121,7 +121,8 @@ pub enum DiagnosticKind {
     /// `lower_snake`-collapse to the same string (e.g. sibling messages `Bar` and `Bar_`, both
     /// `bar`, since `lower_snake` trims a trailing `_` and collapses `_`-runs). Qualification is
     /// the injectivity backstop: rather than emit a non-injective map it diagnoses. Names the
-    /// offending (or first offending) element's, or the referencing field's, locus.
+    /// offending (or first offending) element's locus; for an absent field referent, the referent
+    /// path's.
     UnmappableName,
     /// Two values of one enum lower to the same ASP constant (§7.4) — a within-enum
     /// collision that survives the prefix-strip fallback (e.g. names differing only in
