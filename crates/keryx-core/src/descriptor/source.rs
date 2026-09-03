@@ -182,9 +182,10 @@ fn max_nesting_depth(source: &str) -> usize {
     max
 }
 
-/// The first file keryx's resolver refused, recovered by [`compile`] to emit a clean keryx diagnostic
-/// — the sentinel `protox::Error` the resolver returns to halt the compile would otherwise surface as
-/// a generic compile error.
+/// The first refusal keryx's resolver recorded — an over-deep file, an escaping import, or an
+/// over-large import graph — recovered by [`compile`] to emit a clean keryx diagnostic, since the
+/// sentinel `protox::Error` the resolver returns to halt the compile would otherwise surface as a
+/// generic compile error.
 enum Refusal {
     TooDeep { name: String, depth: usize },
     Outside { name: String },
@@ -256,11 +257,13 @@ impl FileResolver for RootedResolver {
             });
             return Err(outside_root_error(name));
         }
-        // Count every confined user file the compile opens (root or transitive import). protox
+        // Count every confined user file the compile reaches (root or transitive import). protox
         // descends into a file's imports by recursion, so an over-long chain would overflow; the chain
         // length is bounded by the file count, refused here before the recursion reaches abort depth.
         // WKTs and the option registry fall through above (they never confine), so only user files
-        // count, and each distinct file is opened once (protox skips an already-imported file).
+        // count; each distinct file counts once (protox skips an already-imported file), and a
+        // present-but-unreadable file counts before falling through as not-found below — an
+        // over-count, always safe for the bound.
         let opened = self.opened.get() + 1;
         self.opened.set(opened);
         if opened > MAX_IMPORT_FILES {

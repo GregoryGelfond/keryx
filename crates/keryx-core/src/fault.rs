@@ -2,8 +2,9 @@
 //! unforeseen unwinding fault in foreign code on a foreign-input path becomes a typed
 //! [`DiagnosticKind::DependencyFault`] value rather than unwinding into keryx's caller. keryx's own
 //! logic stays total by construction (architecture §6); this seam holds only what crosses into code
-//! keryx does not own — today, prost-reflect decoding and walking a descriptor set (the source door
-//! extends it as it lands). The split
+//! keryx does not own — today the prost-types pre-read, prost-reflect decoding and walking a
+//! descriptor set, and protox compiling `.proto` source (the payload and `.lp` doors extend it as
+//! they land). The split
 //! is asymmetric: a keryx bug stays a panic (the CLI maps it to `Internal`), an upstream fault
 //! becomes a value. A thread-local flag ([`is_containing`]) records whether a containment frame is
 //! live, so a consumer's panic hook may stay quiet for a fault keryx will return as a value.

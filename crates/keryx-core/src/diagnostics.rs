@@ -23,11 +23,11 @@ pub enum Locus {
     /// The whole-input locus — no finer path than the descriptor set itself.
     #[default]
     Whole,
-    /// A fully-qualified proto path (e.g. `dispatch.v1.Shipment.tags`), or a file's
-    /// name for a source-compile, editions, or packageless failure. The path may be
-    /// empty — a caller that
-    /// opened an empty spec path (`keryx gen ""`) locates the failure at that path;
-    /// it is still a located diagnostic, distinct from `Whole`.
+    /// A fully-qualified proto path (e.g. `dispatch.v1.Shipment.tags`), or a file's (or
+    /// import's) name where the failure has no finer path than the file (a source compile,
+    /// editions, a packageless file, a pre-read refusal, an over-deep or escaping source). The
+    /// path may be empty — a caller that opened an empty spec path (`keryx gen ""`) locates the
+    /// failure at that path; it is still a located diagnostic, distinct from `Whole`.
     At(String),
 }
 
@@ -108,14 +108,16 @@ pub enum DiagnosticKind {
     /// emit for — the generated `.lp`/manifest files would be hidden dotfiles. Named
     /// at the offending file's locus (§6); a schema property, refused before any output.
     PackagelessFile,
-    /// Raised in three cases (§6). Two are near-impossible on a well-formed `Schema` but
+    /// Raised in four cases (§6). Three are near-impossible on a well-formed `Schema` but
     /// checked rather than assumed: (1) a schema element's lowered name is not a themelios
     /// identifier — after §4.2/§7.4 lowering, a name that cannot be an ASP predicate/constant
-    /// symbol; and (2) a field's value type references a message or enum path absent from the
+    /// symbol; (2) a field's value type references a message or enum path absent from the
     /// schema (unreachable from `ingest`, which never leaves a dangling reference, but the
-    /// lookup is checked, not assumed). The third is genuinely reachable: (3) two distinct
-    /// sorts, or two distinct fields on one message, collapse to one predicate that
-    /// qualification (§4.2) cannot separate — their base names and every proto-path qualifier
+    /// lookup is checked, not assumed); and (3) an element's declaring file is absent from the
+    /// schema's file list (`policy::missing_file`; `ingest` populates every subject file first,
+    /// so unreachable from it, but checked not assumed). The fourth is genuinely reachable:
+    /// (4) two distinct sorts, or two distinct fields on one message, collapse to one
+    /// predicate that qualification (§4.2) cannot separate — their base names and every proto-path qualifier
     /// `lower_snake`-collapse to the same string (e.g. sibling messages `Bar` and `Bar_`, both
     /// `bar`, since `lower_snake` trims a trailing `_` and collapses `_`-runs). Qualification is
     /// the injectivity backstop: rather than emit a non-injective map it diagnoses. Names the
@@ -131,8 +133,8 @@ pub enum DiagnosticKind {
     AmbiguousConstant,
     /// A dependency faulted on a foreign-input path and keryx contained the unwind (the threat
     /// model's dependency boundary): an unforeseen panic in foreign code — the descriptor engine
-    /// decoding or walking a set — becomes this value at keryx's foreign-fault containment seam,
-    /// rather than unwinding into keryx's caller. Distinct from a keryx bug,
+    /// decoding or walking a set, or protox compiling `.proto` source — becomes this value at keryx's
+    /// foreign-fault containment seam, rather than unwinding into keryx's caller. Distinct from a keryx bug,
     /// which stays a panic and is reported by the CLI as `Exit::Internal` ("a bug in keryx"):
     /// keryx-core stays total by construction and mints no library "internal" kind of its own (§6).
     /// The split is asymmetric — a keryx bug panics, an upstream fault is a value — and it carries

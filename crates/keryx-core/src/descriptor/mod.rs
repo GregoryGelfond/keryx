@@ -192,7 +192,8 @@ fn pre_validate(bytes: &[u8]) -> Option<Diagnostics> {
     Diagnostics::collect(refusals)
 }
 
-/// A `MalformedDescriptor` at a file's locus — the pre-read's one refusal shape.
+/// A `MalformedDescriptor` at a file's locus — the refusal shape of the pre-read and of the walk's
+/// package re-derivation.
 fn malformed(file: &str, detail: impl Into<String>) -> Diagnostic {
     Diagnostic::new(
         DiagnosticKind::MalformedDescriptor,

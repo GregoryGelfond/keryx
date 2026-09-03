@@ -92,11 +92,11 @@ fn assemble(
             .ok_or_else(|| unresolved_reference(path))
     };
     // Every element's `file()` names a file `ingest` already populated into `schema.files()`, so the
-    // `.get` below cannot miss on a well-formed `Schema`; a miss is diagnosed at the element's locus
-    // — the one failure posture `build_sort` uses for a missing sort — never mapped to a silent empty
-    // `Package`, which is a *valid* value ("no package") and would slip a hidden dotfile past
-    // `reject_packageless`. The unit carries the validated `Package` straight from the file, so no
-    // `Unit` re-derives it from a bare string.
+    // `.get` below cannot miss on a well-formed `Schema`; a miss is diagnosed (`missing_file`, at the
+    // element's locus, the same `UnmappableName` posture `build_sort` uses for a missing sort) — never
+    // mapped to a silent empty `Package`, which is a *valid* value ("no package") and would slip a
+    // hidden dotfile past `reject_packageless`. The unit carries the validated `Package` straight from
+    // the file, so no `Unit` re-derives it from a bare string.
     let package_of: BTreeMap<&str, &Package> = schema
         .files()
         .iter()
@@ -107,7 +107,7 @@ fn assemble(
         let package = package_of
             .get(message.file())
             .copied()
-            .ok_or_else(|| unresolved_reference(message.path()))?;
+            .ok_or_else(|| missing_file(message.path(), message.file()))?;
         let sort = build_sort(message, &sort_of, sorts)?;
         units.entry(package).or_default().0.push(sort);
     }
@@ -115,7 +115,7 @@ fn assemble(
         let package = package_of
             .get(enumeration.file())
             .copied()
-            .ok_or_else(|| unresolved_reference(enumeration.path()))?;
+            .ok_or_else(|| missing_file(enumeration.path(), enumeration.file()))?;
         let mapping = build_enum(enumeration, sorts)?;
         units.entry(package).or_default().1.push(mapping);
     }
@@ -253,6 +253,21 @@ fn unresolved_reference(path: &FqName) -> Diagnostics {
     ))
 }
 
+/// An element whose declaring `file` is absent from `schema.files()` (§6 — total: `ingest` pushes a
+/// `File` for every subject file before its elements, so a well-formed `Schema` never triggers it, but
+/// the lookup is checked, not assumed). `UnmappableName` at the element's locus, as the sort miss;
+/// distinct prose, since the element references nothing — its *file* is what is missing.
+fn missing_file(path: &FqName, file: &str) -> Diagnostics {
+    Diagnostics::from(Diagnostic::new(
+        DiagnosticKind::UnmappableName,
+        Locus::at(path.as_str()),
+        format!(
+            "`{}` is declared in `{file}`, which is not in the schema",
+            path.as_str()
+        ),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::map;
@@ -302,5 +317,32 @@ mod tests {
             error.iter().next().unwrap().kind(),
             DiagnosticKind::UnmappableName
         );
+    }
+
+    #[test]
+    fn an_element_whose_file_is_absent_is_diagnosed_not_defaulted() {
+        // The package lookup's can't-happen miss — an element declaring a file absent from the
+        // schema's file list — is diagnosed at the element's locus (`missing_file`, `UnmappableName`),
+        // never mapped to an empty `Package` that would slip a hidden dotfile past `reject_packageless`.
+        // `ingest` cannot produce this (it populates every subject file first); a hand-built `Schema`
+        // reaches the branch, as the crate tests its other can't-happen guards.
+        let schema = Schema {
+            files: Vec::new(), // no file list — the message's `file()` resolves to nothing
+            messages: vec![Message {
+                path: FqName::new("m.M"),
+                file: "m.proto".to_owned(),
+                outer: None,
+                fields: Vec::new(),
+                oneofs: Vec::new(),
+                options: Vec::new(),
+                doc: None,
+                recursive: false,
+            }],
+            enums: Vec::new(),
+        };
+        let error = map(&schema).expect_err("an element with an absent file is diagnosed");
+        let diagnostic = error.iter().next().expect("one diagnostic");
+        assert_eq!(diagnostic.kind(), DiagnosticKind::UnmappableName);
+        assert_eq!(diagnostic.locus().path(), Some("m.M"));
     }
 }

@@ -6,8 +6,8 @@
 //! backstopping the rest. An in-root import resolves.
 //!
 //! (WKT/registry *shadowing* — a user file named like a well-known type *inside* a root — is a
-//! namespace-precedence question, not an escape; it is carried to the security review, not tested as
-//! closed here.)
+//! namespace-precedence question, not an escape: the threat model's source door records why it is
+//! closed for confidentiality — a shadow substitutes in-root content only — and is not tested here.)
 
 use std::path::{Path, PathBuf};
 
