@@ -792,4 +792,59 @@ mod tests {
             DiagnosticKind::MalformedDescriptor
         );
     }
+
+    #[test]
+    fn a_non_key_map_key_is_a_diagnostic_not_a_panic() {
+        // A map entry with both fields present, but a key of a non-key kind (float): `map_shape`
+        // reaches past the missing-field check to `map_key`, which refuses a float/double/message/enum
+        // key with a clean `MalformedDescriptor`, not a panic (§6). protoc rejects this source; a
+        // directly-supplied descriptor set can carry it.
+        let set = encode(vec![FileDescriptorProto {
+            name: Some("m.proto".to_owned()),
+            package: Some("p".to_owned()),
+            syntax: Some("proto3".to_owned()),
+            message_type: vec![DescriptorProto {
+                name: Some("M".to_owned()),
+                field: vec![FieldDescriptorProto {
+                    name: Some("m".to_owned()),
+                    number: Some(1),
+                    label: Some(3),   // repeated
+                    r#type: Some(11), // message
+                    type_name: Some(".p.M.MEntry".to_owned()),
+                    ..Default::default()
+                }],
+                nested_type: vec![DescriptorProto {
+                    name: Some("MEntry".to_owned()),
+                    field: vec![
+                        FieldDescriptorProto {
+                            name: Some("key".to_owned()),
+                            number: Some(1),
+                            label: Some(1),
+                            r#type: Some(2), // float — not a valid map key
+                            ..Default::default()
+                        },
+                        FieldDescriptorProto {
+                            name: Some("value".to_owned()),
+                            number: Some(2),
+                            label: Some(1),
+                            r#type: Some(9), // string
+                            ..Default::default()
+                        },
+                    ],
+                    options: Some(MessageOptions {
+                        map_entry: Some(true),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]);
+        let diagnostics = ingest(&set).expect_err("a non-key map key is refused");
+        assert_eq!(
+            diagnostics.iter().next().unwrap().kind(),
+            DiagnosticKind::MalformedDescriptor
+        );
+    }
 }
