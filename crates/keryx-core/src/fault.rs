@@ -38,7 +38,10 @@ pub fn is_containing() -> bool {
 /// # Precondition (discharged per call site)
 /// `call` captures no state observed after a panic, **and** the dependency it calls holds no
 /// process-global mutable state a panic could leave inconsistent — only then is the
-/// `AssertUnwindSafe` sound. Each call site states its discharge in one line.
+/// `AssertUnwindSafe` sound. And `call`'s own keryx-side logic must itself be **total**: a keryx
+/// panic inside the frame is attributed to `dependency` (and a hook consulting [`is_containing`]
+/// stays silent for it), so a frame enclosing keryx logic states that it holds no `unwrap`/`expect`
+/// of its own. Each call site states its discharge in one line.
 pub(crate) fn contain<T>(
     dependency: &str,
     operation: &str,

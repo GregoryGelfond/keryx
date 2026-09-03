@@ -272,6 +272,8 @@ version = "0.1.0"
 name = "keryx-test-support"
 version = "0.1.0"
 dependencies = [
+ "prost",
+ "prost-types",
  "protox",
 ]
 

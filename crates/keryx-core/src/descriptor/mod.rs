@@ -109,8 +109,9 @@ pub(crate) const EDITIONS_UNSUPPORTED: &str = "editions (edition 2023+) are not 
 /// foreseeable shapes by pre-emption, the unforeseen by containment — not by masking a panic. A set
 /// that does not decode at all is the engine's own `UnreadableDescriptorSet`.
 fn decode(bytes: &[u8]) -> Result<DescriptorPool, Diagnostics> {
-    // The pre-read: the closure borrows only `bytes`, and prost-types' decode holds no process-global
-    // mutable state a panic could leave inconsistent, so the `AssertUnwindSafe` is sound.
+    // The pre-read: the closure borrows only `bytes`; prost-types' decode holds no process-global
+    // mutable state a panic could leave inconsistent, and `pre_validate`'s own logic is total (no
+    // `unwrap`/`expect`), so a fault here is prost-types', not keryx's — the `AssertUnwindSafe` is sound.
     if let Some(diagnostics) =
         crate::fault::contain("prost-types", "inspecting the descriptor set", || {
             pre_validate(bytes)
@@ -422,10 +423,11 @@ fn build_enum_value(value: &EnumValueDescriptor) -> Result<EnumValue, Diagnostic
 
 #[cfg(test)]
 mod tests {
+    use keryx_test_support::fault_provoking_set;
     use prost::Message as _;
     use prost_types::{
         DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
-        MessageOptions, UninterpretedOption, uninterpreted_option::NamePart,
+        MessageOptions,
     };
 
     use super::ingest;
@@ -435,76 +437,12 @@ mod tests {
         FileDescriptorSet { file: files }.encode_to_vec()
     }
 
-    /// A set redefining `descriptor.proto`'s `MessageOptions` with a self-referential message field,
-    /// and a message whose options carry a `depth`-deep uninterpreted-option name path. The set
-    /// decodes and the pool builds (the nesting is created by option navigation and encoded with no
-    /// limit); reading `options()` on the message re-decodes past prost's recursion limit and unwraps
-    /// — an engine fault at the accessor *walk*, which the walk's containment turns into a value.
-    fn deep_option_set(depth: usize) -> Vec<u8> {
-        let mut name: Vec<NamePart> = (0..depth)
-            .map(|_| NamePart {
-                name_part: "self_".to_owned(),
-                is_extension: false,
-            })
-            .collect();
-        name.push(NamePart {
-            name_part: "x".to_owned(),
-            is_extension: false,
-        });
-        encode(vec![
-            FileDescriptorProto {
-                name: Some("google/protobuf/descriptor.proto".to_owned()),
-                package: Some("google.protobuf".to_owned()),
-                message_type: vec![DescriptorProto {
-                    name: Some("MessageOptions".to_owned()),
-                    field: vec![
-                        FieldDescriptorProto {
-                            name: Some("self_".to_owned()),
-                            number: Some(1000),
-                            label: Some(1),   // optional
-                            r#type: Some(11), // message
-                            type_name: Some(".google.protobuf.MessageOptions".to_owned()),
-                            ..Default::default()
-                        },
-                        FieldDescriptorProto {
-                            name: Some("x".to_owned()),
-                            number: Some(1001),
-                            label: Some(1),
-                            r#type: Some(5), // int32
-                            ..Default::default()
-                        },
-                    ],
-                    ..Default::default()
-                }],
-                ..Default::default()
-            },
-            FileDescriptorProto {
-                name: Some("m.proto".to_owned()),
-                package: Some("my".to_owned()),
-                dependency: vec!["google/protobuf/descriptor.proto".to_owned()],
-                message_type: vec![DescriptorProto {
-                    name: Some("M".to_owned()),
-                    options: Some(MessageOptions {
-                        uninterpreted_option: vec![UninterpretedOption {
-                            name,
-                            positive_int_value: Some(1),
-                            ..Default::default()
-                        }],
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                }],
-                ..Default::default()
-            },
-        ])
-    }
-
     #[test]
     fn an_unforeseen_engine_fault_at_the_walk_is_a_dependency_fault() {
         // A real engine fault through `ingest`, at the accessor walk (`options()` is a lazy decode
         // past prost's recursion limit): contained as a `DependencyFault`, not a panic escaping as a
         // keryx bug — totality across the walk (§6, the dependency boundary).
-        let diagnostics = ingest(&deep_option_set(120)).expect_err("a fault, not a schema");
+        let diagnostics = ingest(&fault_provoking_set()).expect_err("a fault, not a schema");
         let diagnostic = diagnostics.iter().next().expect("one diagnostic");
         assert_eq!(diagnostic.kind(), DiagnosticKind::DependencyFault);
         assert!(

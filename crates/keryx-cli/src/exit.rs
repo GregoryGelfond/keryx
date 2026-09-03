@@ -96,31 +96,69 @@ fn panic_detail(info: &dyn std::fmt::Display, detailed: bool) -> String {
     }
 }
 
+/// The panic report line the hook writes, or `None` when a `fault::contain` frame is live
+/// (`containing`) and no backtrace was requested — a contained fault is keryx-core's to return as a
+/// `DependencyFault` value, which the CLI renders, so by default the hook stays silent rather than
+/// adding a false "bug in keryx" line (and, under `json`, a second array for one event). Under
+/// `RUST_BACKTRACE` (`detailed`), a contained fault still emits its **location and backtrace** — which
+/// the returned diagnostic's detail (the payload message alone) lacks and which the operator asked
+/// for — framed as a **dependency** fault, never a keryx bug, a debugging aid opted into. A genuine
+/// keryx bug — no contain frame — always yields the notice: a calm line by default, the panic's
+/// location/backtrace under `RUST_BACKTRACE` (`panic_detail`), framed as a one-element wire array
+/// (kind `internal`) under `json` so it does not break a consumer's parser. Pure — the wiring that
+/// passes the live flag is held by an end-to-end test (`tests/`), not this function.
+fn hook_report(
+    json: bool,
+    info: &dyn std::fmt::Display,
+    detailed: bool,
+    containing: bool,
+) -> Option<String> {
+    let (class, detail) = if containing {
+        if !detailed {
+            return None;
+        }
+        (
+            Exit::Dependency,
+            format!(
+                "a contained dependency fault: {info}\n{}",
+                std::backtrace::Backtrace::force_capture()
+            ),
+        )
+    } else {
+        (Exit::Internal, panic_detail(info, detailed))
+    };
+    Some(if json {
+        format!("[{}]", wire_object("", class.slug(), &detail))
+    } else {
+        format!("keryx: {detail}")
+    })
+}
+
 /// Run `run`, containing an escaped panic (architecture §6): a top-level hook reports the panic and
-/// any panic maps to `Internal` (exit 1). A panic is a bug in keryx, not a fault in the user's
-/// input; by default the report is a calm line saying so — never a raw `panicked at …` backtrace —
-/// and under `RUST_BACKTRACE` it is the panic's message, location, and a real backtrace, for a bug
-/// report (`panic_detail` composes that text). `json` (the resolved `--format`) frames it as a
-/// one-element wire array (kind `internal`) instead of a `keryx:` line, so a keryx bug does not
-/// break a JSON consumer's parser — the backtrace rides in the escaped `detail`, valid on one line.
-/// The hook swallows a broken stderr pipe rather than re-panicking, so an escaped panic never
+/// any panic maps to `Internal` (exit 1). A panic is a bug in keryx, not a fault in the user's input,
+/// so the report says so; `hook_report` composes it. The hook consults `keryx_core::is_containing`
+/// and stays **silent** for a fault keryx-core is containing to return as a value (a `DependencyFault`,
+/// which the CLI renders as its diagnostic), so a contained engine fault reports **once** — the
+/// diagnostic — not twice (under `RUST_BACKTRACE` it additionally emits the fault's location and
+/// backtrace, framed as a dependency fault, for debugging). (A consumer with Rust's default hook
+/// still sees `panicked at …` for a contained fault, and silences it only by installing a hook that
+/// consults `is_containing`.) The
+/// hook swallows a broken stderr pipe rather than re-panicking, so an escaped panic never
 /// double-panics into an abort. The one place the process's panic posture is set, so `main` is a
 /// shim over it.
 #[must_use]
 pub fn contain(json: bool, run: impl FnOnce() -> Exit) -> Exit {
     std::panic::set_hook(Box::new(move |info| {
         let detailed = std::env::var("RUST_BACKTRACE").is_ok_and(|value| value != "0");
-        let detail = panic_detail(info, detailed);
-        let report = if json {
-            format!("[{}]", wire_object("", Exit::Internal.slug(), &detail))
-        } else {
-            format!("keryx: {detail}")
-        };
-        let _ = writeln!(std::io::stderr(), "{report}");
+        if let Some(report) = hook_report(json, info, detailed, keryx_core::is_containing()) {
+            let _ = writeln!(std::io::stderr(), "{report}");
+        }
     }));
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
         Ok(exit) => exit,
-        Err(_) => Exit::Internal, // the hook printed the report; map to a clean exit 1
+        // The hook printed the report — a panic reaching here fired outside every `fault::contain`
+        // frame (one inside a frame is caught by that frame, not here). Map to a clean exit 1.
+        Err(_) => Exit::Internal,
     }
 }
 
@@ -128,7 +166,53 @@ pub fn contain(json: bool, run: impl FnOnce() -> Exit) -> Exit {
 mod tests {
     use keryx_core::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 
-    use super::{Exit, contain, panic_detail, wire_object};
+    use super::{Exit, contain, hook_report, panic_detail, wire_object};
+
+    #[test]
+    fn silent_while_containing_by_default() {
+        // A live `fault::contain` frame with no backtrace requested: the hook stays silent —
+        // keryx-core returns the fault as a value, which the CLI renders; a "bug in keryx" line
+        // would be false.
+        assert!(hook_report(false, &"panicked at x", false, true).is_none());
+    }
+
+    #[test]
+    fn a_contained_fault_keeps_its_location_under_rust_backtrace() {
+        // Silence is default-only: under `RUST_BACKTRACE` the operator gets the *location* of the
+        // unforeseen fault (which the returned diagnostic's detail lacks), framed as a dependency
+        // fault — never "bug in keryx".
+        let report =
+            hook_report(false, &"panicked at engine.rs:9:1", true, true).expect("a backtrace");
+        assert!(
+            report.contains("engine.rs:9:1"),
+            "the location survives: {report}"
+        );
+        assert!(
+            !report.contains("bug in keryx"),
+            "not a keryx bug: {report}"
+        );
+        assert!(
+            report.contains("dependency"),
+            "framed as a dependency fault: {report}"
+        );
+    }
+
+    #[test]
+    fn the_contained_backtrace_is_a_dependency_array_under_json() {
+        // Under `--format json` the debugging backtrace is a one-line `dependency` array, never
+        // `internal`, so it does not masquerade as a keryx bug.
+        let report = hook_report(true, &"x", true, true).expect("a report");
+        assert!(report.contains(r#""kind":"dependency""#), "{report}");
+        assert!(!report.contains("internal"), "{report}");
+        assert!(!report.contains('\n'), "one line: {report}");
+    }
+
+    #[test]
+    fn a_bug_notice_when_not_containing() {
+        // A genuine keryx bug (no contain frame) yields the calm notice.
+        let report = hook_report(false, &"panicked at x", false, false).expect("a report");
+        assert!(report.contains("bug in keryx"), "{report}");
+    }
 
     #[test]
     fn a_dependency_fault_classifies_dependency() {

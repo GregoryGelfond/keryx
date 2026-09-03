@@ -53,3 +53,82 @@ pub fn try_compile_fixture(name: &str) -> Result<Vec<u8>, String> {
         .map_err(|error| error.to_string())?;
     Ok(compiler.encode_file_descriptor_set())
 }
+
+/// A hand-built `FileDescriptorSet` that drives a **real contained engine fault** through keryx's
+/// descriptor door — for the tests that exercise the containment seam end to end, not a synthetic
+/// `panic!`. It redefines `descriptor.proto`'s `MessageOptions` with a self-referential message
+/// field, and gives one message a 120-deep uninterpreted-option name path: the set decodes and the
+/// pool builds (the nesting is created by option navigation and encoded with no limit), but reading
+/// `options()` on the message re-decodes past prost's recursion limit and unwraps — a fault keryx
+/// contains at the accessor walk (`DependencyFault`). protoc/protox would never emit this, so it is
+/// built by hand rather than compiled from a fixture.
+#[must_use]
+pub fn fault_provoking_set() -> Vec<u8> {
+    use prost::Message as _;
+    use prost_types::uninterpreted_option::NamePart;
+    use prost_types::{
+        DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
+        MessageOptions, UninterpretedOption,
+    };
+
+    const DEPTH: usize = 120;
+    let mut name: Vec<NamePart> = (0..DEPTH)
+        .map(|_| NamePart {
+            name_part: "self_".to_owned(),
+            is_extension: false,
+        })
+        .collect();
+    name.push(NamePart {
+        name_part: "x".to_owned(),
+        is_extension: false,
+    });
+    FileDescriptorSet {
+        file: vec![
+            FileDescriptorProto {
+                name: Some("google/protobuf/descriptor.proto".to_owned()),
+                package: Some("google.protobuf".to_owned()),
+                message_type: vec![DescriptorProto {
+                    name: Some("MessageOptions".to_owned()),
+                    field: vec![
+                        FieldDescriptorProto {
+                            name: Some("self_".to_owned()),
+                            number: Some(1000),
+                            label: Some(1),   // optional
+                            r#type: Some(11), // message
+                            type_name: Some(".google.protobuf.MessageOptions".to_owned()),
+                            ..Default::default()
+                        },
+                        FieldDescriptorProto {
+                            name: Some("x".to_owned()),
+                            number: Some(1001),
+                            label: Some(1),
+                            r#type: Some(5), // int32
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            FileDescriptorProto {
+                name: Some("m.proto".to_owned()),
+                package: Some("my".to_owned()),
+                dependency: vec!["google/protobuf/descriptor.proto".to_owned()],
+                message_type: vec![DescriptorProto {
+                    name: Some("M".to_owned()),
+                    options: Some(MessageOptions {
+                        uninterpreted_option: vec![UninterpretedOption {
+                            name,
+                            positive_int_value: Some(1),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        ],
+    }
+    .encode_to_vec()
+}

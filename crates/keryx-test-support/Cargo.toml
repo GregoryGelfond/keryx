@@ -11,6 +11,10 @@ license.workspace = true
 # This is a dev-dependency library, so its helpers are public API and no suite pays a
 # dead-code allow for the ones it does not use.
 protox = "0.9.1"
+# For hand-building adversarial descriptor sets protoc/protox would never emit — e.g. the
+# fault-provoking set that drives a real contained engine fault through `ingest` and the CLI.
+prost = "0.14"
+prost-types = "0.14"
 
 [lints]
 workspace = true
