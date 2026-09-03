@@ -86,7 +86,7 @@ The uniform rule, with no exceptions keyed to spec layout:
    - repeated scalar (sequence) → `f(P, I, V)`
    - repeated scalar (set-annotated, §7.1) → `f(P, V)`
    - map with scalar value → `f(P, K, V)`
-6. **Roots.** The root of a decoded payload is a caller-supplied constant (library API) or a generated fresh constant (CLI: `r0`, `r1`, … per invocation; episodic profile: per-episode roots, §23). Root identity is the *only* extrinsic identity in the system; everything beneath is derived.
+6. **Roots.** The root of a decoded payload is a caller-supplied constant (library API) or a generated fresh constant (CLI: `r0`, `r1`, … per invocation). Root identity is the *only* extrinsic identity in the system; everything beneath is derived.
 
 Consequences worth stating because they carry the design:
 
@@ -182,7 +182,7 @@ The two directions share one vocabulary (P2) and one theory, but stand in opposi
 
 - Decode wire bytes (or canonical JSON, or textproto — §26) against the descriptor; walk the tree; build symbols per Part II. Ground by construction (P10): no gringo on this path.
 - Root supplied by caller (§4.1.6). All facts of one payload are attributable to its root by term structure alone.
-- Delivery has two forms with identical content: (a) **text** — a `.lp` fact module (the human-readable, diffable, archival serialization of the data plane), and (b) **symbols** — direct construction through the solver API into the backend (the production path, §23). The `.lp` form exists for inspection, fixtures, and archival; it is never required.
+- Delivery has two forms with identical content: (a) **text** — a `.lp` fact module (the human-readable, diffable, archival serialization of the data plane), and (b) **symbols** — a `Vec<Symbol>` the consuming tool feeds its solver directly, with no text and no grounding pass. The `.lp` form exists for inspection, fixtures, and archival; it is never required.
 - Inbound validation: range checks (`NATIVE_CHECKED`), open-enum policy, `Any` registry, UTF-8/NUL. Failures are structured errors naming the field path (§26); partial shreds are never delivered.
 
 ### 12. Outbound: emission
@@ -339,7 +339,7 @@ Because this spec must be self-contained, the neighboring projects are character
 - **aspis** — the maintainer's Rust API over clingo and clingcon (richer, Rust-idiomatic layer above libclingo; minimal FFI; supports solving, optimization, multi-shot). keryx's solve profiles (§23) are written against aspis: symbol construction, `Backend` access (adding rules/externals programmatically), assumptions, model iteration, unsat cores. *Posture:* hard dependency of `keryx-driver`; `keryx-core` (compile + codec-to-symbols-as-data) must not depend on it, so the compiler is usable solverless.
 - **themelios** — the maintainer's foundation library providing ASP syntax parsing and AST generation for an alternative toolchain. *Posture:* preferred provider behind an emission boundary, not a hard dependency (see below).
 - **ASP contract testing** — a declarative ASP testing approach: contracts as `@`-annotations inside `.lp` files (sat/unsat, model counts, brave/cautious consequences, costs, optimality, clingcon assignments, three-valued `@query`); verdicts PASS/FAIL/UNDECIDED; solver declared in the contract. keryx's fixture harness (§27) emits contract-consumable artifacts.
-- **Rust crates:** `prost-reflect` (dynamic descriptor pool + dynamic messages; §20 explains why the dynamic layer is mandatory), `protox` (pure-Rust protobuf compiler producing `FileDescriptorSet`, enabling the no-protoc single-binary story), `prost`/`prost-types` (one typed decode on ingestion — the editions-`syntax` inspection, whose decoded struct is discarded — and typed convenience downstream of the schema model otherwise; no typed struct ever feeds the schema, §20). External binaries `protoc` and `buf` are *optional producers*, never build dependencies.
+- **Rust crates:** `prost-reflect` (dynamic descriptor pool + dynamic messages; §20 explains why the dynamic layer is mandatory), `protox` (pure-Rust protobuf compiler producing `FileDescriptorSet`, enabling the no-protoc single-binary story), `prost`/`prost-types` (one typed decode on ingestion — the editions-`syntax` inspection, whose decoded struct is discarded; no typed struct ever feeds the schema, §20). External binaries `protoc` and `buf` are *optional producers*, never build dependencies.
 
 **The emission boundary.** All generated ASP is constructed as syntax values and pretty-printed — never string-templated. `keryx-core` defines a minimal internal representation sufficient for its own output shapes (terms; classical atoms; `not`; rules; integrity constraints; `#count`/`#sum` aggregate atoms in bodies; comparison literals; `#minimize`; `#show`; `#const`; comments; includes) behind a small builder/printer trait. The **themelios backend implements that trait** when themelios is ready (and is the intended eventual sole implementation, unifying the toolchain's AST); the internal fallback keeps keryx shippable meanwhile. Model-file *analysis* (lint §25, scaffold hole-checking) parses `.lp`, which is themelios's job; until it lands, analysis features are gated off rather than half-built on regex.
 
@@ -469,7 +469,7 @@ protoc-gen-keryx                                  # plugin shim (same gen pipeli
 ### 27. Evolution and testing
 
 - **Evolution flow is one-directional through the fence:** spec-side churn surfaces as compiler guidance. A `deprecated = true` field option becomes a model-side lint warning; a rename diffs against the manifest (`keryx diff`) into a migration note plus optional generated bridge view; a field-number change is flagged as the wire-breaking act it is (and buf users get the same from `buf breaking` — the two checks are complementary, manifest guarding the ASP side, buf the wire side).
-- **Fixture harness.** A directory convention: `fixtures/<name>/{request.txtpb, expect.txtpb | expect.lp | contract.lp}`. The driver shreds the request, solves against the model, and checks the expectation — either exact envelope comparison or an **ASP contract** over the shared vocabulary (`@sat`, `@model`, `@cautious`, cost/optimality tags; solver declared in the contract per the contract's rule). Scenario corpora thus double as regression suites and as documentation-by-example. In the episodic profile, fixtures may script multi-episode sequences; unsat-core episode blame (§23) is asserted the same way.
+- **Fixture harness.** A directory convention: `fixtures/<name>/{request.txtpb, expect.txtpb | expect.lp | contract.lp}`. The driver shreds the request, solves against the model, and checks the expectation — either exact envelope comparison or an **ASP contract** over the shared vocabulary (`@sat`, `@model`, `@cautious`, cost/optimality tags; solver declared in the contract per the contract's rule). Scenario corpora thus double as regression suites and as documentation-by-example.
 - **Compiler self-tests:** golden descriptor sets → golden module sets and manifests; stage-1 policy under ASP contracts (§21.3); the §21.2 self-application cross-check; property tests for codec round-trips (payload → facts → payload identity on canonical forms).
 
 ---
@@ -482,6 +482,7 @@ Three end-to-end narratives, in increasing depth. They are normative illustratio
 
 ```proto
 // thermal.proto            syntax = "proto3"; package thermal.v1;
+import "keryx/options.proto";
 message Reading      { string sensor = 1; int32 temp_c = 2; }
 message ReadingBatch { repeated Reading readings = 1; }
 
@@ -695,7 +696,7 @@ Flagged for first-pass review, since these regularize or pin choices the design 
 1. **Option namespace and consolidation.** All annotations live under `(keryx.*)`; the sketched `(asp.int64)=CHECKED_NATIVE` and `(asp.enum_zero)=ABSENT` are consolidated into the general `(keryx.numeric)` (all integral types, three policies) and `(keryx.zero)` (all zero-defaultable IMPLICIT fields incl. bool and enums). Protobuf's flat extension-symbol namespace cannot carry two `keryx.zero` extensions, so the *field*-targeted extension is encoded `zero_field` (FieldOptions, 50105) and the *enum*-targeted one stays `zero` (EnumOptions, 50141); the conceptual annotation and the overlay-TOML key remain `zero`, and the field-site inline spelling `(keryx.zero_field)` and its semantics are settled with annotation reading at M4. The unary-bool encoding is recovered as `(keryx.zero)=ABSENT` on a bool.
 2. **Float policy pinned** to annotation-mandatory with a two-choice fix-it error (scale vs. opaque) — the one deliberate exception to G4.
 3. **Set honesty clause** (§7.1): `(keryx.set)` changes relation shape and serialization order only; identity collapse for message elements additionally requires `(keryx.value)`. The conversation's stories implied but never stated this.
-4. **Episodic guards pinned** to backend-registered externals with release-to-retire; the guard-as-choice-atom + negative-assumption encoding is noted as an equivalent alternative (§23).
+4. **Episodic guards** (backend-registered externals, release-to-retire) — retired under the translation-only scope; episodic serving is the consuming tool's, not keryx's.
 5. **Emission boundary** (§18): all ASP output constructed as syntax values behind a builder/printer trait; themelios is the preferred and intended-final provider, with a minimal internal fallback so keryx ships on its own schedule.
 6. **Overlay format pinned** to TOML keyed by fully-qualified paths, overlay-wins precedence, unmatched-key errors.
 7. **Bytes canonical form pinned** to lowercase hex (base64 rejected for case/padding ambiguity).
