@@ -337,9 +337,9 @@ The canonical data plane is the **clingo symbol algebra** — numbers, strings, 
 Because this spec must be self-contained, the neighboring projects are characterized here to the depth keryx needs; keryx must remain buildable if any of them lags, per the posture noted with each.
 
 - **aspis** — the maintainer's Rust API over clingo and clingcon (richer, Rust-idiomatic layer above libclingo; minimal FFI; supports solving, optimization, multi-shot). keryx's solve profiles (§23) are written against aspis: symbol construction, `Backend` access (adding rules/externals programmatically), assumptions, model iteration, unsat cores. *Posture:* hard dependency of `keryx-driver`; `keryx-core` (compile + codec-to-symbols-as-data) must not depend on it, so the compiler is usable solverless.
-- **themelios** — the maintainer's foundation library providing ASP syntax parsing and AST generation for an alternative toolchain (desis/lysis family). *Posture:* preferred provider behind an emission boundary, not a hard dependency (see below).
+- **themelios** — the maintainer's foundation library providing ASP syntax parsing and AST generation for an alternative toolchain. *Posture:* preferred provider behind an emission boundary, not a hard dependency (see below).
 - **ASP contract testing** — a declarative ASP testing approach: contracts as `@`-annotations inside `.lp` files (sat/unsat, model counts, brave/cautious consequences, costs, optimality, clingcon assignments, three-valued `@query`); verdicts PASS/FAIL/UNDECIDED; solver declared in the contract. keryx's fixture harness (§27) emits contract-consumable artifacts.
-- **Rust crates:** `prost-reflect` (dynamic descriptor pool + dynamic messages; §20 explains why the dynamic layer is mandatory), `protox` (pure-Rust protobuf compiler producing `FileDescriptorSet`, enabling the no-protoc single-binary story), `prost`/`prost-types` (downstream typed convenience only — never on the descriptor path). External binaries `protoc` and `buf` are *optional producers*, never build dependencies.
+- **Rust crates:** `prost-reflect` (dynamic descriptor pool + dynamic messages; §20 explains why the dynamic layer is mandatory), `protox` (pure-Rust protobuf compiler producing `FileDescriptorSet`, enabling the no-protoc single-binary story), `prost`/`prost-types` (one typed decode on ingestion — the editions-`syntax` inspection, whose decoded struct is discarded — and typed convenience downstream of the schema model otherwise; no typed struct ever feeds the schema, §20). External binaries `protoc` and `buf` are *optional producers*, never build dependencies.
 
 **The emission boundary.** All generated ASP is constructed as syntax values and pretty-printed — never string-templated. `keryx-core` defines a minimal internal representation sufficient for its own output shapes (terms; classical atoms; `not`; rules; integrity constraints; `#count`/`#sum` aggregate atoms in bodies; comparison literals; `#minimize`; `#show`; `#const`; comments; includes) behind a small builder/printer trait. The **themelios backend implements that trait** when themelios is ready (and is the intended eventual sole implementation, unifying the toolchain's AST); the internal fallback keeps keryx shippable meanwhile. Model-file *analysis* (lint §25, scaffold hole-checking) parses `.lp`, which is themelios's job; until it lands, analysis features are gated off rather than half-built on regex.
 
@@ -481,7 +481,7 @@ Three end-to-end narratives, in increasing depth. They are normative illustratio
 ### 28. Story 1 — thermal watch (flat messages, one-shot, local files)
 
 ```proto
-// thermal.proto            edition = "2023"; package thermal.v1;
+// thermal.proto            syntax = "proto3"; package thermal.v1;
 message Reading      { string sensor = 1; int32 temp_c = 2; }
 message ReadingBatch { repeated Reading readings = 1; }
 
@@ -550,8 +550,8 @@ Rename `temp_c` in the `.proto` and `keryx diff` reports a migration (optionally
 ### 29. Story 2 — dispatch planning (nesting, sets vs. sequences, oneof, absence, aggregates, choice)
 
 ```proto
-// dispatch.proto           edition = "2023"; package dispatch.v1;
-import option "keryx/options.proto";
+// dispatch.proto           syntax = "proto3"; package dispatch.v1;
+import "keryx/options.proto";
 message PlanRequest { Fleet fleet = 1; repeated Shipment shipments = 2; }
 message Fleet   { repeated Truck trucks = 1; }
 message Truck   { string id = 1; int32 capacity_kg = 2; }
@@ -608,8 +608,8 @@ The shape guard earning its keep: drop the `1{…}1` bounds to `{…}` during a 
 ### 30. Story 3 — diagnosis service (episodic, networked, streaming facts)
 
 ```proto
-// diag.proto — request side          edition = "2023"; package diag.v1;
-import option "keryx/options.proto";
+// diag.proto — request side          syntax = "proto3"; package diag.v1;
+import "keryx/options.proto";
 message ObservationBatch {
   int64 tick = 1 [(keryx.numeric) = NATIVE_CHECKED];   // default would be decimal string
   repeated Observation obs = 2 [(keryx.set) = true];
@@ -658,7 +658,7 @@ The base program grounded once at startup; each batch enters through aspis strai
 
 Ordered for local development; each milestone leaves the workspace green and demonstrable.
 
-- **M0 — Ingestion + facts.** `keryx-core::descriptor` over `prost-reflect` (dynamic-layer rule enforced by construction); de-sugaring; schema model; hand-written stage 0; golden tests on fixture descriptor sets (including editions, maps, proto3-optional, oneofs, recursion, custom options via a vendored `keryx/options.proto`). Deliverable: internal schema-facts dump command.
+- **M0 — Ingestion + facts.** `keryx-core::descriptor` over `prost-reflect` (dynamic-layer rule enforced by construction); de-sugaring; schema model; hand-written stage 0; golden tests on fixture descriptor sets (maps, proto3-optional, oneofs, recursion, custom options via a vendored `keryx/options.proto`; editions carry a refusal test, not a golden — deferred per M1). Deliverable: internal schema-facts dump command.
 - **M1 — gen.** Stage-1 policy `.lp` + evaluator (aspis via driver); stage-2 emission of `core/views/manifest` for the clingo target through the internal emission backend; embedded protox front door (`keryx gen foo.proto`) with the **editions verification gate**: while the descriptor engine has no editions support, `gen` refuses editions files — both the `.proto` and descriptor-set routes — with a specific diagnostic and says so. `keryx explain` (mapping verdicts). Self-application cross-check (§21.2).
 - **M2 — Inbound + one-shot solve.** Codec inbound (binary/JSON/textproto → `Sym` atoms → `.lp`); `keryx facts`; `keryx solve` one-shot with text-include fact path (temporary, flagged); envelope with SAT/UNSAT/stats.
 - **M3 — Outbound.** `shape.lp` generation (strict + diagnostic); reachable-subgraph reassembler; canonical serialization; `--emit`; envelope models; structured shape diagnostics at field paths.
@@ -707,7 +707,7 @@ Flagged for first-pass review, since these regularize or pin choices the design 
 ## Appendix A — `keryx/options.proto` (draft)
 
 ```proto
-edition = "2023";
+syntax = "proto2";
 package keryx;
 import "google/protobuf/descriptor.proto";
 
