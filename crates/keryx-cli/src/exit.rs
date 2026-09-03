@@ -6,7 +6,7 @@
 use std::io::Write as _;
 use std::process::{ExitCode, Termination};
 
-use keryx_core::diagnostics::wire_object;
+use keryx_core::diagnostics::{DiagnosticKind, Diagnostics, wire_object};
 
 /// The process exit code, by error class (architecture §6).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -22,6 +22,12 @@ pub enum Exit {
     Input = 3,
     /// A schema error — the `.proto`/descriptor set did not compile, ingest, or map.
     Schema = 4,
+    /// A dependency fault — an unforeseen fault in foreign code (the descriptor engine, the source
+    /// compiler) contained on a foreign-input path (the threat model's dependency boundary). Neither
+    /// a keryx bug (`Internal`) nor a user's schema error (`Schema`): the input provoked an engine
+    /// fault keryx caught and returned as a value. `5`/`6` are reserved for the `Admission`/`Shape`
+    /// classes their increments land; the integer is tunable and named here alone.
+    Dependency = 7,
 }
 
 impl Exit {
@@ -36,6 +42,22 @@ impl Exit {
             Exit::Usage => "usage",
             Exit::Input => "input",
             Exit::Schema => "schema",
+            Exit::Dependency => "dependency",
+        }
+    }
+
+    /// Classify a run by its diagnostics: a [`DiagnosticKind::DependencyFault`] anywhere in the
+    /// collection classifies the run [`Exit::Dependency`]; otherwise the caller's `default`. The
+    /// CLI's door sites route their door `Diagnostics` through this, so a contained engine fault
+    /// reaches `Dependency` rather than `Schema` — while a keryx bug stays a panic mapped to
+    /// `Internal`. The precedence (a dependency fault dominates) is stated for the general
+    /// collection form, though a contained fault is a single cause.
+    #[must_use]
+    pub fn classify(default: Exit, diagnostics: &Diagnostics) -> Exit {
+        if diagnostics.contains_kind(DiagnosticKind::DependencyFault) {
+            Exit::Dependency
+        } else {
+            default
         }
     }
 }
@@ -104,7 +126,32 @@ pub fn contain(json: bool, run: impl FnOnce() -> Exit) -> Exit {
 
 #[cfg(test)]
 mod tests {
+    use keryx_core::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
+
     use super::{Exit, contain, panic_detail, wire_object};
+
+    #[test]
+    fn a_dependency_fault_classifies_dependency() {
+        // A contained upstream fault reaching a door site classifies the run `Dependency` —
+        // neither a keryx bug (`Internal`) nor a user's schema error (`Schema`).
+        let diagnostics = Diagnostics::one(Diagnostic::new(
+            DiagnosticKind::DependencyFault,
+            Locus::whole(),
+            "x",
+        ));
+        assert_eq!(Exit::classify(Exit::Schema, &diagnostics), Exit::Dependency);
+    }
+
+    #[test]
+    fn without_a_dependency_fault_the_default_stands() {
+        // No dependency fault in the collection: the caller's default class stands.
+        let diagnostics = Diagnostics::one(Diagnostic::new(
+            DiagnosticKind::MalformedDescriptor,
+            Locus::whole(),
+            "x",
+        ));
+        assert_eq!(Exit::classify(Exit::Schema, &diagnostics), Exit::Schema);
+    }
 
     #[test]
     fn a_calm_report_is_a_bug_notice_without_the_raw_panic_text() {

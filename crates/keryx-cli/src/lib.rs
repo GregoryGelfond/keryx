@@ -197,17 +197,22 @@ fn dump_schema_facts(args: &SchemaFactsArgs, format: Format) -> Exit {
     };
     let schema = match ingest(&bytes) {
         Ok(schema) => schema,
-        Err(diagnostics) => return report(format, Exit::Schema, &diagnostics),
+        Err(diagnostics) => {
+            return report(
+                format,
+                Exit::classify(Exit::Schema, &diagnostics),
+                &diagnostics,
+            );
+        }
     };
     match schema_facts::render(&schema) {
         Ok(text) => product(format, &text),
+        // This render is interior — over a constructed schema, not foreign input — so no contained
+        // dependency fault can arise here (unlike the door above, routed through `Exit::classify`).
         // A non-identifier option key on a crafted set is a schema-input error (§6); a themelios
         // spell failure on constructed output is a keryx bug. Class by the kind the render produced.
         Err(diagnostics) => {
-            let class = if diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.kind() == DiagnosticKind::UnmappableOptionKey)
-            {
+            let class = if diagnostics.contains_kind(DiagnosticKind::UnmappableOptionKey) {
                 Exit::Schema
             } else {
                 Exit::Internal
@@ -239,10 +244,18 @@ fn load_schema(specs: &[PathBuf], includes: &[PathBuf], format: Format) -> Resul
                 &format!("cannot read {}: {error}", spec.display()),
             )
         })?;
-        return ingest(&bytes).map_err(|diagnostics| report(format, Exit::Schema, &diagnostics));
+        return ingest(&bytes).map_err(|diagnostics| {
+            report(
+                format,
+                Exit::classify(Exit::Schema, &diagnostics),
+                &diagnostics,
+            )
+        });
     }
-    compile(specs, includes)
-        .map_err(|diagnostics| report(format, Exit::Schema, &with_descriptor_set_hint(diagnostics)))
+    compile(specs, includes).map_err(|diagnostics| {
+        let hinted = with_descriptor_set_hint(diagnostics);
+        report(format, Exit::classify(Exit::Schema, &hinted), &hinted)
+    })
 }
 
 /// A front-door compile failure carries a fix-it hint (architecture §6: fix-it hints travel
@@ -252,10 +265,7 @@ fn load_schema(specs: &[PathBuf], includes: &[PathBuf], format: Format) -> Resul
 /// rather than promising a route that also fails. Appended as a further diagnostic so it renders
 /// in both the human and JSON forms; a non-`UncompilableSource` failure is returned unchanged.
 fn with_descriptor_set_hint(mut diagnostics: Diagnostics) -> Diagnostics {
-    if diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.kind() == DiagnosticKind::UncompilableSource)
-    {
+    if diagnostics.contains_kind(DiagnosticKind::UncompilableSource) {
         diagnostics.push(Diagnostic::new(
             DiagnosticKind::UncompilableSource,
             Locus::whole(),

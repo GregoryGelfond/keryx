@@ -129,6 +129,17 @@ pub enum DiagnosticKind {
     /// (Increment 5); at present the collision is reported (loud, §6) rather than silently
     /// producing a duplicate constant. Names the enum's locus.
     AmbiguousConstant,
+    /// A dependency faulted on a foreign-input path and keryx contained the unwind (the threat
+    /// model's dependency boundary): an unforeseen panic in foreign code — prost-reflect decoding a
+    /// descriptor set, protox compiling source — becomes this value at keryx's foreign-fault
+    /// containment seam, rather than unwinding into keryx's caller. Distinct from a keryx bug,
+    /// which stays a panic and is reported by the CLI as `Exit::Internal` ("a bug in keryx"):
+    /// keryx-core stays total by construction and mints no library "internal" kind of its own (§6).
+    /// The split is asymmetric — a keryx bug panics, an upstream fault is a value — and it carries
+    /// its own exit class (`Exit::Dependency`), an engine fault being neither a keryx bug nor a
+    /// user's schema error. The dependency and operation keryx knows with certainty ride in the
+    /// `detail` prose; the wire shape (Appendix B `{field_path, kind, detail}`) is unchanged.
+    DependencyFault,
 }
 
 impl DiagnosticKind {
@@ -146,6 +157,7 @@ impl DiagnosticKind {
             DiagnosticKind::PackagelessFile => "packageless_file",
             DiagnosticKind::UnmappableName => "unmappable_name",
             DiagnosticKind::AmbiguousConstant => "ambiguous_constant",
+            DiagnosticKind::DependencyFault => "dependency_fault",
         }
     }
 }
@@ -228,6 +240,15 @@ impl Diagnostics {
     #[must_use]
     pub fn iter(&self) -> impl ExactSizeIterator<Item = &Diagnostic> {
         self.0.iter()
+    }
+
+    /// Whether any diagnostic in the collection is of `kind` — the "does this collection carry kind
+    /// K" query a boundary asks to classify a run (the CLI routes an exit on `DependencyFault`, and
+    /// distinguishes a schema-input `UnmappableOptionKey` from a keryx bug), kept on the collection
+    /// that owns it rather than re-derived as a hand-rolled closure at each site.
+    #[must_use]
+    pub fn contains_kind(&self, kind: DiagnosticKind) -> bool {
+        self.0.iter().any(|diagnostic| diagnostic.kind == kind)
     }
 
     /// The number of diagnoses — at least one.
@@ -372,6 +393,7 @@ mod tests {
             DiagnosticKind::AmbiguousConstant.as_str(),
             "ambiguous_constant"
         );
+        assert_eq!(DiagnosticKind::DependencyFault.as_str(), "dependency_fault");
         // A new kind must be added above: this exhaustive match (no wildcard,
         // allowed in-crate despite #[non_exhaustive]) fails to compile otherwise.
         match DiagnosticKind::UnreadableDescriptorSet {
@@ -384,7 +406,8 @@ mod tests {
             | DiagnosticKind::UncompilableSource
             | DiagnosticKind::PackagelessFile
             | DiagnosticKind::UnmappableName
-            | DiagnosticKind::AmbiguousConstant => {}
+            | DiagnosticKind::AmbiguousConstant
+            | DiagnosticKind::DependencyFault => {}
         }
     }
 
@@ -425,5 +448,22 @@ mod tests {
             diagnostics.wire(),
             r#"[{"field_path":"","kind":"uncompilable_source","detail":"one"},{"field_path":"p.Q","kind":"unmappable_name","detail":"two\"x"}]"#
         );
+    }
+
+    #[test]
+    fn contains_kind_asks_the_collection_whether_it_carries_a_kind() {
+        let mut diagnostics = Diagnostics::one(Diagnostic::new(
+            DiagnosticKind::UncompilableSource,
+            Locus::whole(),
+            "one",
+        ));
+        assert!(diagnostics.contains_kind(DiagnosticKind::UncompilableSource));
+        assert!(!diagnostics.contains_kind(DiagnosticKind::DependencyFault));
+        diagnostics.push(Diagnostic::new(
+            DiagnosticKind::DependencyFault,
+            Locus::whole(),
+            "two",
+        ));
+        assert!(diagnostics.contains_kind(DiagnosticKind::DependencyFault));
     }
 }
