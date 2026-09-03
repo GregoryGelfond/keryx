@@ -596,4 +596,51 @@ mod tests {
         let file = pool.files().next().expect("one file");
         assert_eq!(subject_messages(&file).len(), depth);
     }
+
+    #[test]
+    fn a_malformed_map_entry_is_a_diagnostic_not_a_panic() {
+        // The totality instrument that reaches keryx's *own* walk (arbitrary bytes never do): a
+        // valid-encoding but structurally-invalid map. The field is a repeated message whose entry
+        // carries the `map_entry` option — so prost-reflect reads it as a map — but the entry is
+        // missing its value field (#2). `map_shape` reaches it and composes `MalformedDescriptor`, not
+        // a panic (§6).
+        let set = encode(vec![FileDescriptorProto {
+            name: Some("m.proto".to_owned()),
+            package: Some("p".to_owned()),
+            syntax: Some("proto3".to_owned()),
+            message_type: vec![DescriptorProto {
+                name: Some("M".to_owned()),
+                field: vec![FieldDescriptorProto {
+                    name: Some("m".to_owned()),
+                    number: Some(1),
+                    label: Some(3),   // repeated
+                    r#type: Some(11), // message
+                    type_name: Some(".p.M.MEntry".to_owned()),
+                    ..Default::default()
+                }],
+                nested_type: vec![DescriptorProto {
+                    name: Some("MEntry".to_owned()),
+                    field: vec![FieldDescriptorProto {
+                        name: Some("key".to_owned()),
+                        number: Some(1),
+                        label: Some(1),
+                        r#type: Some(9), // string
+                        ..Default::default()
+                    }],
+                    options: Some(MessageOptions {
+                        map_entry: Some(true), // read as a map, but the value field (#2) is absent
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]);
+        let diagnostics = ingest(&set).expect_err("a malformed map entry is refused");
+        assert_eq!(
+            diagnostics.iter().next().unwrap().kind(),
+            DiagnosticKind::MalformedDescriptor
+        );
+    }
 }
