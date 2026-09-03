@@ -195,8 +195,9 @@ fn enum_facts(
 }
 
 /// One `opt/3` fact per annotation. The key lowering is total (§6): a key that
-/// is not a themelios identifier composes an `UnrenderableFacts` diagnostic at
-/// the annotated element's `path`, rather than panicking through `terms::constant`.
+/// is not a themelios identifier composes an `UnmappableOptionKey` diagnostic (a
+/// schema-input error) at the annotated element's `path`, rather than panicking
+/// through `terms::constant`.
 fn annotation_facts(
     path: &str,
     options: &[Annotation],
@@ -205,7 +206,7 @@ fn annotation_facts(
     for annotation in options {
         let key = terms::try_constant(&annotation.key).map_err(|_| {
             Diagnostic::new(
-                DiagnosticKind::UnrenderableFacts,
+                DiagnosticKind::UnmappableOptionKey,
                 Locus::at(path),
                 format!(
                     "option key `{}` is not a themelios identifier",
@@ -300,7 +301,7 @@ mod tests {
         let diagnostics = render(&schema).expect_err("a non-identifier option key must not render");
         assert_eq!(diagnostics.len(), 1);
         let diagnostic = diagnostics.iter().next().expect("one diagnostic");
-        assert_eq!(diagnostic.kind(), DiagnosticKind::UnrenderableFacts);
+        assert_eq!(diagnostic.kind(), DiagnosticKind::UnmappableOptionKey);
         assert_eq!(diagnostic.locus().path(), Some("keryx.adversarial.Sample"));
     }
 

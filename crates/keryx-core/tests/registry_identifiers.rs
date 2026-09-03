@@ -3,7 +3,7 @@
 //! `keryx/options.proto` must have a name that is a valid themelios identifier
 //! (lowercase-initial), so a genuine keryx option always renders as an `opt/3`
 //! constant. Catches a future mis-cased registry addition here, at CI, rather
-//! than downstream as an `UnrenderableFacts` diagnostic.
+//! than downstream as an `UnmappableOptionKey` diagnostic.
 
 use keryx_test_support as support;
 

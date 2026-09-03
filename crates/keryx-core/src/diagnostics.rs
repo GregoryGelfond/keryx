@@ -85,6 +85,13 @@ pub enum DiagnosticKind {
     /// A keryx custom option carried a value keryx could not lower to a fact
     /// term (§15) — e.g. an integer outside the term range.
     MalformedOption,
+    /// A custom option's key is not a valid ASP constant, so its `opt/3` descriptor fact cannot
+    /// be rendered (§15, §6). Reachable only on a crafted descriptor set: option admission is a
+    /// file-name heuristic (`descriptor::options::read`), not true extension identity, so a set
+    /// can carry a non-identifier key that passes admission — a schema-input error, named at the
+    /// annotated element's locus, distinct from `UnrenderableFacts` (a keryx bug in constructed
+    /// output).
+    UnmappableOptionKey,
     /// A keryx-constructed program — the descriptor facts (§21.1) or the generated
     /// vocabulary (§21.4) — could not be rendered to ASP text: a themelios `Unspellable`
     /// composed here. Near-impossible for constructed output; total rather than a panic (§6).
@@ -133,6 +140,7 @@ impl DiagnosticKind {
             DiagnosticKind::UnsupportedEdition => "unsupported_edition",
             DiagnosticKind::MalformedDescriptor => "malformed_descriptor",
             DiagnosticKind::MalformedOption => "malformed_option",
+            DiagnosticKind::UnmappableOptionKey => "unmappable_option_key",
             DiagnosticKind::UnrenderableFacts => "unrenderable_facts",
             DiagnosticKind::UncompilableSource => "uncompilable_source",
             DiagnosticKind::PackagelessFile => "packageless_file",
@@ -347,6 +355,10 @@ mod tests {
         );
         assert_eq!(DiagnosticKind::MalformedOption.as_str(), "malformed_option");
         assert_eq!(
+            DiagnosticKind::UnmappableOptionKey.as_str(),
+            "unmappable_option_key"
+        );
+        assert_eq!(
             DiagnosticKind::UnrenderableFacts.as_str(),
             "unrenderable_facts"
         );
@@ -367,6 +379,7 @@ mod tests {
             | DiagnosticKind::UnsupportedEdition
             | DiagnosticKind::MalformedDescriptor
             | DiagnosticKind::MalformedOption
+            | DiagnosticKind::UnmappableOptionKey
             | DiagnosticKind::UnrenderableFacts
             | DiagnosticKind::UncompilableSource
             | DiagnosticKind::PackagelessFile

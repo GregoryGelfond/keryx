@@ -201,7 +201,19 @@ fn dump_schema_facts(args: &SchemaFactsArgs, format: Format) -> Exit {
     };
     match schema_facts::render(&schema) {
         Ok(text) => product(format, &text),
-        Err(diagnostics) => report(format, Exit::Internal, &diagnostics),
+        // A non-identifier option key on a crafted set is a schema-input error (§6); a themelios
+        // spell failure on constructed output is a keryx bug. Class by the kind the render produced.
+        Err(diagnostics) => {
+            let class = if diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.kind() == DiagnosticKind::UnmappableOptionKey)
+            {
+                Exit::Schema
+            } else {
+                Exit::Internal
+            };
+            report(format, class, &diagnostics)
+        }
     }
 }
 
