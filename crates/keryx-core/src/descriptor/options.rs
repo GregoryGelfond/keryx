@@ -18,7 +18,7 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// descriptor set can self-declare a file under that exact name, carrying an
 /// extension whose field name is not a themelios identifier (e.g. `Evil`). This
 /// filter is therefore not what keeps `schema_facts::render` total — that totality is
-/// guaranteed downstream by `facts`'s option-key lowering (`terms::try_constant`),
+/// guaranteed downstream by `schema_facts`'s option-key lowering (`terms::try_constant`),
 /// which diagnoses a non-identifier key instead of panicking (§6). Non-matching
 /// extensions and base fields are ignored here; a repeated option expands to one
 /// [`Annotation`] per element; the result is key-ordered (stable, so repeated
@@ -30,7 +30,7 @@ pub(super) fn read(options: &DynamicMessage, locus: &str) -> Result<Vec<Annotati
         // A best-effort FILE-NAME heuristic, not true extension identity (a
         // crafted set can name a file `keryx/options.proto`): it narrows out
         // most foreign `keryx.`-prefixed extensions before their key ever
-        // reaches `facts`. §6 totality does not rest on it — see the doc above.
+        // reaches `schema_facts`. §6 totality does not rest on it — see the doc above.
         if extension.parent_file().name() != "keryx/options.proto" {
             continue;
         }

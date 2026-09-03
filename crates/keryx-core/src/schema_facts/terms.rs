@@ -14,7 +14,7 @@
 //! never assumed to be one of keryx's own registry. `try_constant` is the total
 //! counterpart to `constant` for exactly this one runtime-derived string: it
 //! returns `Err` instead of panicking, so `schema_facts::render` stays total over any
-//! input (§6). Internal to `facts`.
+//! input (§6). Internal to `schema_facts`.
 
 use themelios_program::prelude::*;
 

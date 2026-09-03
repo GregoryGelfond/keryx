@@ -1,5 +1,5 @@
 //! Registry-name identifier check (architecture §6, paired with the total
-//! option-key lowering in `facts`): every extension declared in the vendored
+//! option-key lowering in `schema_facts`): every extension declared in the vendored
 //! `keryx/options.proto` must have a name that is a valid themelios identifier
 //! (lowercase-initial), so a genuine keryx option always renders as an `opt/3`
 //! constant. Catches a future mis-cased registry addition here, at CI, rather

@@ -5,7 +5,7 @@
 //! schema can coin its own extension under `package keryx` in a differently-named file; this
 //! fixture (`foreign_option.proto`) does exactly that, and the heuristic excludes it at
 //! ingestion, so its non-identifier field name never reaches an `Annotation`. The render check
-//! is a backstop on §6 totality: were such a key ever to reach `facts`, it lowers through
+//! is a backstop on §6 totality: were such a key ever to reach `schema_facts`, it lowers through
 //! `terms::try_constant` (not the vocabulary `expect`), which diagnoses a non-identifier rather
 //! than panicking — so `schema_facts::render` stays total either way.
 
@@ -36,7 +36,7 @@ fn a_foreign_keryx_prefixed_extension_is_excluded() {
         "a foreign keryx.-prefixed extension must not be admitted as an annotation"
     );
 
-    // A backstop: even had a foreign key reached `facts`, it lowers through `terms::try_constant`,
+    // A backstop: even had a foreign key reached `schema_facts`, it lowers through `terms::try_constant`,
     // which diagnoses a non-identifier rather than panicking, so render stays total (§6).
     schema_facts::render(&schema).expect("renders");
 }

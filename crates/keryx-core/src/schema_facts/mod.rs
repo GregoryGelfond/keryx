@@ -1,8 +1,9 @@
 //! Descriptor facts (spec Appendix C, §21.1): the hand-written stage 0 — the
 //! de-sugared [`Schema`] lowered to a flat fact base and rendered to ASP text
-//! through themelios `construct`/`render`. A rendered artifact for `explain` and
-//! the §21.2 self-application (whose cross-check against `keryx(descriptor.proto)`
-//! lands with `gen`, Increment 2); not a policy input under the Rust policy.
+//! through themelios `construct`/`render`. Surfaced by `keryx schema-facts` and the
+//! §21.2 self-application, which pins these facts golden; the equivalence cross-check
+//! against `keryx(descriptor.proto)` is deferred (architecture §11). Not a policy input
+//! under the Rust policy.
 //! Plain (canonical) `render`: proto docs are `doc/2` facts, so no `%!` annotation
 //! or free-standing comment is needed (themelios gap #2 untouched). Deterministic,
 //! de-duplicated (themelios's canonical statement order) — golden-comparable (P3).
@@ -288,7 +289,7 @@ mod tests {
         }
     }
 
-    // Proves FIX 1: `descriptor::options::read`'s admission filter is a
+    // `descriptor::options::read`'s admission filter is a
     // file-name heuristic, not true extension identity (see its doc), so a
     // crafted set can carry a non-identifier key this far. Before the total
     // key lowering, this would have panicked at `Name::new`; it must not — it

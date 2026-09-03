@@ -1,5 +1,5 @@
 # rustfmt reorders `mod` declarations alphabetically by default; keryx-core
 # declares its modules in the compile-pipeline order of the design
-# (diagnostics, descriptor, facts, policy, emit, manifest), so the
+# (diagnostics, descriptor, schema_facts, policy, emit, manifest), so the
 # formatter leaves module order to the author. Mirrors themelios.
 reorder_modules = false

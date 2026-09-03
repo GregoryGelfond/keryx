@@ -124,16 +124,23 @@ mod tests {
     }
 
     #[test]
-    fn a_detailed_report_carries_the_location_and_a_backtrace() {
-        // Under RUST_BACKTRACE the report echoes the panic's location and a real backtrace. `info`
-        // is single-line on purpose: without the backtrace the detail would be one line, so the
-        // `> 1` assertion fails if `panic_detail`'s detailed branch ever dropped `force_capture`.
+    fn a_detailed_report_carries_the_panic_location() {
+        // Under RUST_BACKTRACE the report echoes the panic's own message and location.
         let info = "panicked at src/foo.rs:12:5";
         let detailed = panic_detail(&info, true);
         assert!(
             detailed.contains("src/foo.rs:12:5"),
             "the detailed report carries the location: {detailed}"
         );
+    }
+
+    #[test]
+    fn a_detailed_report_carries_a_backtrace() {
+        // The detailed report adds a real backtrace, not just the location. `info` is single-line
+        // on purpose: without the backtrace the detail is one line, so this fails if
+        // `panic_detail`'s detailed branch ever dropped `force_capture`.
+        let info = "panicked at src/foo.rs:12:5";
+        let detailed = panic_detail(&info, true);
         assert!(
             detailed.lines().count() > 1,
             "the detailed report includes a backtrace, not just the location: {detailed}"

@@ -1,6 +1,6 @@
 //! Descriptor facts, pinned to golden `.lp` per fixture. The render is a pure,
 //! deterministic function of the set (P3), so equality is the whole contract.
-//! Goldens are generated once (below), verified by eye against Appendix C, and
+//! Goldens are generated once, verified by eye against Appendix C, and
 //! committed; a diff here is a real change, intended or a regression.
 
 use keryx_test_support as support;
