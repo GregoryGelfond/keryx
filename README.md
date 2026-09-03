@@ -8,6 +8,58 @@ learns ASP; the model side never learns the wire.
 
 keryx doesn't solve — bring your own solver (clingo today).
 
+## What it looks like
+
+A message becomes a **sort**; its scalar fields become **predicates** over that
+sort; a message-typed field becomes an occupant term with a relational **view**
+to join on.
+
+```proto
+message Reading { string sensor = 1; int32 temp_c = 2; }
+message Batch   { repeated Reading readings = 1; }
+```
+
+**`keryx gen`** compiles the schema into the vocabulary a model is written against.
+`core.lp` declares the sorts and base-fact field predicates with `#defined`,
+carrying the readable signature as a `%!` doc comment; `views.lp` adds a
+relational view rule per message-typed field:
+
+```prolog
+%!sort batch/1
+%!readings : batch × index -> reading  (sequence)
+#defined batch/1.
+%!sort reading/1
+#defined reading/1.
+%!sensor : reading -> string  (total)
+#defined sensor/2.
+%!temp_c : reading -> int32  (total)
+#defined temp_c/2.
+
+readings(P, I, E) :- reading(E), E = readings(P, I).   % views.lp
+```
+
+Then the bridge runs. A **`Batch` message becomes ground facts** over that
+vocabulary — each nested reading is the access-path term `readings(b, i)`, not a
+minted handle:
+
+```prolog
+batch(b).
+reading(readings(b,0)).  sensor(readings(b,0),"s1").  temp_c(readings(b,0),20).
+reading(readings(b,1)).  sensor(readings(b,1),"s2").  temp_c(readings(b,1),105).
+```
+
+Those are the base facts. Loaded together with `views.lp`, the view rule *derives*
+the `readings/3` relation, which a client's own model joins on — e.g. flagging an
+overheating reading:
+
+```prolog
+hot(B, R) :- readings(B, _, R), temp_c(R, T), T > 100.   % ⊢ hot(b, readings(b,1))
+```
+
+Solve that with **your own clingo**, and keryx turns the answer set **back into a
+`Batch`**. keryx never runs the solver — the codec that grounds and reassembles
+arrives with the first end-to-end path; `gen` is real today.
+
 ## Status
 
 Founding. The compiler, codec, and CLI are under construction; a worked
