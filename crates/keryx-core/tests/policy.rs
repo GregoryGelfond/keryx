@@ -139,7 +139,8 @@ fn maps_scalar_value_has_no_view() {
     assert_eq!(
         counts.form(),
         &EmitForm::Map {
-            key: MapKey::String
+            key: MapKey::String,
+            key_treatment: ScalarTreatment::Text,
         }
     );
     assert_eq!(
@@ -160,7 +161,15 @@ fn maps_message_value_gets_a_map_view() {
     let items = field(inventory, "items");
     assert_eq!(items.predicate().as_str(), "items");
     assert_eq!(items.arity(), 3);
-    assert_eq!(items.form(), &EmitForm::Map { key: MapKey::Int64 });
+    // The key's §6 default treatment rides with the form (spec §7.2): an `int64` key lowers to
+    // a decimal string, as an `int64` value does.
+    assert_eq!(
+        items.form(),
+        &EmitForm::Map {
+            key: MapKey::Int64,
+            key_treatment: ScalarTreatment::DecimalString,
+        }
+    );
     assert_eq!(items.view(), Some(ViewKind::Map));
     match items.value() {
         ValueMapping::Message(referent) => assert_eq!(referent.as_str(), "item"),
@@ -351,7 +360,8 @@ fn repeated_and_mapped_enum_values_have_no_view() {
     assert_eq!(
         tags.form(),
         &EmitForm::Map {
-            key: MapKey::String
+            key: MapKey::String,
+            key_treatment: ScalarTreatment::Text,
         }
     );
     assert_eq!(tags.view(), None);

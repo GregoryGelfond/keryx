@@ -45,7 +45,7 @@ fn domain(parent: &str, form: &EmitForm) -> String {
     match form {
         EmitForm::Function | EmitForm::OneofArm { .. } | EmitForm::Set => parent.to_owned(),
         EmitForm::Sequence => format!("{parent} × index"),
-        EmitForm::Map { key } => format!("{parent} × {}", Scalar::from(*key).as_str()),
+        EmitForm::Map { key, .. } => format!("{parent} × {}", Scalar::from(*key).as_str()),
     }
 }
 

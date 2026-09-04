@@ -76,13 +76,6 @@ pub fn ingest(bytes: &[u8]) -> Result<Schema, Diagnostics> {
 /// # Errors
 ///
 /// As [`ingest`], and `MalformedDescriptor` for a malformed map entry anywhere in the pool.
-// The codec is this door's production caller and lands with it; until then it is exercised only
-// by this module's own tests, so the expectation is stated for the library build alone (an
-// unfulfilled expectation is itself a lint) and retires when the codec ingests a set here.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) fn ingest_retaining(bytes: &[u8]) -> Result<(Schema, RetainedPool), Diagnostics> {
     ingest_and_retain(bytes, heuristic_subject).and_then(for_decoding)
 }
@@ -194,13 +187,6 @@ impl RetainedPool {
     /// leading `.` (the engine strips one) — or `None` when no such message is declared. Total
     /// for any name: the engine's lookup is a table read that answers a miss with `None`, never a
     /// panic.
-    // The codec is this lookup's production caller and lands with it; until then it is exercised
-    // only by this module's own tests, so the expectation is stated for the library build alone
-    // (an unfulfilled expectation is itself a lint) and retires when the codec resolves a message.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no production caller until the codec lands")
-    )]
     pub(crate) fn message_by_name(&self, name: &str) -> Option<MessageDescriptor> {
         self.0.get_message_by_name(name)
     }

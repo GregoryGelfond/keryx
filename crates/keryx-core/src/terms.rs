@@ -90,14 +90,6 @@ pub(crate) fn fact_named(predicate: Name, arguments: Vec<Term>) -> WithProvenanc
 /// is already such a leaf, and a payload's values reach a head only through those
 /// doors, so the uncollapsed arm is unreachable — a keryx programming error, never a
 /// foreign input.
-// The codec is this door's production caller and lands with it; until then it is exercised
-// only by this module's own tests, so the expectation is stated for the library build alone
-// (an unfulfilled expectation is itself a lint) and retires when the codec builds a fact's
-// symbol here.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) fn atom_symbol(predicate: Name, arguments: Vec<Term>) -> Symbol {
     let head = apply(predicate, arguments);
     match head.into_parts() {

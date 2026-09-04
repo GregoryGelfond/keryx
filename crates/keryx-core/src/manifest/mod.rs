@@ -119,9 +119,9 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 /// `set` (a `(keryx.set)` membership relation, reserved at present) — or, for a singular field or
 /// oneof arm, its `Totality` (§5), not the finer presence (the gen-stage fidelity the `Mapping`
 /// carries; `LEGACY_REQUIRED`'s distinct outbound obligation is a shape concern, Increment 4).
-/// A map's `<key>` is the *declared* key type (§13.4): the default-string treatment of an
-/// integer key (§7.2) is classified, not enforced, until the codec (Increment 5), so
-/// `map<int64>` names the declared key, never an emitted string key.
+/// A map's `<key>` is the *declared* key type (§13.4): the codec lowers a key under its §6
+/// default treatment (an `int64` key travels as a decimal string, §7.2), but the manifest records
+/// the declaration, so `map<int64>` names the declared key, never the emitted term's shape.
 fn field_line(out: &mut String, field: &FieldMapping) {
     let kind = match field.form() {
         EmitForm::Function => "fn",
@@ -138,7 +138,7 @@ fn field_line(out: &mut String, field: &FieldMapping) {
     // otherwise be indistinguishable by); a singular field or oneof arm names its presence (§5).
     let descriptor = match field.form() {
         EmitForm::Sequence => "seq".to_owned(),
-        EmitForm::Map { key } => format!("map<{}>", Scalar::from(*key).as_str()),
+        EmitForm::Map { key, .. } => format!("map<{}>", Scalar::from(*key).as_str()),
         EmitForm::Set => "set".to_owned(),
         EmitForm::Function | EmitForm::OneofArm { .. } => {
             totality_word(field.presence()).to_owned()

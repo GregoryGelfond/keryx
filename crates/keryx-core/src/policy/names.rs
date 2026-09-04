@@ -195,7 +195,13 @@ fn shape(
                 ValueType::Message(path) => ValueMapping::Message(sort_of(path)?),
                 ValueType::Enum(path) => ValueMapping::Enum(sort_of(path)?),
             };
-            (EmitForm::Map { key: *key }, 3, mapped)
+            // A key is a scalar in key position (spec §7.2: keys map per §6), so its treatment
+            // is the §6 default of its kind, computed as a value's is.
+            let form = EmitForm::Map {
+                key: *key,
+                key_treatment: scalar_treatment(Scalar::from(*key)),
+            };
+            (form, 3, mapped)
         }
     })
 }

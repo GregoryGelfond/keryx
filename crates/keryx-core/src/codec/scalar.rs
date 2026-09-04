@@ -59,13 +59,6 @@ use crate::terms;
 ///
 /// The refusals of the table, each one `Diagnostic` at `at` — one value, one field; the walk
 /// collects across fields.
-// The codec's walk is this policy's production caller and lands with it; until then it is
-// exercised only by this module's own tests, so the expectation is stated for the library build
-// alone (an unfulfilled expectation is itself a lint) and retires when the walk lowers a value.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) fn lower(
     scalar: Scalar,
     treatment: ScalarTreatment,

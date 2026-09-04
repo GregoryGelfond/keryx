@@ -18,7 +18,8 @@ use themelios_program::Name;
 use crate::descriptor::model::{FqName, MapKey, Openness, Package, Scalar};
 
 /// A field's emitted form (spec §4.1, §7): the ASP shape its predicate takes. Closed —
-/// the treatment classification (`ValueMapping`) rides beside it, never inside it. At
+/// the value's treatment classification (`ValueMapping`) rides beside it, never inside it;
+/// a map's *key* is the form's own, so its treatment rides with the form. At
 /// present every `repeated` is a `Sequence`; the `Set` form lands when `(keryx.set)` gains
 /// meaning (Increment 5). `OneofArm` is an ordinary partial function that also records
 /// its oneof (spec §7.3).
@@ -35,6 +36,11 @@ pub enum EmitForm {
     Map {
         /// The key kind.
         key: MapKey,
+        /// The key's §6 default treatment — a map key lowers per §6 exactly as a value of its
+        /// kind does (spec §7.2), so the codec lowers a key under this treatment without
+        /// re-deriving it; carried beside `key` for the same reason `ValueMapping::Scalar`
+        /// carries a value's.
+        key_treatment: ScalarTreatment,
     },
     /// A oneof arm — a partial function recording its oneof's name (spec §7.3).
     OneofArm {
@@ -515,10 +521,16 @@ mod tests {
     }
 
     #[test]
-    fn map_emit_form_holds_its_key() {
-        let form = EmitForm::Map { key: MapKey::Int64 };
+    fn map_emit_form_holds_its_key_and_the_key_s_treatment() {
+        let form = EmitForm::Map {
+            key: MapKey::Int64,
+            key_treatment: ScalarTreatment::DecimalString,
+        };
         match form {
-            EmitForm::Map { key } => assert_eq!(key, MapKey::Int64),
+            EmitForm::Map { key, key_treatment } => {
+                assert_eq!(key, MapKey::Int64);
+                assert_eq!(key_treatment, ScalarTreatment::DecimalString);
+            }
             EmitForm::Function | EmitForm::Sequence | EmitForm::Set | EmitForm::OneofArm { .. } => {
                 panic!("expected a Map form")
             }

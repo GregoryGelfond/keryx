@@ -47,14 +47,6 @@ use crate::fault::{Dependency, contain};
 ///
 /// `UndecodablePayload` when the bytes do not decode as `desc`; `DependencyFault` for a contained
 /// engine panic.
-// The codec's walk is this adapter's production caller and lands with it; until then every item
-// of the adapter's surface is exercised only by this module's own tests, so each states its
-// expectation for the library build alone (an unfulfilled expectation is itself a lint) and
-// retires, item by item, as the walk consumes it.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) fn decode_binary(
     desc: &MessageDescriptor,
     bytes: &[u8],
@@ -92,41 +84,16 @@ fn undecodable(desc: &MessageDescriptor, error: &str) -> Diagnostics {
 /// handle, each sub-message, each datum — so the tree is decoded once and never copied, and it
 /// lives as long as the walk that reads it.
 #[derive(Debug)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) struct Decoded {
     root: DynamicMessage,
 }
 
 impl Decoded {
     /// The root message as a borrowing handle — the walk's first work item, from which every
-    /// sub-message it reaches is a handle over this same tree.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no production caller until the codec lands")
-    )]
+    /// sub-message it reaches is a handle over this same tree, and through which the root's own
+    /// fields are read like any other message's.
     pub(crate) fn root(&self) -> SubMessage<'_> {
         SubMessage(&self.root)
-    }
-
-    /// As [`SubMessage::is_present`], asked of the root.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no production caller until the codec lands")
-    )]
-    pub(crate) fn is_present(&self, number: i32) -> bool {
-        self.root().is_present(number)
-    }
-
-    /// As [`SubMessage::value`], asked of the root.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no production caller until the codec lands")
-    )]
-    pub(crate) fn value(&self, number: i32) -> Option<FieldValue<'_>> {
-        self.root().value(number)
     }
 }
 
@@ -135,10 +102,6 @@ impl Decoded {
 /// through a handle borrows the tree, so a walk can hold the child it read beside the parent it
 /// read it from, and let go of either first.
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) struct SubMessage<'a>(&'a DynamicMessage);
 
 impl<'a> SubMessage<'a> {
@@ -148,10 +111,6 @@ impl<'a> SubMessage<'a> {
     /// whether its value is non-default — the engine's notion, which the walk asks only of a
     /// partial field (spec §5: presence is decided from the mapping's totality, never here).
     /// `false` for a number the message does not declare, and for a negative one.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no production caller until the codec lands")
-    )]
     pub(crate) fn is_present(self, number: i32) -> bool {
         u32::try_from(number).is_ok_and(|number| self.0.has_field_by_number(number))
     }
@@ -165,10 +124,6 @@ impl<'a> SubMessage<'a> {
     /// a message has no zero value — its absence is its zero — and every message-typed field has
     /// explicit presence, so the walk asks [`is_present`](Self::is_present) first and never reads
     /// an absent one.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no production caller until the codec lands")
-    )]
     pub(crate) fn value(self, number: i32) -> Option<FieldValue<'a>> {
         let number = u32::try_from(number).ok()?;
         let field = self.0.descriptor().get_field(number)?;
@@ -182,10 +137,6 @@ impl<'a> SubMessage<'a> {
 /// A field's value, in keryx's vocabulary, borrowing the decoded tree — what
 /// [`SubMessage::value`] reads.
 #[derive(Debug)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) enum FieldValue<'a> {
     /// A singular scalar or enum value — the wire's, or the kind's zero.
     Scalar(Datum<'a>),
@@ -204,10 +155,6 @@ pub(crate) enum FieldValue<'a> {
 /// pool, the one crafted shape — a map entry with a repeated value field — that would put one in
 /// value position).
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) enum Element<'a> {
     /// A scalar or enum element.
     Scalar(Datum<'a>),
@@ -219,10 +166,6 @@ pub(crate) enum Element<'a> {
 /// `string` keys, and the descriptor door refuses any other. `Ord` orders the entries of one map,
 /// whose keys share a kind; the derived order across kinds is never exercised.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) enum Key<'a> {
     /// A `bool` key.
     Bool(bool),
@@ -245,10 +188,6 @@ pub(crate) enum Key<'a> {
 /// may need carrying when that annotation lands. An enum value travels as its number; the walk
 /// resolves it against the enum's mapping (§7.4).
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) enum Datum<'a> {
     /// An `int32`, `sint32`, or `sfixed32` value.
     I32(i32),
@@ -268,6 +207,21 @@ pub(crate) enum Datum<'a> {
     Bytes(&'a [u8]),
     /// An enum value, by number.
     Enum(i32),
+}
+
+/// A map key is a scalar in key position (spec §7.2: keys map per §6), so it lowers as the datum
+/// of its kind — the §6 policy's input, read from the same key the entries were ordered by.
+impl<'a> From<Key<'a>> for Datum<'a> {
+    fn from(key: Key<'a>) -> Datum<'a> {
+        match key {
+            Key::Bool(value) => Datum::Bool(value),
+            Key::I32(value) => Datum::I32(value),
+            Key::I64(value) => Datum::I64(value),
+            Key::U32(value) => Datum::U32(value),
+            Key::U64(value) => Datum::U64(value),
+            Key::Str(value) => Datum::Str(value),
+        }
+    }
 }
 
 /// A stored field value, borrowed, in keryx's vocabulary.
@@ -364,8 +318,9 @@ mod tests {
     use std::borrow::Cow;
     use std::path::Path;
 
+    use keryx_test_support::wire::delimited;
     use prost::Message as _;
-    use prost::encoding::{self, WireType};
+    use prost::encoding;
     use prost_reflect::{MessageDescriptor, Value};
     use prost_types::{
         DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
@@ -472,17 +427,9 @@ mod tests {
         pool.message_by_name(name).expect("a declared message")
     }
 
-    // Wire-format builders over prost's encoding primitives — the payloads are written as bytes
-    // on the wire, not through the engine's own encoder, so the door is seen to read the wire.
-
-    fn delimited(tag: u32, payload: &[u8], buf: &mut Vec<u8>) {
-        encoding::encode_key(tag, WireType::LengthDelimited, buf);
-        encoding::encode_varint(
-            u64::try_from(payload.len()).expect("a test payload fits"),
-            buf,
-        );
-        buf.extend_from_slice(payload);
-    }
+    // The payloads are written as bytes on the wire — prost's encoding primitives and the shared
+    // `delimited` builder — not through the engine's own encoder, so the door is seen to read
+    // the wire.
 
     /// A thermal `Reading { sensor = 1; temp_c = 2 }` on the wire.
     fn reading(sensor: &str, temp_c: i32) -> Vec<u8> {
@@ -539,7 +486,7 @@ mod tests {
     /// The walk's need in miniature: a value read through a sub-message handle borrows the *tree*,
     /// so it outlives the handle it was read through (the handle is a local here).
     fn note_of(decoded: &Decoded) -> Datum<'_> {
-        let detail = message_of(decoded.value(5));
+        let detail = message_of(decoded.root().value(5));
         scalar(detail.value(1))
     }
 
@@ -553,10 +500,10 @@ mod tests {
         delimited(1, &reading("s-107", 21), &mut bytes);
         let decoded = decode_binary(&batch, &bytes).expect("a well-formed batch decodes");
         assert!(
-            decoded.is_present(1),
+            decoded.root().is_present(1),
             "a set repeated field is present to the engine"
         );
-        let readings = elements(decoded.value(1));
+        let readings = elements(decoded.root().value(1));
         assert_eq!(readings.len(), 2, "two elements, in wire order");
         let first = element_message(readings[0]);
         assert_eq!(scalar(first.value(1)), Datum::Str("s-101"));
@@ -577,16 +524,16 @@ mod tests {
         let mut bytes = Vec::new();
         delimited(1, b"s-101", &mut bytes);
         let decoded = decode_binary(&reading_desc, &bytes).expect("decodes");
-        assert_eq!(scalar(decoded.value(2)), Datum::I32(0));
-        assert!(!decoded.is_present(2));
+        assert_eq!(scalar(decoded.root().value(2)), Datum::I32(0));
+        assert!(!decoded.root().is_present(2));
         // An empty payload: every scalar reads as its zero, a sequence as empty.
         let empty = decode_binary(&reading_desc, &[]).expect("an empty payload decodes");
-        assert_eq!(scalar(empty.value(1)), Datum::Str(""));
-        assert_eq!(scalar(empty.value(2)), Datum::I32(0));
+        assert_eq!(scalar(empty.root().value(1)), Datum::Str(""));
+        assert_eq!(scalar(empty.root().value(2)), Datum::I32(0));
         let batch = decode_binary(&descriptor_of(&pool, "thermal.v1.ReadingBatch"), &[])
             .expect("an empty batch decodes");
-        assert!(elements(batch.value(1)).is_empty());
-        assert!(!batch.is_present(1));
+        assert!(elements(batch.root().value(1)).is_empty());
+        assert!(!batch.root().is_present(1));
     }
 
     #[test]
@@ -599,8 +546,11 @@ mod tests {
         delimited(1, b"s-1", &mut bytes);
         delimited(5, &detail, &mut bytes);
         let decoded = decode_binary(&reading, &bytes).expect("decodes");
-        assert!(decoded.is_present(5), "a set message field is present");
-        let sub = message_of(decoded.value(5));
+        assert!(
+            decoded.root().is_present(5),
+            "a set message field is present"
+        );
+        let sub = message_of(decoded.root().value(5));
         assert_eq!(scalar(sub.value(1)), Datum::Str("calibrated"));
         assert_eq!(
             note_of(&decoded),
@@ -628,11 +578,11 @@ mod tests {
         // the enum (#4) reads as its first value; the message field (#5) has no zero to
         // materialise — its absence is its zero — and is not present.
         let empty = decode_binary(&reading, &[]).expect("decodes");
-        assert_eq!(scalar(empty.value(3)), Datum::I32(0));
-        assert!(!empty.is_present(3));
-        assert_eq!(scalar(empty.value(4)), Datum::Enum(0));
-        assert!(empty.value(5).is_none());
-        assert!(!empty.is_present(5));
+        assert_eq!(scalar(empty.root().value(3)), Datum::I32(0));
+        assert!(!empty.root().is_present(3));
+        assert_eq!(scalar(empty.root().value(4)), Datum::Enum(0));
+        assert!(empty.root().value(5).is_none());
+        assert!(!empty.root().is_present(5));
         // The optional scalar carried as an explicit zero, and one `oneof` arm carried: the same
         // zero, now present — the value view decides nothing about presence; the other arm reads
         // as its zero and is not present.
@@ -640,12 +590,12 @@ mod tests {
         encoding::int32::encode(3, &0, &mut bytes);
         delimited(6, b"dev", &mut bytes);
         let carried = decode_binary(&reading, &bytes).expect("decodes");
-        assert_eq!(scalar(carried.value(3)), Datum::I32(0));
-        assert!(carried.is_present(3));
-        assert_eq!(scalar(carried.value(6)), Datum::Str("dev"));
-        assert!(carried.is_present(6));
-        assert_eq!(scalar(carried.value(7)), Datum::Str(""));
-        assert!(!carried.is_present(7));
+        assert_eq!(scalar(carried.root().value(3)), Datum::I32(0));
+        assert!(carried.root().is_present(3));
+        assert_eq!(scalar(carried.root().value(6)), Datum::Str("dev"));
+        assert!(carried.root().is_present(6));
+        assert_eq!(scalar(carried.root().value(7)), Datum::Str(""));
+        assert!(!carried.root().is_present(7));
     }
 
     #[test]
@@ -680,25 +630,25 @@ mod tests {
         delimited(11, &entry_b, &mut bytes);
         delimited(11, &entry_a, &mut bytes);
         let decoded = decode_binary(&sample, &bytes).expect("decodes");
-        assert_eq!(scalar(decoded.value(1)), Datum::I32(7));
-        assert_eq!(scalar(decoded.value(2)), Datum::I64(-1));
-        assert_eq!(scalar(decoded.value(3)), Datum::U64(u64::MAX));
-        assert_eq!(scalar(decoded.value(4)), Datum::F64(1.5));
-        assert_eq!(scalar(decoded.value(5)), Datum::Bool(true));
-        assert_eq!(scalar(decoded.value(6)), Datum::Bytes(&[0xde, 0xad]));
-        assert_eq!(scalar(decoded.value(7)), Datum::Str("lbl"));
-        assert_eq!(scalar(decoded.value(8)), Datum::Enum(1));
-        let notes: Vec<Datum<'_>> = elements(decoded.value(9))
+        assert_eq!(scalar(decoded.root().value(1)), Datum::I32(7));
+        assert_eq!(scalar(decoded.root().value(2)), Datum::I64(-1));
+        assert_eq!(scalar(decoded.root().value(3)), Datum::U64(u64::MAX));
+        assert_eq!(scalar(decoded.root().value(4)), Datum::F64(1.5));
+        assert_eq!(scalar(decoded.root().value(5)), Datum::Bool(true));
+        assert_eq!(scalar(decoded.root().value(6)), Datum::Bytes(&[0xde, 0xad]));
+        assert_eq!(scalar(decoded.root().value(7)), Datum::Str("lbl"));
+        assert_eq!(scalar(decoded.root().value(8)), Datum::Enum(1));
+        let notes: Vec<Datum<'_>> = elements(decoded.root().value(9))
             .into_iter()
             .map(|element| scalar(element_message(element).value(1)))
             .collect();
         assert_eq!(notes, [Datum::Str("A"), Datum::Str("B")]);
-        let kinds: Vec<Datum<'_>> = elements(decoded.value(10))
+        let kinds: Vec<Datum<'_>> = elements(decoded.root().value(10))
             .into_iter()
             .map(element_scalar)
             .collect();
         assert_eq!(kinds, [Datum::Enum(1), Datum::Enum(0)]);
-        let tags: Vec<(Key<'_>, Datum<'_>)> = entries(decoded.value(11))
+        let tags: Vec<(Key<'_>, Datum<'_>)> = entries(decoded.root().value(11))
             .into_iter()
             .map(|(key, element)| (key, element_scalar(element)))
             .collect();
@@ -716,8 +666,8 @@ mod tests {
         encoding::uint32::encode(1, &u32::MAX, &mut bytes);
         encoding::double::encode(2, &2.5, &mut bytes);
         let decoded = decode_binary(&kinds, &bytes).expect("decodes");
-        assert_eq!(scalar(decoded.value(1)), Datum::U32(u32::MAX));
-        assert_eq!(scalar(decoded.value(2)), Datum::F64(2.5));
+        assert_eq!(scalar(decoded.root().value(1)), Datum::U32(u32::MAX));
+        assert_eq!(scalar(decoded.root().value(2)), Datum::F64(2.5));
     }
 
     #[test]
@@ -725,22 +675,22 @@ mod tests {
         let pool = fixture_pool("scalar_treatment.proto");
         let sample = descriptor_of(&pool, "keryx.scalars.Sample");
         let decoded = decode_binary(&sample, &[]).expect("an empty payload decodes");
-        assert_eq!(scalar(decoded.value(1)), Datum::I32(0));
-        assert_eq!(scalar(decoded.value(2)), Datum::I64(0));
-        assert_eq!(scalar(decoded.value(3)), Datum::U64(0));
-        assert_eq!(scalar(decoded.value(4)), Datum::F64(0.0));
-        assert_eq!(scalar(decoded.value(5)), Datum::Bool(false));
-        assert_eq!(scalar(decoded.value(6)), Datum::Bytes(&[]));
-        assert_eq!(scalar(decoded.value(7)), Datum::Str(""));
-        assert_eq!(scalar(decoded.value(8)), Datum::Enum(0));
-        assert!(elements(decoded.value(9)).is_empty());
-        assert!(elements(decoded.value(10)).is_empty());
-        assert!(entries(decoded.value(11)).is_empty());
+        assert_eq!(scalar(decoded.root().value(1)), Datum::I32(0));
+        assert_eq!(scalar(decoded.root().value(2)), Datum::I64(0));
+        assert_eq!(scalar(decoded.root().value(3)), Datum::U64(0));
+        assert_eq!(scalar(decoded.root().value(4)), Datum::F64(0.0));
+        assert_eq!(scalar(decoded.root().value(5)), Datum::Bool(false));
+        assert_eq!(scalar(decoded.root().value(6)), Datum::Bytes(&[]));
+        assert_eq!(scalar(decoded.root().value(7)), Datum::Str(""));
+        assert_eq!(scalar(decoded.root().value(8)), Datum::Enum(0));
+        assert!(elements(decoded.root().value(9)).is_empty());
+        assert!(elements(decoded.root().value(10)).is_empty());
+        assert!(entries(decoded.root().value(11)).is_empty());
         let pool = kinds_pool();
         let decoded =
             decode_binary(&descriptor_of(&pool, "k.Kinds"), &[]).expect("an empty payload decodes");
-        assert_eq!(scalar(decoded.value(1)), Datum::U32(0));
-        assert_eq!(scalar(decoded.value(2)), Datum::F64(0.0));
+        assert_eq!(scalar(decoded.root().value(1)), Datum::U32(0));
+        assert_eq!(scalar(decoded.root().value(2)), Datum::F64(0.0));
     }
 
     #[test]
@@ -771,7 +721,7 @@ mod tests {
         delimited(2, &item(-1, b"y"), &mut bytes);
         delimited(2, &item(3, b"z"), &mut bytes);
         let decoded = decode_binary(&inventory, &bytes).expect("decodes");
-        let counts: Vec<(Key<'_>, Datum<'_>)> = entries(decoded.value(1))
+        let counts: Vec<(Key<'_>, Datum<'_>)> = entries(decoded.root().value(1))
             .into_iter()
             .map(|(key, element)| (key, element_scalar(element)))
             .collect();
@@ -783,7 +733,7 @@ mod tests {
                 (Key::Str("c"), Datum::I32(3)),
             ]
         );
-        let items: Vec<(Key<'_>, Datum<'_>)> = entries(decoded.value(2))
+        let items: Vec<(Key<'_>, Datum<'_>)> = entries(decoded.root().value(2))
             .into_iter()
             .map(|(key, element)| (key, scalar(element_message(element).value(1))))
             .collect();
@@ -853,7 +803,7 @@ mod tests {
         );
         let decoded = decode_binary(&kinds, &bytes).expect("decodes");
         let read = |number: i32| -> Vec<(Key<'_>, Datum<'_>)> {
-            entries(decoded.value(number))
+            entries(decoded.root().value(number))
                 .into_iter()
                 .map(|(key, element)| (key, element_scalar(element)))
                 .collect()
@@ -912,9 +862,9 @@ mod tests {
         let pool = thermal_pool();
         let reading = descriptor_of(&pool, "thermal.v1.Reading");
         let decoded = decode_binary(&reading, &[]).expect("decodes");
-        assert!(decoded.value(99).is_none());
-        assert!(decoded.value(-1).is_none());
-        assert!(!decoded.is_present(99));
-        assert!(!decoded.is_present(-1));
+        assert!(decoded.root().value(99).is_none());
+        assert!(decoded.root().value(-1).is_none());
+        assert!(!decoded.root().is_present(99));
+        assert!(!decoded.root().is_present(-1));
     }
 }

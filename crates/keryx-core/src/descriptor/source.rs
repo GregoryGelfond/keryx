@@ -321,13 +321,6 @@ pub fn compile(
 /// # Errors
 ///
 /// As [`compile`].
-// The codec is this door's production caller and lands with it; until then it is exercised only
-// by this module's own tests, so the expectation is stated for the library build alone (an
-// unfulfilled expectation is itself a lint) and retires when the codec compiles a schema here.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "no production caller until the codec lands")
-)]
 pub(crate) fn compile_retaining(
     files: &[impl AsRef<Path>],
     includes: &[impl AsRef<Path>],

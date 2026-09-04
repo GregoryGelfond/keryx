@@ -45,13 +45,51 @@ pub fn compile_fixture(name: &str) -> Vec<u8> {
 /// The compiler's message (as a `String`) when the sources do not compile — a parse, type,
 /// import, or unsupported-edition error.
 pub fn try_compile_fixture(name: &str) -> Result<Vec<u8>, String> {
-    let mut compiler =
-        Compiler::new([fixtures(), vendored()]).map_err(|error| error.to_string())?;
+    try_compile_in(&[fixtures(), vendored()], name)
+}
+
+/// Compile the `.proto` named `file` relative to one of `includes` — imports resolved against
+/// those roots and protox's bundled well-known types — to a serialized `FileDescriptorSet`, as
+/// [`compile_fixture`] does for the fixture corpus. For a source outside that corpus, such as a
+/// worked example under `examples/`.
+///
+/// # Panics
+/// If the source does not compile: a broken example is a test bug, surfaced loudly.
+#[must_use]
+pub fn compile_in(includes: &[PathBuf], file: &str) -> Vec<u8> {
+    try_compile_in(includes, file).unwrap_or_else(|error| panic!("`{file}` compiles: {error}"))
+}
+
+/// As [`compile_in`], returning the compiler's result.
+///
+/// # Errors
+/// As [`try_compile_fixture`].
+pub fn try_compile_in(includes: &[PathBuf], file: &str) -> Result<Vec<u8>, String> {
+    let mut compiler = Compiler::new(includes).map_err(|error| error.to_string())?;
     compiler.include_source_info(true).include_imports(true);
     compiler
-        .open_file(name)
+        .open_file(file)
         .map_err(|error| error.to_string())?;
     Ok(compiler.encode_file_descriptor_set())
+}
+
+/// Wire-format builders over prost's encoding primitives, so a suite writes a payload as bytes
+/// on the wire — never through the engine's own encoder — and the payload door is seen to read
+/// the wire. The scalar primitives (`prost::encoding::int32::encode` and kin) are used directly;
+/// this module carries only what they lack.
+pub mod wire {
+    use prost::encoding::{self, WireType};
+
+    /// Append a length-delimited field — a sub-message, a `string`, or `bytes` — numbered `tag`
+    /// with `payload` as its content.
+    pub fn delimited(tag: u32, payload: &[u8], buf: &mut Vec<u8>) {
+        encoding::encode_key(tag, WireType::LengthDelimited, buf);
+        encoding::encode_varint(
+            u64::try_from(payload.len()).expect("a test payload fits"),
+            buf,
+        );
+        buf.extend_from_slice(payload);
+    }
 }
 
 /// A hand-built `FileDescriptorSet` that carries an **`uninterpreted_option`** — one message with a
