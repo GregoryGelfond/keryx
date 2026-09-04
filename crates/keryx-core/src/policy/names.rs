@@ -108,7 +108,8 @@ pub(super) fn totality(presence: Presence) -> Totality {
     }
 }
 
-/// The §6 default scalar treatment (the classification; not enforced at present).
+/// The §6 default scalar treatment — the classification the codec's scalar policy
+/// (`codec::scalar::lower`) lowers a payload value under.
 pub(super) fn scalar_treatment(scalar: Scalar) -> ScalarTreatment {
     match scalar {
         Scalar::Int32 | Scalar::Sint32 | Scalar::Sfixed32 | Scalar::Uint32 | Scalar::Fixed32 => {

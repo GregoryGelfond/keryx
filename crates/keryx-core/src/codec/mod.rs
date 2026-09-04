@@ -3,9 +3,10 @@
 //! a `.lp` fact module for the CLI seam (R6), ground by construction (P10). This module
 //! carries the surface's value types: the [`PayloadFormat`] a payload arrives in and the
 //! [`Root`] its facts hang from; the codec proper — the decode engine's adapter (`engine`),
-//! the mapping-guided walk and its facts — builds over them.
+//! the §6 scalar policy (`scalar`), the mapping-guided walk and its facts — builds over them.
 
 pub(crate) mod engine;
+pub(crate) mod scalar;
 
 use themelios_program::prelude::*;
 

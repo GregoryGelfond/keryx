@@ -64,11 +64,13 @@ pub enum ValueMapping {
     Enum(Name),
 }
 
-/// The §6 default treatment of a scalar (the classification, **not enforced** at present —
-/// range checks, the float error, and annotation overrides land at Increment 5). The
-/// families follow §6: the machine-int family is `Native` (uint32/fixed32 carry a
-/// downstream range obligation); the 64-bit family is `DecimalString`; float/double have
-/// no default (`NeedsAnnotation` — the error is Increment 5).
+/// The §6 default treatment of a scalar — the classification the codec's scalar policy
+/// (`codec::scalar::lower`, Increment 3) lowers a payload value under, where the range check
+/// and the float refusal are enforced; the annotation overrides that change a field's
+/// treatment (`(keryx.numeric)`, `(keryx.scale)`, `(keryx.opaque)`) are Increment 5. The
+/// families follow §6: the machine-int family is `Native` (uint32/fixed32 carry a range
+/// obligation the policy checks); the 64-bit family is `DecimalString`; float/double have
+/// no default (`NeedsAnnotation` — refused unannotated).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ScalarTreatment {
@@ -77,8 +79,9 @@ pub enum ScalarTreatment {
     Native,
     /// `int64`, `uint64`, `fixed64`, `sfixed64`, `sint64` — decimal-string constant.
     DecimalString,
-    /// `float`, `double` — no default; an annotation is required (the translation error
-    /// is Increment 5).
+    /// `float`, `double` — no default; an annotation is required. Unannotated, the codec's
+    /// scalar policy refuses the field (`UnannotatedFloat`, Increment 3); the annotations that
+    /// discharge the refusal, `(keryx.scale)` and `(keryx.opaque)`, are Increment 5.
     NeedsAnnotation,
     /// `bool` — the constants `true`/`false`.
     Bool,
