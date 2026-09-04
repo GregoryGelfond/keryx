@@ -133,9 +133,9 @@ pub enum DiagnosticKind {
     /// producing a duplicate constant. Names the enum's locus.
     AmbiguousConstant,
     /// A dependency faulted on a foreign-input path and keryx contained the unwind (the threat
-    /// model's dependency boundary): an unforeseen panic in foreign code — the descriptor engine
-    /// decoding or walking a set, or protox compiling `.proto` source — becomes this value at keryx's
-    /// foreign-fault containment seam, rather than unwinding into keryx's caller. Distinct from a keryx bug,
+    /// model's dependency boundary): an unforeseen panic in foreign code keryx is a client of becomes
+    /// this value at keryx's foreign-fault containment seam, rather than unwinding into keryx's caller
+    /// — the offending dependency named in the `detail`. Distinct from a keryx bug,
     /// which stays a panic and is reported by the CLI as `Exit::Internal` ("a bug in keryx"):
     /// keryx-core stays total by construction and mints no library "internal" kind of its own (§6).
     /// The split is asymmetric — a keryx bug panics, an upstream fault is a value — and it carries

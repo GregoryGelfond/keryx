@@ -28,6 +28,7 @@ use prost_reflect::{
 };
 
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
+use crate::fault::Dependency;
 
 /// Ingest a serialized `FileDescriptorSet` into a de-sugared [`Schema`] (§20). The
 /// sole public entry of the descriptor-engine boundary: bytes in, keryx types out,
@@ -78,9 +79,11 @@ pub(crate) fn ingest_subjects(bytes: &[u8], subjects: &[String]) -> Result<Schem
 /// observes after a fault), and prost-reflect reads its global well-known-type pool only across an
 /// infallible `Arc` clone (as at decode), so the `AssertUnwindSafe` is sound.
 fn walk(pool: &DescriptorPool, is_subject: impl Fn(&str) -> bool) -> Result<Schema, Diagnostics> {
-    crate::fault::contain("prost-reflect", "walking the descriptor set", || {
-        build_schema(pool, is_subject)
-    })?
+    crate::fault::contain(
+        Dependency::ProstReflect,
+        "walking the descriptor set",
+        || build_schema(pool, is_subject),
+    )?
 }
 
 /// keryx's editions refusal message, in one place — every `UnsupportedEdition` diagnostic (one per
@@ -119,11 +122,11 @@ fn decode(bytes: &[u8]) -> Result<DescriptorPool, Diagnostics> {
     // The pre-read: the closure borrows only `bytes`; prost-types' decode holds no process-global
     // mutable state a panic could leave inconsistent, and `pre_validate`'s own logic is total (no
     // `unwrap`/`expect`), so a fault here is prost-types', not keryx's — the `AssertUnwindSafe` is sound.
-    if let Some(diagnostics) =
-        crate::fault::contain("prost-types", "inspecting the descriptor set", || {
-            pre_validate(bytes)
-        })?
-    {
+    if let Some(diagnostics) = crate::fault::contain(
+        Dependency::ProstTypes,
+        "inspecting the descriptor set",
+        || pre_validate(bytes),
+    )? {
         return Err(diagnostics);
     }
     // The pool decode: the closure borrows only `bytes`. prost-reflect touches its global
@@ -134,9 +137,11 @@ fn decode(bytes: &[u8]) -> Result<DescriptorPool, Diagnostics> {
     // none). So a contained panic cannot poison the global lock, and `AssertUnwindSafe` is sound on that
     // basis. (A same-process consumer that *does* call those mutators with a panicking set is the
     // residual, recorded in the threat model's dependency boundary — not an Open item.)
-    crate::fault::contain("prost-reflect", "decoding the descriptor set", || {
-        DescriptorPool::decode(bytes)
-    })?
+    crate::fault::contain(
+        Dependency::ProstReflect,
+        "decoding the descriptor set",
+        || DescriptorPool::decode(bytes),
+    )?
     .map_err(|error| unreadable_set(error.to_string()))
 }
 

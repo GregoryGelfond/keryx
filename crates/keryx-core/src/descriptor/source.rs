@@ -48,6 +48,7 @@ use protox::file::{
 use crate::descriptor::ingest_subjects;
 use crate::descriptor::model::Schema;
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
+use crate::fault::Dependency;
 
 /// keryx's source-nesting bound, derived from the one engine constant ([`super::RECURSION_LIMIT`]):
 /// the deepest lexical nesting the descriptor pipeline admits is `RECURSION_LIMIT - 1`, so source
@@ -315,7 +316,7 @@ pub fn compile(
     // `Cell` writes panic-free) — so a fault here is protox's. The `AssertUnwindSafe` discharge for
     // this site, whose frame encloses all of `RootedResolver::open_file`.
     let compiled = crate::fault::contain(
-        "protox",
+        Dependency::Protox,
         "compiling .proto source",
         || -> Result<(Vec<String>, Vec<u8>), Diagnostics> {
             let mut chain = ChainFileResolver::new();
