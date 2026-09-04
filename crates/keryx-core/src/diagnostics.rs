@@ -166,6 +166,12 @@ pub enum DiagnosticKind {
     /// at the whole-input locus. Defense-in-depth with the same residual as `SourceTooDeep` (a
     /// sub-standard thread stack), retired when protox bounds its own import recursion.
     SourceImportGraphTooLarge,
+    /// A payload's bytes did not decode as the root message type the caller named — malformed,
+    /// truncated, or nested at or beyond the engine's decode recursion limit — so the payload as a
+    /// whole is untranslatable (§26): the whole-payload locus, no finer field path. The engine's own
+    /// message is composed into the detail, never exposed as its type. Distinct from a payload that
+    /// decodes but carries a value the §6 policy refuses, which is diagnosed at the field's locus.
+    UndecodablePayload,
 }
 
 impl DiagnosticKind {
@@ -187,6 +193,7 @@ impl DiagnosticKind {
             DiagnosticKind::SourceTooDeep => "source_too_deep",
             DiagnosticKind::SourceOutsideRoot => "source_outside_root",
             DiagnosticKind::SourceImportGraphTooLarge => "source_import_graph_too_large",
+            DiagnosticKind::UndecodablePayload => "undecodable_payload",
         }
     }
 }
@@ -515,6 +522,10 @@ mod tests {
             DiagnosticKind::SourceImportGraphTooLarge.as_str(),
             "source_import_graph_too_large"
         );
+        assert_eq!(
+            DiagnosticKind::UndecodablePayload.as_str(),
+            "undecodable_payload"
+        );
         // A new kind must be added above: this exhaustive match (no wildcard,
         // allowed in-crate despite #[non_exhaustive]) fails to compile otherwise.
         match DiagnosticKind::UnreadableDescriptorSet {
@@ -531,7 +542,8 @@ mod tests {
             | DiagnosticKind::DependencyFault
             | DiagnosticKind::SourceTooDeep
             | DiagnosticKind::SourceOutsideRoot
-            | DiagnosticKind::SourceImportGraphTooLarge => {}
+            | DiagnosticKind::SourceImportGraphTooLarge
+            | DiagnosticKind::UndecodablePayload => {}
         }
     }
 

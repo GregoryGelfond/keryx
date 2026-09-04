@@ -2,8 +2,10 @@
 //! mapping model and a root constant, to ground facts — `Symbol`s for the library seam,
 //! a `.lp` fact module for the CLI seam (R6), ground by construction (P10). This module
 //! carries the surface's value types: the [`PayloadFormat`] a payload arrives in and the
-//! [`Root`] its facts hang from; the codec proper — the mapping-guided walk and its facts —
-//! builds over them.
+//! [`Root`] its facts hang from; the codec proper — the decode engine's adapter (`engine`),
+//! the mapping-guided walk and its facts — builds over them.
+
+pub(crate) mod engine;
 
 use themelios_program::prelude::*;
 

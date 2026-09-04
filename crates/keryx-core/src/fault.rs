@@ -3,8 +3,8 @@
 //! [`DiagnosticKind::DependencyFault`] value rather than unwinding into keryx's caller. keryx's own
 //! logic stays total by construction (architecture §6); this seam holds only what crosses into code
 //! keryx does not own — the closed set of foreign dependencies enumerated as [`Dependency`], each
-//! variant naming the door it is contained at (the payload and `.lp` doors add variants as they
-//! land). The split is asymmetric: a keryx bug stays a panic (the CLI maps it to `Internal`), an
+//! variant naming the doors it is contained at (a door over a new dependency adds a variant as it
+//! lands). The split is asymmetric: a keryx bug stays a panic (the CLI maps it to `Internal`), an
 //! upstream fault becomes a value. A thread-local flag ([`is_containing`]) records whether a
 //! containment frame is live, so a consumer's panic hook may stay quiet for a fault keryx will return
 //! as a value.
@@ -39,7 +39,8 @@ pub fn is_containing() -> bool {
 pub(crate) enum Dependency {
     /// prost-types — the descriptor door's pre-read (`descriptor::pre_validate`, a plain decode).
     ProstTypes,
-    /// prost-reflect — the descriptor engine, at both the pool decode and the accessor walk.
+    /// prost-reflect — the descriptor engine, at both the pool decode and the accessor walk; and
+    /// the payload engine, at the payload door's binary decode (`codec::engine::decode_binary`).
     ProstReflect,
     /// protox — the `.proto` source compiler, at the source door's compile.
     Protox,

@@ -6,8 +6,9 @@
 //! the built pool as well, behind the opaque `RetainedPool`, for the codec — which decodes
 //! a payload against the very pool its schema was walked from; the seam's one lookup
 //! yields the engine's message descriptor to a crate-internal caller only, never to a
-//! public signature. The [`Schema`] model is `model`; the engine-side de-sugaring lives
-//! in private submodules.
+//! public signature, and resolves by name — walked or not — so the retaining doors check
+//! every map entry in the pool before handing it out. The [`Schema`] model is `model`; the
+//! engine-side de-sugaring lives in private submodules.
 //!
 //! [`Schema`]: model::Schema
 //! [`Diagnostics`]: crate::diagnostics::Diagnostics
@@ -30,8 +31,8 @@ use std::collections::BTreeSet;
 
 use prost::Message as _;
 use prost_reflect::{
-    DescriptorPool, EnumDescriptor, EnumValueDescriptor, FieldDescriptor, FileDescriptor, Kind,
-    MessageDescriptor, OneofDescriptor,
+    Cardinality, DescriptorPool, EnumDescriptor, EnumValueDescriptor, FieldDescriptor,
+    FileDescriptor, Kind, MessageDescriptor, OneofDescriptor,
 };
 
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
@@ -60,19 +61,30 @@ use crate::fault::Dependency;
 /// [`Schema`]: model::Schema
 /// [`Diagnostics`]: crate::diagnostics::Diagnostics
 pub fn ingest(bytes: &[u8]) -> Result<Schema, Diagnostics> {
-    ingest_retaining(bytes).map(|(schema, _)| schema)
+    ingest_and_retain(bytes, heuristic_subject).map(|(schema, _)| schema)
 }
 
 /// As [`ingest`], keeping the pool the schema was walked from beside it — the codec's door, so
 /// a payload is decoded against the pool its schema came from and the set is decoded once per
 /// schema, never again per payload. Subjects are chosen as at [`ingest`], by the well-known-name
-/// heuristic.
+/// heuristic. A retained pool carries one obligation the plain door does not: a payload may be
+/// decoded against *any* message the pool declares, by name — not only those the walk built and
+/// validated — so every map field in the pool, walked or not, is checked for its entry shape
+/// before the pool is handed out ([`for_decoding`]); the plain door accepts a set whose dangling
+/// messages it never translates.
 ///
 /// # Errors
 ///
-/// As [`ingest`].
+/// As [`ingest`], and `MalformedDescriptor` for a malformed map entry anywhere in the pool.
+// The codec is this door's production caller and lands with it; until then it is exercised only
+// by this module's own tests, so the expectation is stated for the library build alone (an
+// unfulfilled expectation is itself a lint) and retires when the codec ingests a set here.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "no production caller until the codec lands")
+)]
 pub(crate) fn ingest_retaining(bytes: &[u8]) -> Result<(Schema, RetainedPool), Diagnostics> {
-    ingest_and_retain(bytes, |name| !desugar::is_dependency_file(name))
+    ingest_and_retain(bytes, heuristic_subject).and_then(for_decoding)
 }
 
 /// Ingest a serialized `FileDescriptorSet`, treating exactly the files named in
@@ -85,21 +97,22 @@ pub(crate) fn ingest_retaining(bytes: &[u8]) -> Result<(Schema, RetainedPool), D
 ///
 /// As [`ingest`].
 pub(crate) fn ingest_subjects(bytes: &[u8], subjects: &[String]) -> Result<Schema, Diagnostics> {
-    ingest_subjects_retaining(bytes, subjects).map(|(schema, _)| schema)
+    ingest_and_retain(bytes, named_subject(subjects)).map(|(schema, _)| schema)
 }
 
 /// As [`ingest_subjects`], keeping the pool the schema was walked from beside it — the
 /// subject-carrying retaining door the source front door finishes through, so a codec built from
-/// `.proto` source walks the same explicitly-opened subjects and decodes against the same pool.
+/// `.proto` source walks the same explicitly-opened subjects and decodes against the same pool,
+/// checked whole as at [`ingest_retaining`].
 ///
 /// # Errors
 ///
-/// As [`ingest`].
+/// As [`ingest_retaining`].
 pub(crate) fn ingest_subjects_retaining(
     bytes: &[u8],
     subjects: &[String],
 ) -> Result<(Schema, RetainedPool), Diagnostics> {
-    ingest_and_retain(bytes, |name| subjects.iter().any(|subject| subject == name))
+    ingest_and_retain(bytes, named_subject(subjects)).and_then(for_decoding)
 }
 
 /// The one ingestion core every door shares: decode once, walk the pool (borrowed) into the
@@ -116,12 +129,64 @@ fn ingest_and_retain(
     Ok((schema, retained))
 }
 
+/// The bytes-only doors' subject choice: every file but a well-known-type or option-registry
+/// file (`desugar::is_dependency_file`).
+fn heuristic_subject(name: &str) -> bool {
+    !desugar::is_dependency_file(name)
+}
+
+/// The subject-carrying doors' subject choice: exactly the files named in `subjects`.
+fn named_subject(subjects: &[String]) -> impl Fn(&str) -> bool + '_ {
+    move |name| subjects.iter().any(|subject| subject == name)
+}
+
+/// The retaining doors' extra obligation, discharged once per pool before it is handed out: a
+/// payload may be decoded against *any* message the pool declares — [`RetainedPool::message_by_name`]
+/// resolves by name, not by membership in the walked schema — so the walk's per-field map-entry
+/// validation (`map_shape`, run only over the messages it builds) is repeated here over every map
+/// field of every message in the pool, dangling ones included, each malformed entry refused as a
+/// `MalformedDescriptor` at its field. With it, the payload door's value view can rely on a map
+/// value being a scalar or a message for whatever root a caller names. The plain doors skip this:
+/// `gen` never decodes a payload, and keeps accepting a set whose dangling messages it does not
+/// translate.
+fn for_decoding(
+    (schema, retained): (Schema, RetainedPool),
+) -> Result<(Schema, RetainedPool), Diagnostics> {
+    // The closure borrows only the pool and reads it through table accessors (`all_messages`,
+    // `fields`, `kind`, `cardinality`, `get_field`), whose tables the build resolved in full; keryx's
+    // own logic in the frame holds no `unwrap`/`expect`, so a fault here is the engine's, and
+    // nothing keryx observes survives it — the `AssertUnwindSafe` is sound.
+    crate::fault::contain(
+        Dependency::ProstReflect,
+        "checking the descriptor set's map entries",
+        || validate_map_fields(&retained.0),
+    )??;
+    Ok((schema, retained))
+}
+
+/// Every map field of every message in `pool`, checked for its entry shape through the one
+/// validator `map_shape` uses ([`map_entry`]); every malformed entry is collected, none passed.
+fn validate_map_fields(pool: &DescriptorPool) -> Result<(), Diagnostics> {
+    let mut malformed_entries = Vec::new();
+    for message in pool.all_messages() {
+        for field in message.fields().filter(FieldDescriptor::is_map) {
+            if let Err(detail) = map_entry(&field) {
+                malformed_entries.push(malformed(field.full_name(), detail));
+            }
+        }
+    }
+    Diagnostics::collect(malformed_entries).map_or(Ok(()), Err)
+}
+
 /// The descriptor pool a schema was walked from, kept past ingestion for the codec: a payload is
 /// decoded against the very pool its schema came from — the two cannot disagree — and the set is
 /// decoded once per schema, never again per payload. Opaque, so the engine's pool never leaves
 /// this module: the one lookup, [`RetainedPool::message_by_name`], yields the engine's message
 /// descriptor to a crate-internal caller — the single crossing of the descriptor-engine boundary
-/// inside the crate, and one no public signature carries.
+/// inside the crate, and one no public signature carries. The lookup resolves by name, walked or
+/// not, so the pool is handed out only after every map field in it has been checked
+/// ([`for_decoding`]): each message it yields has well-formed map entries, whatever root a caller
+/// names.
 pub(crate) struct RetainedPool(DescriptorPool);
 
 impl RetainedPool {
@@ -606,33 +671,41 @@ fn build_field(field: &FieldDescriptor) -> Result<Field, Diagnostics> {
     })
 }
 
-/// The de-sugared map shape (§7.2), total over an adversarial descriptor: a map
-/// field whose kind is not its synthetic entry message, an entry missing key #1 or
-/// value #2, or a non-key key kind, each composes a `MalformedDescriptor` at the
-/// field rather than panicking (§6 — no panic on foreign input).
+/// The de-sugared map shape (§7.2), total over an adversarial descriptor: a malformed entry
+/// ([`map_entry`]) composes a `MalformedDescriptor` at the field rather than panicking (§6 —
+/// no panic on foreign input).
 fn map_shape(field: &FieldDescriptor) -> Result<FieldShape, Diagnostics> {
-    let malformed = |detail: &str| {
-        Diagnostics::from(Diagnostic::new(
-            DiagnosticKind::MalformedDescriptor,
-            Locus::at(field.full_name()),
-            detail,
-        ))
-    };
-    let Kind::Message(entry) = field.kind() else {
-        return Err(malformed("a map field's kind is not its entry message"));
-    };
-    let (Some(key_field), Some(value_field)) = (entry.get_field(1), entry.get_field(2)) else {
-        return Err(malformed("a map entry is missing its key or value field"));
-    };
-    let Some(key) = desugar::map_key(&key_field.kind()) else {
-        return Err(malformed(
-            "a map key is not an integral, bool, or string kind",
-        ));
-    };
+    let (key, value_field) = map_entry(field)
+        .map_err(|detail| Diagnostics::from(malformed(field.full_name(), detail)))?;
     Ok(FieldShape::Map {
         key,
         value: desugar::value_type(&value_field.kind()),
     })
+}
+
+/// A map field's entry (§7.2) validated as one shape — for the walk ([`map_shape`]) and for the
+/// pool-wide check ([`validate_map_fields`]) alike, so the two cannot drift: its key kind and its
+/// value field, or the reason the entry is malformed — the field's kind is not its synthetic entry
+/// message, the entry lacks key #1 or value #2, a key or value field is `repeated` (the engine
+/// would decode such a map with a *list* in value position, a shape the payload door's value view
+/// has no element for), or the key is not of a key kind. Unreachable for a compiler-produced set;
+/// a directly-supplied set can carry each.
+fn map_entry(field: &FieldDescriptor) -> Result<(MapKey, FieldDescriptor), &'static str> {
+    let Kind::Message(entry) = field.kind() else {
+        return Err("a map field's kind is not its entry message");
+    };
+    let (Some(key_field), Some(value_field)) = (entry.get_field(1), entry.get_field(2)) else {
+        return Err("a map entry is missing its key or value field");
+    };
+    if key_field.cardinality() == Cardinality::Repeated
+        || value_field.cardinality() == Cardinality::Repeated
+    {
+        return Err("a map entry's key or value field is repeated");
+    }
+    let Some(key) = desugar::map_key(&key_field.kind()) else {
+        return Err("a map key is not an integral, bool, or string kind");
+    };
+    Ok((key, value_field))
 }
 
 /// A proto field number as `i32` (the descriptor stores it as `int32`, so a
@@ -705,8 +778,8 @@ mod tests {
     };
 
     use super::{
-        DescriptorPool, RECURSION_LIMIT, ingest, ingest_retaining, ingest_subjects_retaining,
-        subject_messages,
+        DescriptorPool, RECURSION_LIMIT, ingest, ingest_retaining, ingest_subjects,
+        ingest_subjects_retaining, subject_messages,
     };
     use crate::diagnostics::DiagnosticKind;
 
@@ -994,6 +1067,146 @@ mod tests {
             diagnostics.iter().next().unwrap().kind(),
             DiagnosticKind::MalformedDescriptor
         );
+    }
+
+    #[test]
+    fn a_repeated_map_entry_field_is_a_diagnostic_not_a_panic() {
+        // A map entry whose value field (#2) is `repeated`: protoc rejects the source, a
+        // directly-supplied set can carry it, and the engine would decode such a map with a *list*
+        // in value position — a shape the payload door's value view has no element for. `map_shape`
+        // refuses it at the door with a clean `MalformedDescriptor` (§6), so a map value is a scalar
+        // or a message by construction wherever a payload is read.
+        let set = encode(vec![FileDescriptorProto {
+            name: Some("m.proto".to_owned()),
+            package: Some("p".to_owned()),
+            syntax: Some("proto3".to_owned()),
+            message_type: vec![DescriptorProto {
+                name: Some("M".to_owned()),
+                field: vec![FieldDescriptorProto {
+                    name: Some("m".to_owned()),
+                    number: Some(1),
+                    label: Some(3),   // repeated
+                    r#type: Some(11), // message
+                    type_name: Some(".p.M.MEntry".to_owned()),
+                    ..Default::default()
+                }],
+                nested_type: vec![DescriptorProto {
+                    name: Some("MEntry".to_owned()),
+                    field: vec![
+                        FieldDescriptorProto {
+                            name: Some("key".to_owned()),
+                            number: Some(1),
+                            label: Some(1),
+                            r#type: Some(9), // string
+                            ..Default::default()
+                        },
+                        FieldDescriptorProto {
+                            name: Some("value".to_owned()),
+                            number: Some(2),
+                            label: Some(3),  // repeated — no map entry may carry one
+                            r#type: Some(5), // int32
+                            ..Default::default()
+                        },
+                    ],
+                    options: Some(MessageOptions {
+                        map_entry: Some(true),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]);
+        let diagnostics = ingest(&set).expect_err("a repeated map-entry field is refused");
+        assert_eq!(
+            diagnostics.iter().next().unwrap().kind(),
+            DiagnosticKind::MalformedDescriptor
+        );
+    }
+
+    #[test]
+    fn a_dangling_malformed_map_entry_is_refused_for_decoding_but_not_for_generation() {
+        // The walk validates only the messages it builds (subjects and their referents), while a
+        // retained pool resolves *any* message by name. A set with an innocuous subject and a
+        // dangling message in a dependency-named file — never a subject, referenced by nothing —
+        // carrying a repeated-value map entry: the retaining doors refuse it pool-wide, so no
+        // descriptor a retained pool yields can decode a list into map-value position, whatever
+        // root a caller names; the plain doors, which never decode a payload, accept the set and
+        // translate the subject alone.
+        let singular = |name: &str, number: i32, r#type: i32| FieldDescriptorProto {
+            name: Some(name.to_owned()),
+            number: Some(number),
+            label: Some(1),
+            r#type: Some(r#type),
+            ..Default::default()
+        };
+        let set = encode(vec![
+            FileDescriptorProto {
+                name: Some("m.proto".to_owned()),
+                package: Some("p".to_owned()),
+                syntax: Some("proto3".to_owned()),
+                message_type: vec![DescriptorProto {
+                    name: Some("M".to_owned()),
+                    field: vec![singular("x", 1, 5)], // int32
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            FileDescriptorProto {
+                name: Some("google/protobuf/evil.proto".to_owned()), // a dependency file by name
+                package: Some("google.protobuf".to_owned()),
+                syntax: Some("proto3".to_owned()),
+                message_type: vec![DescriptorProto {
+                    name: Some("Evil".to_owned()),
+                    field: vec![FieldDescriptorProto {
+                        name: Some("m".to_owned()),
+                        number: Some(1),
+                        label: Some(3),   // repeated
+                        r#type: Some(11), // message
+                        type_name: Some(".google.protobuf.Evil.MEntry".to_owned()),
+                        ..Default::default()
+                    }],
+                    nested_type: vec![DescriptorProto {
+                        name: Some("MEntry".to_owned()),
+                        field: vec![
+                            singular("key", 1, 9), // string
+                            FieldDescriptorProto {
+                                name: Some("value".to_owned()),
+                                number: Some(2),
+                                label: Some(3), // repeated — no map entry may carry one
+                                r#type: Some(5), // int32
+                                ..Default::default()
+                            },
+                        ],
+                        options: Some(MessageOptions {
+                            map_entry: Some(true),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        ]);
+        let subjects = ["m.proto".to_owned()];
+        for refused in [
+            ingest_retaining(&set),
+            ingest_subjects_retaining(&set, &subjects),
+        ] {
+            let Err(diagnostics) = refused else {
+                panic!("a retaining door refuses the dangling entry")
+            };
+            assert_eq!(diagnostics.len(), 1);
+            let diagnostic = diagnostics.iter().next().unwrap();
+            assert_eq!(diagnostic.kind(), DiagnosticKind::MalformedDescriptor);
+            assert_eq!(diagnostic.locus().path(), Some("google.protobuf.Evil.m"));
+        }
+        let schema = ingest(&set).expect("the plain door translates the subject alone");
+        assert_eq!(schema.messages.len(), 1);
+        assert_eq!(schema.messages[0].path.as_str(), "p.M");
+        assert!(ingest_subjects(&set, &subjects).is_ok());
     }
 
     #[test]
