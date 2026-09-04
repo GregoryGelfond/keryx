@@ -2,7 +2,8 @@
 //! set with protox — the pure-Rust compiler, no `protoc` — and ingest it. The sole adapter over the
 //! `.proto` compiler; no `protox` type escapes this module (the descriptor-engine boundary). Bytes are
 //! the seam: protox encodes the resolved pool straight to a `FileDescriptorSet` and keryx decodes it
-//! through its own prost-reflect in `ingest_subjects`, so the two crates' prost versions never couple.
+//! through its own prost-reflect in `ingest_subjects` (`ingest_subjects_retaining` for the codec's
+//! door), so the two crates' prost versions never couple.
 //! The *subjects* are the explicitly-opened (root) files, carried across the seam by name so a subject
 //! named like a well-known type (the §21.2 `descriptor.proto` self-application) is ingested, not
 //! treated as a dependency.
@@ -45,8 +46,8 @@ use protox::file::{
     ChainFileResolver, File, FileResolver, GoogleFileResolver, IncludeFileResolver,
 };
 
-use crate::descriptor::ingest_subjects;
 use crate::descriptor::model::Schema;
+use crate::descriptor::{RetainedPool, ingest_subjects, ingest_subjects_retaining};
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use crate::fault::Dependency;
 
@@ -308,6 +309,40 @@ pub fn compile(
     files: &[impl AsRef<Path>],
     includes: &[impl AsRef<Path>],
 ) -> Result<Schema, Diagnostics> {
+    let (subjects, bytes) = compile_to_set(files, includes)?;
+    ingest_subjects(&bytes, &subjects)
+}
+
+/// As [`compile`], keeping the descriptor pool the schema was walked from beside it — the codec's
+/// door from `.proto` source, finishing through the subject-carrying retaining variant so the codec
+/// walks the same explicitly-opened subjects `compile` does and decodes payloads against the pool
+/// its own schema came from.
+///
+/// # Errors
+///
+/// As [`compile`].
+// The codec is this door's production caller and lands with it; until then it is exercised only
+// by this module's own tests, so the expectation is stated for the library build alone (an
+// unfulfilled expectation is itself a lint) and retires when the codec compiles a schema here.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "no production caller until the codec lands")
+)]
+pub(crate) fn compile_retaining(
+    files: &[impl AsRef<Path>],
+    includes: &[impl AsRef<Path>],
+) -> Result<(Schema, RetainedPool), Diagnostics> {
+    let (subjects, bytes) = compile_to_set(files, includes)?;
+    ingest_subjects_retaining(&bytes, &subjects)
+}
+
+/// The compile half both doors share, up to the bytes seam: resolve, confine, scan, and compile the
+/// sources as [`compile`] describes, and return the subjects (the explicitly-opened root files, by
+/// descriptor name) beside the encoded `FileDescriptorSet` for the descriptor door to ingest.
+fn compile_to_set(
+    files: &[impl AsRef<Path>],
+    includes: &[impl AsRef<Path>],
+) -> Result<(Vec<String>, Vec<u8>), Diagnostics> {
     let refusal: Rc<Cell<Option<Refusal>>> = Rc::new(Cell::new(None));
     let opened: Rc<Cell<usize>> = Rc::new(Cell::new(0));
     // The closure captures only keryx's own `refusal`/`opened` cells (written in brief non-panicking
@@ -354,9 +389,9 @@ pub fn compile(
             Refusal::TooManyFiles { count } => source_import_graph_too_large(count),
         });
     }
-    // Outer `?`: a contained protox panic → `DependencyFault`. Inner `?`: protox's `UncompilableSource`.
-    let (subjects, bytes) = compiled??;
-    ingest_subjects(&bytes, &subjects)
+    // The outer `?`: a contained protox panic → `DependencyFault`. What remains is protox's own
+    // `UncompilableSource`, or the subjects beside the set.
+    compiled?
 }
 
 /// Compose a protox compile error into a keryx `Diagnostic` (§6) at `locus`: the compiler's message is
@@ -435,7 +470,7 @@ fn too_many_files_error(count: usize) -> protox::Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{SOURCE_NESTING_LIMIT, max_nesting_depth};
+    use super::{SOURCE_NESTING_LIMIT, compile, compile_retaining, max_nesting_depth};
 
     #[test]
     fn counts_structural_brace_depth() {
@@ -494,5 +529,23 @@ mod tests {
             max_nesting_depth("message M { map<string, int32> m = 1; }"),
             2
         );
+    }
+
+    #[test]
+    fn compiling_retains_the_pool_beside_the_schema() {
+        // The source door's retaining variant yields the schema `compile` yields, beside the pool
+        // the descriptor door walked it from — so a codec built from `.proto` source decodes
+        // payloads against the pool its own schema came from, the subjects carried across the seam
+        // as ever.
+        let fixtures = keryx_test_support::fixtures();
+        let (schema, pool) =
+            compile_retaining(&["proto3.proto"], &[&fixtures]).expect("proto3 compiles");
+        assert_eq!(
+            schema,
+            compile(&["proto3.proto"], &[&fixtures]).expect("proto3 compiles"),
+            "the retaining door yields the schema the plain door does"
+        );
+        assert!(pool.message_by_name("keryx.p3.Reading").is_some());
+        assert!(pool.message_by_name("keryx.p3.Absent").is_none());
     }
 }

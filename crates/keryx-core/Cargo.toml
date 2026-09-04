@@ -14,7 +14,8 @@ license.workspace = true
 themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", rev = "86c7dfb", package = "themelios-program" }
 
 # The dynamic protobuf-descriptor engine — the ingestion path (§20). Read only
-# through the `descriptor` module's private internals; no prost-reflect type
+# through the `descriptor` module — its private internals, and the one
+# crate-internal seam `RetainedPool::message_by_name`; no prost-reflect type
 # escapes into a keryx-core public signature (the descriptor-engine boundary).
 # Pinned exact (`=`), as themelios pins its coupled parser `rowan` exact for the
 # same coupling: the descriptor door's pre-emption catalogue is a statement about

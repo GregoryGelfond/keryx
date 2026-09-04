@@ -1,8 +1,13 @@
 //! Descriptor ingestion (architecture §3, §5; spec §20): the sole adapter over the
 //! descriptor engine. `ingest` takes descriptor-set *bytes* and returns a de-sugared
 //! [`Schema`] or [`Diagnostics`] — total on foreign input, with no `prost_reflect`
-//! type escaping this module (the descriptor-engine boundary). The [`Schema`] model
-//! is `model`; the engine-side de-sugaring lives in private submodules.
+//! type escaping the crate's public surface (the descriptor-engine boundary). The
+//! crate-internal retaining doors (`ingest_retaining`, `ingest_subjects_retaining`) keep
+//! the built pool as well, behind the opaque `RetainedPool`, for the codec — which decodes
+//! a payload against the very pool its schema was walked from; the seam's one lookup
+//! yields the engine's message descriptor to a crate-internal caller only, never to a
+//! public signature. The [`Schema`] model is `model`; the engine-side de-sugaring lives
+//! in private submodules.
 //!
 //! [`Schema`]: model::Schema
 //! [`Diagnostics`]: crate::diagnostics::Diagnostics
@@ -55,8 +60,19 @@ use crate::fault::Dependency;
 /// [`Schema`]: model::Schema
 /// [`Diagnostics`]: crate::diagnostics::Diagnostics
 pub fn ingest(bytes: &[u8]) -> Result<Schema, Diagnostics> {
-    let pool = decode(bytes)?;
-    walk(&pool, |name| !desugar::is_dependency_file(name))
+    ingest_retaining(bytes).map(|(schema, _)| schema)
+}
+
+/// As [`ingest`], keeping the pool the schema was walked from beside it — the codec's door, so
+/// a payload is decoded against the pool its schema came from and the set is decoded once per
+/// schema, never again per payload. Subjects are chosen as at [`ingest`], by the well-known-name
+/// heuristic.
+///
+/// # Errors
+///
+/// As [`ingest`].
+pub(crate) fn ingest_retaining(bytes: &[u8]) -> Result<(Schema, RetainedPool), Diagnostics> {
+    ingest_and_retain(bytes, |name| !desugar::is_dependency_file(name))
 }
 
 /// Ingest a serialized `FileDescriptorSet`, treating exactly the files named in
@@ -69,8 +85,60 @@ pub fn ingest(bytes: &[u8]) -> Result<Schema, Diagnostics> {
 ///
 /// As [`ingest`].
 pub(crate) fn ingest_subjects(bytes: &[u8], subjects: &[String]) -> Result<Schema, Diagnostics> {
-    let pool = decode(bytes)?;
-    walk(&pool, |name| subjects.iter().any(|subject| subject == name))
+    ingest_subjects_retaining(bytes, subjects).map(|(schema, _)| schema)
+}
+
+/// As [`ingest_subjects`], keeping the pool the schema was walked from beside it — the
+/// subject-carrying retaining door the source front door finishes through, so a codec built from
+/// `.proto` source walks the same explicitly-opened subjects and decodes against the same pool.
+///
+/// # Errors
+///
+/// As [`ingest`].
+pub(crate) fn ingest_subjects_retaining(
+    bytes: &[u8],
+    subjects: &[String],
+) -> Result<(Schema, RetainedPool), Diagnostics> {
+    ingest_and_retain(bytes, |name| subjects.iter().any(|subject| subject == name))
+}
+
+/// The one ingestion core every door shares: decode once, walk the pool (borrowed) into the
+/// schema under `is_subject`, and hand the schema back beside the pool it was walked from. The
+/// pool is retained only past a clean walk — a contained walk fault leaves with its diagnosis and
+/// drops the pool, so no caller ever holds a pool a fault tore through (the `AssertUnwindSafe`
+/// discharge at [`walk`] stands unchanged: nothing keryx observes survives the fault).
+fn ingest_and_retain(
+    bytes: &[u8],
+    is_subject: impl Fn(&str) -> bool,
+) -> Result<(Schema, RetainedPool), Diagnostics> {
+    let retained = RetainedPool(decode(bytes)?);
+    let schema = walk(&retained.0, is_subject)?;
+    Ok((schema, retained))
+}
+
+/// The descriptor pool a schema was walked from, kept past ingestion for the codec: a payload is
+/// decoded against the very pool its schema came from — the two cannot disagree — and the set is
+/// decoded once per schema, never again per payload. Opaque, so the engine's pool never leaves
+/// this module: the one lookup, [`RetainedPool::message_by_name`], yields the engine's message
+/// descriptor to a crate-internal caller — the single crossing of the descriptor-engine boundary
+/// inside the crate, and one no public signature carries.
+pub(crate) struct RetainedPool(DescriptorPool);
+
+impl RetainedPool {
+    /// The message the pool declares under `name` — a fully-qualified name, with or without the
+    /// leading `.` (the engine strips one) — or `None` when no such message is declared. Total
+    /// for any name: the engine's lookup is a table read that answers a miss with `None`, never a
+    /// panic.
+    // The codec is this lookup's production caller and lands with it; until then it is exercised
+    // only by this module's own tests, so the expectation is stated for the library build alone
+    // (an unfulfilled expectation is itself a lint) and retires when the codec resolves a message.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "no production caller until the codec lands")
+    )]
+    pub(crate) fn message_by_name(&self, name: &str) -> Option<MessageDescriptor> {
+        self.0.get_message_by_name(name)
+    }
 }
 
 /// Walk the built pool into a [`Schema`], containing an unforeseen accessor fault as a
@@ -108,7 +176,7 @@ pub(crate) const EDITIONS_UNSUPPORTED: &str = "editions (edition 2023+) are not 
 pub(crate) const RECURSION_LIMIT: usize = 100;
 
 /// Decode a serialized `FileDescriptorSet` into a `DescriptorPool`, or the typed reason it did not
-/// — the one decode door both `ingest` paths share.
+/// — the one decode door, shared by [`ingest_and_retain`] and so by every ingestion door.
 ///
 /// The descriptor engine (prost-reflect 0.16.5) **panics**, rather than returning an error, on input
 /// it cannot represent: a `syntax` it has no `Syntax` for (editions, or any value that is not
@@ -636,7 +704,10 @@ mod tests {
         MessageOptions,
     };
 
-    use super::{DescriptorPool, RECURSION_LIMIT, ingest, subject_messages};
+    use super::{
+        DescriptorPool, RECURSION_LIMIT, ingest, ingest_retaining, ingest_subjects_retaining,
+        subject_messages,
+    };
     use crate::diagnostics::DiagnosticKind;
 
     fn encode(files: Vec<FileDescriptorProto>) -> Vec<u8> {
@@ -922,6 +993,69 @@ mod tests {
         assert_eq!(
             diagnostics.iter().next().unwrap().kind(),
             DiagnosticKind::MalformedDescriptor
+        );
+    }
+
+    #[test]
+    fn a_retained_pool_resolves_a_declared_message_and_misses_an_absent_one() {
+        // The retaining door: one decode yields the schema *and* the pool it was walked from, so a
+        // payload can later be decoded against the very pool its schema came from. The lookup finds
+        // a declared message by its full name and answers an absent one with `None`, never a panic.
+        let set = encode(vec![FileDescriptorProto {
+            name: Some("m.proto".to_owned()),
+            package: Some("p".to_owned()),
+            syntax: Some("proto3".to_owned()),
+            message_type: vec![DescriptorProto {
+                name: Some("M".to_owned()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]);
+        let (schema, pool) = ingest_retaining(&set).expect("a clean set ingests");
+        assert_eq!(schema.messages.len(), 1);
+        assert_eq!(schema.messages[0].path.as_str(), "p.M");
+        let declared = pool
+            .message_by_name("p.M")
+            .expect("the declared message resolves");
+        assert_eq!(declared.full_name(), "p.M");
+        assert!(pool.message_by_name("p.Absent").is_none());
+    }
+
+    #[test]
+    fn a_subject_named_like_a_well_known_type_is_a_subject_when_named() {
+        // The subject-carrying retaining door: a file named under `google/protobuf/` is a subject
+        // when the caller names it (the front door's explicitly-opened set — the §21.2
+        // self-application), where the bytes-only door's heuristic treats the same file as a
+        // dependency and walks nothing. Either way the pool resolves its message: retention does not
+        // depend on the subject choice.
+        let name = "google/protobuf/subject.proto";
+        let set = encode(vec![FileDescriptorProto {
+            name: Some(name.to_owned()),
+            package: Some("google.protobuf".to_owned()),
+            syntax: Some("proto3".to_owned()),
+            message_type: vec![DescriptorProto {
+                name: Some("Subject".to_owned()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]);
+        let (schema, pool) =
+            ingest_subjects_retaining(&set, &[name.to_owned()]).expect("a named subject ingests");
+        assert_eq!(
+            schema.messages.len(),
+            1,
+            "named, the well-known-looking file is walked as a subject"
+        );
+        assert!(pool.message_by_name("google.protobuf.Subject").is_some());
+        assert!(pool.message_by_name("google.protobuf.Absent").is_none());
+        let (unnamed, pool) = ingest_retaining(&set).expect("the same bytes ingest by heuristic");
+        assert!(
+            unnamed.messages.is_empty(),
+            "unnamed, the same file is a dependency"
+        );
+        assert!(
+            pool.message_by_name("google.protobuf.Subject").is_some(),
+            "yet it is in the retained pool"
         );
     }
 }
