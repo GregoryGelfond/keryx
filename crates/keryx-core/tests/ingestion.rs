@@ -166,6 +166,73 @@ fn nested_types_carry_their_outer() {
 }
 
 #[test]
+fn well_known_type_referents_translate_structurally() {
+    // §10/§20: a well-known type a subject field references is an ordinary message and translates
+    // structurally — it becomes a sort even though its file (google/protobuf/*) is not a subject. The
+    // referent closure reaches it, so `Timestamp` is `google.protobuf.Timestamp` with its scalar
+    // fields, the referencing field resolves to it, and Duration and the wrapper follow.
+    let schema = schema("well_known.proto");
+
+    let timestamp = message(&schema, "google.protobuf.Timestamp");
+    assert!(matches!(
+        field(timestamp, "seconds").shape(),
+        FieldShape::Singular {
+            value: ValueType::Scalar(Scalar::Int64),
+            ..
+        }
+    ));
+    let _ = field(timestamp, "nanos");
+    // Duration and the Int32Value wrapper translate too.
+    let _ = message(&schema, "google.protobuf.Duration");
+    let _ = message(&schema, "google.protobuf.Int32Value");
+
+    // The referencing field resolves to the well-known type, no longer dangling.
+    let event = message(&schema, "keryx.wkt.Event");
+    assert!(matches!(
+        field(event, "at").shape(),
+        FieldShape::Singular {
+            value: ValueType::Message(referent),
+            ..
+        } if referent.as_str() == "google.protobuf.Timestamp"
+    ));
+}
+
+#[test]
+fn a_referenced_nested_dependency_enum_pulls_in_its_container() {
+    // A subject field that references an enum *nested* inside a dependency file brings in not only that
+    // enum but its lexical container, so the enum's `outer` names a declared element rather than
+    // dangling. `google.protobuf.Field.Kind` is an enum nested in the message `google.protobuf.Field`
+    // (google/protobuf/type.proto); referencing it makes both schema elements.
+    let schema = schema("nested_dependency.proto");
+    let kind = enumeration(&schema, "google.protobuf.Field.Kind");
+    assert_eq!(
+        kind.outer().map(FqName::as_str),
+        Some("google.protobuf.Field")
+    );
+    // the container the nested enum names as its `outer` is itself an element — no dangling outer.
+    let field_message = message(&schema, "google.protobuf.Field");
+    assert!(field_message.outer().is_none());
+}
+
+#[test]
+fn a_referenced_nested_dependency_message_pulls_in_its_container() {
+    // The message-branch parent enqueue: a subject field that references a message *nested* inside a
+    // dependency file brings in the nested message AND its container message.
+    // `google.protobuf.SourceCodeInfo.Location` is nested in `google.protobuf.SourceCodeInfo`
+    // (google/protobuf/descriptor.proto); referencing it makes both schema elements, so the nested
+    // one's `outer` names a declared element.
+    let schema = schema("nested_dependency.proto");
+    let location = message(&schema, "google.protobuf.SourceCodeInfo.Location");
+    assert_eq!(
+        location.outer().map(FqName::as_str),
+        Some("google.protobuf.SourceCodeInfo")
+    );
+    // the container is itself an element (top-level, no outer) — pulled in by the message branch.
+    let container = message(&schema, "google.protobuf.SourceCodeInfo");
+    assert!(container.outer().is_none());
+}
+
+#[test]
 fn ingestion_is_deterministic() {
     let bytes = support::compile_fixture("proto3.proto");
     assert_eq!(ingest(&bytes).unwrap(), ingest(&bytes).unwrap());

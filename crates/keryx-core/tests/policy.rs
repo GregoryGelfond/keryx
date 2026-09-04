@@ -567,3 +567,18 @@ fn distinct_sorts_that_collide_are_diagnosed() {
     assert_eq!(diagnostic.kind(), DiagnosticKind::UnmappableName);
     assert_eq!(diagnostic.locus().path(), Some("keryx.collapse.Bar"));
 }
+
+#[test]
+fn a_well_known_referent_maps_to_a_sort() {
+    // §10 at the mapping layer — the site the pre-closure defect fired at. `policy::map` on a schema
+    // with a `google.protobuf.Timestamp` field failed with `UnmappableName` because the referent had
+    // no sort; the referent closure supplies one, so `map` now succeeds (the `mapping` helper's
+    // `expect`) and the well-known type is a sort carrying its scalar fields structurally, with the
+    // referencing subject field resolving to it rather than missing in `sort_of`.
+    let mapping = mapping("well_known.proto");
+    let timestamp = sort(&mapping, "google.protobuf.Timestamp");
+    let _ = field(timestamp, "seconds");
+    let _ = field(timestamp, "nanos");
+    // the referencing subject field is present on its own sort — its value resolved to the WKT sort.
+    let _ = field(sort(&mapping, "keryx.wkt.Event"), "at");
+}

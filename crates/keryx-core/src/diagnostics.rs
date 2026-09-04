@@ -108,19 +108,20 @@ pub enum DiagnosticKind {
     /// emit for — the generated `.lp`/manifest files would be hidden dotfiles. Named
     /// at the offending file's locus (§6); a schema property, refused before any output.
     PackagelessFile,
-    /// Raised in four cases (§6). Three are near-impossible on a well-formed `Schema` but
-    /// checked rather than assumed: (1) a schema element's lowered name is not a themelios
-    /// identifier — after §4.2/§7.4 lowering, a name that cannot be an ASP predicate/constant
-    /// symbol; (2) a message or enum path has no entry in the resolved sort table — a field's
-    /// value-type referent absent from the schema, or an element's own entry (both unreachable
-    /// from a well-formed `Schema`, the lookup checked not assumed); and (3) an element's declaring file is absent from the
-    /// schema's file list (`policy::missing_file`; `ingest` populates every subject file first,
-    /// so unreachable from it, but checked not assumed). The fourth is genuinely reachable:
-    /// (4) two distinct sorts, or two distinct fields on one message, collapse to one
-    /// predicate that qualification (§4.2) cannot separate — their base names and every proto-path qualifier
-    /// `lower_snake`-collapse to the same string (e.g. sibling messages `Bar` and `Bar_`, both
-    /// `bar`, since `lower_snake` trims a trailing `_` and collapses `_`-runs). Qualification is
-    /// the injectivity backstop: rather than emit a non-injective map it diagnoses. Names the
+    /// Raised in four cases (§6): (1) and (4) are reachable on a well-formed `Schema`, while (2)
+    /// and (3) are can't-happen guards — checked rather than assumed. (1) A schema element's
+    /// lowered name is not a themelios identifier — after §4.2/§7.4 lowering, a name that cannot be
+    /// an ASP predicate/constant symbol; a real if rare live rejection (`message _2Foo` lowers to
+    /// `2_foo`, which cannot open an identifier). (2) A message or enum path has no entry in the
+    /// resolved sort table — a field's value-type referent absent from the schema, or an element's
+    /// own entry (both unreachable from a well-formed `Schema`, the lookup checked not assumed).
+    /// (3) An element's declaring file is absent from the schema's file list (`policy::missing_file`;
+    /// `ingest` populates each element's declaring file first, so unreachable from it, but checked
+    /// not assumed). (4) Two distinct sorts, or two distinct fields on one message, collapse to one
+    /// predicate that qualification (§4.2) cannot separate — their base names and every proto-path
+    /// qualifier `lower_snake`-collapse to the same string (e.g. sibling messages `Bar` and `Bar_`,
+    /// both `bar`, since `lower_snake` trims a trailing `_` and collapses `_`-runs). Qualification
+    /// is the injectivity backstop: rather than emit a non-injective map it diagnoses. Names the
     /// offending (or first offending) element's locus; for an absent field referent, the referent
     /// path's.
     UnmappableName,

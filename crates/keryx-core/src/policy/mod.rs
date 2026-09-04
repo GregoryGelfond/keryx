@@ -37,9 +37,8 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// # Errors
 ///
 /// [`Diagnostics`] when a subject file declares no `package` (`PackagelessFile`); when a schema name
-/// cannot map to an ASP symbol (`UnmappableName` — its four cases, three near-impossible on a
-/// well-formed `Schema` and the sort/field collision reachable, enumerated in that kind's doc); or
-/// when two values of one enum lower to a single constant (`AmbiguousConstant`, §7.4).
+/// cannot map to an ASP symbol (`UnmappableName`, whose cases that kind's doc enumerates); or when two
+/// values of one enum lower to a single constant (`AmbiguousConstant`, §7.4).
 pub fn map(schema: &Schema) -> Result<Mapping, Diagnostics> {
     reject_packageless(schema)?;
     let sorts = qualify::resolve(&names::sort_table(schema)?)?; // path -> resolved name + decisions
@@ -256,8 +255,9 @@ fn missing_sort_entry(path: &FqName) -> Diagnostics {
 }
 
 /// An element whose declaring `file` is absent from `schema.files()` (§6 — total: `ingest` pushes a
-/// `File` for every subject file before its elements, so a well-formed `Schema` never triggers it, but
-/// the lookup is checked, not assumed). `UnmappableName` at the element's locus; the absence named is
+/// `File` for every element's declaring file before the element — subjects in the first pass,
+/// referent-closure sorts in the second — so a well-formed `Schema` never triggers it, but the lookup
+/// is checked, not assumed). `UnmappableName` at the element's locus; the absence named is
 /// the *file*, not a sort entry (`missing_sort_entry`) or a lowered name (`names::identifier`).
 fn missing_file(path: &FqName, file: &str) -> Diagnostics {
     Diagnostics::from(Diagnostic::new(

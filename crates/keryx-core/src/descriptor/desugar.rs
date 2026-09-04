@@ -10,9 +10,12 @@ use prost_reflect::{FieldDescriptor, FileDescriptor, Kind, Syntax};
 use super::model::{FqName, MapKey, Openness, Presence, Scalar, SchemaVersion, ValueType};
 
 /// A descriptor-set file keryx treats as a dependency, not a subject: the
-/// well-known types and the vendored option registry. Its messages and enums are
-/// in the pool (so references and options resolve) but do not become schema
-/// elements or facts.
+/// well-known types and the vendored option registry. Its types are not walked as
+/// subjects — they yield no schema elements on their own account. One a subject field
+/// *references*, though, is pulled in by `build_schema`'s referent closure and
+/// translates structurally (spec §10/§20: a well-known type is an ordinary message), so
+/// a `Timestamp` a subject uses becomes a sort. The rest stay in the pool, where
+/// references and options still resolve.
 pub(super) fn is_dependency_file(name: &str) -> bool {
     name.starts_with("google/protobuf/") || name == "keryx/options.proto"
 }

@@ -1,0 +1,15 @@
+syntax = "proto3";
+package keryx.wktnested;
+
+// Subject fields reference types *nested inside* dependency files. The referent closure pulls in each
+// nested type AND its lexical container, so the nested type's `outer` names a declared element rather
+// than dangling — exercised for both a nested enum and a nested message:
+//   - `google.protobuf.Field.Kind` is an enum nested in the message `google.protobuf.Field`;
+//   - `google.protobuf.SourceCodeInfo.Location` is a message nested in `google.protobuf.SourceCodeInfo`.
+import "google/protobuf/type.proto";
+import "google/protobuf/descriptor.proto";
+
+message Uses {
+  google.protobuf.Field.Kind kind = 1;                 // referent is a nested ENUM
+  google.protobuf.SourceCodeInfo.Location loc = 2;     // referent is a nested MESSAGE
+}

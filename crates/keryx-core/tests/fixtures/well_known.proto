@@ -1,0 +1,15 @@
+syntax = "proto3";
+package keryx.wkt;
+
+// §10: well-known types a subject field references are ordinary messages and translate
+// structurally — each becomes a sort even though its file (google/protobuf/*) is not a subject.
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/wrappers.proto";
+
+message Event {
+  string name = 1;
+  google.protobuf.Timestamp at = 2;        // Timestamp → a sort with seconds/nanos
+  google.protobuf.Duration elapsed = 3;     // Duration → a sort
+  google.protobuf.Int32Value retries = 4;   // a wrapper → a sort
+}

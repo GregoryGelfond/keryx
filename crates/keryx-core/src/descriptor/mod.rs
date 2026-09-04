@@ -21,6 +21,8 @@ mod docs;
 mod options;
 mod recursion;
 
+use std::collections::BTreeSet;
+
 use prost::Message as _;
 use prost_reflect::{
     DescriptorPool, EnumDescriptor, EnumValueDescriptor, FieldDescriptor, FileDescriptor, Kind,
@@ -36,9 +38,11 @@ use crate::fault::Dependency;
 /// a structurally-malformed element, yields diagnostics, never a panic and never a
 /// partial schema; the first structural diagnosis short-circuits the walk. Custom
 /// options are read only through the dynamic layer, so no annotation is ever
-/// silently dropped (§20). The model is assembled in one walk over the set —
-/// resolving options and doc comments per element — then ordered deterministically
-/// and analysed for containment cycles.
+/// silently dropped (§20). The model is assembled from the set in two passes — a
+/// subject pass over its files and a referent closure that pulls in every well-known
+/// or dependency type a subject field references (§10) — resolving options and doc
+/// comments per element, then ordered deterministically and analysed for containment
+/// cycles.
 ///
 /// # Errors
 ///
@@ -329,36 +333,34 @@ fn unreadable_set(detail: String) -> Diagnostics {
     .into()
 }
 
-/// Assemble the schema from the pool, over the subject files only (dependencies —
-/// well-known types, the option registry — stay in the pool but are not subjects).
-/// `is_subject` decides which pool files are subjects — the bytes-only `ingest` path
-/// uses the well-known-name heuristic (`desugar::is_dependency_file`); the front door
-/// (`ingest_subjects`) instead carries the real, explicitly-opened subject set across
-/// the `compile → ingest` seam, so a subject named like a well-known type is not
-/// silently dropped (§21.2). The per-file message walk is computed once and shared by
-/// the message and enum passes. Deterministically ordered (P3).
+/// Assemble the schema from the pool. Two passes: the **subject** files `is_subject` names, and then
+/// the **referent closure** — every message or enum a subject field names, transitively, translated as
+/// a sort even when its file is not a subject (spec §10/§20: well-known types are ordinary messages
+/// and translate structurally). `is_subject` decides the direct subjects — the bytes-only `ingest`
+/// path uses the well-known-name heuristic (`desugar::is_dependency_file`), so a well-known-type or
+/// option-registry file is not a *direct* subject; the front door (`ingest_subjects`) carries the
+/// real, explicitly-opened set across the `compile → ingest` seam (§21.2). A well-known type reaches
+/// the schema only when a subject field references it — so `Timestamp` becomes a sort in a schema that
+/// uses it, while `descriptor.proto`'s option messages, referenced by no field, never do. The closure
+/// makes every `ValueType::Message`/`Enum` referent an element — and the lexical parent of any nested
+/// one, so an `outer` never names a non-element either — so neither a reference nor a `nested` outer
+/// ever dangles. Deterministically ordered (P3).
 fn build_schema(
     pool: &DescriptorPool,
     is_subject: impl Fn(&str) -> bool,
 ) -> Result<Schema, Diagnostics> {
     let mut files = Vec::new();
+    let mut file_names = BTreeSet::new();
     let mut messages = Vec::new();
     let mut enums = Vec::new();
 
+    // Pass one: the direct subjects.
     for file in pool.files() {
         if !is_subject(file.name()) {
             continue;
         }
+        add_file(&mut files, &mut file_names, &file)?;
         let version = desugar::version(&file);
-        // `pre_validate` already refused any non-identifier package, so this parse cannot fail on a
-        // set that reached the walk; re-derived through the one door (`Package::parse`) rather than
-        // wrapped unchecked, so `File.package` is a proof of shape and a `?` keeps the walk total.
-        let package = Package::parse(file.package_name())
-            .map_err(|problem| Diagnostics::from(malformed(file.name(), problem.detail())))?;
-        files.push(File {
-            name: file.name().to_owned(),
-            package,
-        });
         let file_messages = subject_messages(&file);
         for message in &file_messages {
             if message.is_map_entry() {
@@ -371,6 +373,44 @@ fn build_schema(
         }
     }
 
+    // Pass two: the referent closure (§10). A worklist over the referents of every built message;
+    // each new referent is looked up in the pool, built as a sort, and its own referents — and its
+    // lexical parent, so a pulled-in nested type's `outer` always names a declared element — enqueued.
+    // `included` is the set already built (subjects first), so each type is built once and the walk
+    // terminates on the pool's finite type set — bounded work, no recursion on the call stack.
+    let mut included: BTreeSet<String> = messages
+        .iter()
+        .map(|message| message.path.as_str().to_owned())
+        .chain(
+            enums
+                .iter()
+                .map(|enumeration| enumeration.path.as_str().to_owned()),
+        )
+        .collect();
+    let mut queue: Vec<FqName> = messages.iter().flat_map(message_referents).collect();
+    while let Some(referent) = queue.pop() {
+        if !included.insert(referent.as_str().to_owned()) {
+            continue;
+        }
+        if let Some(message) = pool.get_message_by_name(referent.as_str()) {
+            if message.is_map_entry() {
+                continue;
+            }
+            let file = message.parent_file();
+            add_file(&mut files, &mut file_names, &file)?;
+            let built = build_message(&message, file.name())?;
+            queue.extend(message_referents(&built));
+            queue.extend(built.outer.clone()); // the container of a nested referent is an element too
+            messages.push(built);
+        } else if let Some(enumeration) = pool.get_enum_by_name(referent.as_str()) {
+            let file = enumeration.parent_file();
+            add_file(&mut files, &mut file_names, &file)?;
+            let built = build_enum(&enumeration, file.name(), desugar::version(&file))?;
+            queue.extend(built.outer.clone()); // a nested enum's container is an element too
+            enums.push(built);
+        }
+    }
+
     files.sort_by(|a, b| a.name.cmp(&b.name));
     messages.sort_by(|a, b| a.path.cmp(&b.path));
     enums.sort_by(|a, b| a.path.cmp(&b.path));
@@ -380,6 +420,47 @@ fn build_schema(
         messages,
         enums,
     })
+}
+
+/// Add a `file` to the schema's file list at most once (subject pass and referent closure share it),
+/// validating its package through the one door (`Package::parse`) — a proof of shape, and a `?` that
+/// keeps the walk total; `pre_validate` already refused any non-identifier package, so it cannot fail
+/// on a set that reached the walk.
+fn add_file(
+    files: &mut Vec<File>,
+    seen: &mut BTreeSet<String>,
+    file: &FileDescriptor,
+) -> Result<(), Diagnostics> {
+    if !seen.insert(file.name().to_owned()) {
+        return Ok(());
+    }
+    let package = Package::parse(file.package_name())
+        .map_err(|problem| Diagnostics::from(malformed(file.name(), problem.detail())))?;
+    files.push(File {
+        name: file.name().to_owned(),
+        package,
+    });
+    Ok(())
+}
+
+/// The message and enum types a built message's fields name — its structural referents, for the §10
+/// closure. Maps are already de-sugared to their value type (`build_field`); a scalar names nothing.
+fn message_referents(message: &Message) -> Vec<FqName> {
+    message
+        .fields
+        .iter()
+        .filter_map(|field| {
+            let value = match &field.shape {
+                FieldShape::Singular { value, .. }
+                | FieldShape::Repeated { value }
+                | FieldShape::Map { value, .. } => value,
+            };
+            match value {
+                ValueType::Message(referent) | ValueType::Enum(referent) => Some(referent.clone()),
+                ValueType::Scalar(_) => None,
+            }
+        })
+        .collect()
 }
 
 /// Every message under a file — top level and nested, in one flat list (order is

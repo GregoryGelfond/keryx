@@ -18,7 +18,7 @@ themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", r
 # escapes into a keryx-core public signature (the descriptor-engine boundary).
 # Pinned exact (`=`), as themelios pins its coupled parser `rowan` exact for the
 # same coupling: the descriptor door's pre-emption catalogue is a statement about
-# this crate's *internals* at exactly this version — which shapes it panics on (a
+# prost-reflect's *internals* at exactly this version — which shapes it panics on (a
 # leading-dot name), its `options()` lazy decode, its unbounded text-format parse
 # of an option aggregate — so a silent patch bump could invalidate it; the
 # pre-empt catalogue is re-owed on any deliberate bump.
