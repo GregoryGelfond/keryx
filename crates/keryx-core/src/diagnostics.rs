@@ -8,19 +8,19 @@
 //! (Appendix B) — the shape a consuming tool's result envelope may carry — and
 //! [`Diagnostics::wire`] is that view, so the value produced here and the value a
 //! consumer reads over the wire are one shape.
-//! This is the seed the codec, admission, and shape layers grow in later increments.
+//! This is the seed the codec, admission, and shape layers grow, increment by increment.
 
 use std::fmt::{self, Write as _};
 
 /// The proto locus a [`Diagnostic`] names: a fully-qualified path (a file,
 /// message, field, enum, or option), or *whole-input* when a failure has no
-/// finer locus — the descriptor set as a whole did not decode. Absence is
+/// finer locus than the input itself. Absence is
 /// represented as absence (a variant), not an empty-string sentinel inside the
 /// space of valid paths; a value carried, not rendered (spec §26) — the boundary
 /// renders it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Locus {
-    /// The whole-input locus — no finer path than the descriptor set itself.
+    /// The whole-input locus — the whole input, with no finer path than the input itself.
     #[default]
     Whole,
     /// A fully-qualified proto path (e.g. `dispatch.v1.Shipment.tags`), or a file's (or
@@ -32,7 +32,7 @@ pub enum Locus {
 }
 
 impl Locus {
-    /// The whole-input locus — no finer path than the set itself.
+    /// The whole-input locus — no finer path than the input itself.
     #[must_use]
     pub fn whole() -> Locus {
         Locus::Whole
@@ -60,9 +60,10 @@ impl Locus {
     }
 }
 
-/// The class of a [`Diagnostic`]. Non-exhaustive: later increments add codec,
-/// admission, and shape kinds without breaking a match written today (§6). The
-/// wire `kind` string (Appendix B) is this variant's name at the boundary.
+/// The class of a [`Diagnostic`]. Non-exhaustive: each increment adds its kinds — the codec's
+/// payload-translation kinds are here, admission and shape kinds follow — without breaking a
+/// match written today (§6). The wire `kind` string (Appendix B) is this variant's name at the
+/// boundary.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DiagnosticKind {
@@ -129,7 +130,7 @@ pub enum DiagnosticKind {
     /// collision that survives the prefix-strip fallback (e.g. names differing only in
     /// case, `X_FOO`/`X_Foo`, both `x_foo`; or names differing only in a separator run,
     /// `FOO__BAR`/`FOO_BAR`, both `foo_bar`, since `lower_snake` collapses `_` runs). §7.4
-    /// resolves residual collisions by *qualification*, which is the codec increment's
+    /// resolves residual collisions by *qualification*, which is the annotation increment's
     /// (Increment 5); at present the collision is reported (loud, §6) rather than silently
     /// producing a duplicate constant. Names the enum's locus.
     AmbiguousConstant,
@@ -172,6 +173,68 @@ pub enum DiagnosticKind {
     /// message is composed into the detail, never exposed as its type. Distinct from a payload that
     /// decodes but carries a value the §6 policy refuses, which is diagnosed at the field's locus.
     UndecodablePayload,
+    /// A payload value does not fit the term §6 lowers it to: a `uint32`/`fixed32` value above
+    /// `i32::MAX` — clingo's integer width — under the `Native` treatment, the one default range
+    /// check (`(keryx.numeric) = DECIMAL_STRING` is the opt-out for a field that genuinely uses the
+    /// top bit). Refused, never truncated or wrapped (the threat model's integrity property): a
+    /// range violation is a structured translation error, not a shape change (§6). Named at the
+    /// offending field's path (§26) — a map key alike (§7.2). The inbound scalar policy's,
+    /// Increment 3; the annotation-driven checks (`NATIVE_CHECKED` on a 64-bit field,
+    /// `(keryx.scale)` fixed-point — Increment 5) are range violations of this same class.
+    ValueOutOfRange,
+    /// A `string` value carries an embedded NUL (`\0`), which §6 makes a translation error and §11
+    /// checks inbound: the one byte a valid proto `string` may carry that a NUL-terminated boundary
+    /// downstream (a C string) would cut short rather than carry — so it is refused, never silently
+    /// truncated (the threat model's integrity property names an interior NUL outright). Named at
+    /// the offending field's path (a map key alike). Kept apart from `UnrepresentableText`, the
+    /// other control characters, because §6 names NUL specifically. The inbound scalar policy's,
+    /// Increment 3.
+    InteriorNul,
+    /// A `string` value carries a control character other than `\n` — one themelios's clingo
+    /// dialect cannot spell (its string escapes are `\"`, `\\`, and `\n` alone, §6), so the value
+    /// has no `.lp` rendering. Refused at the inbound scalar policy, before the value is built
+    /// into a fact, so the two delivery forms (§11 — the symbols and the `.lp` text) carry
+    /// identical content and a rendering `Unspellable` stays a genuine can't-happen
+    /// (`UnrenderableFacts`, a keryx bug). Named at the offending field's path (a map key alike).
+    /// A gap §6 left open — it named only NUL (`InteriorNul`) — closed at Increment 3, ahead of
+    /// any format's door: the refusal is the policy's, not a format's.
+    UnrepresentableText,
+    /// An enum-typed value's wire number matches no declared value of its enum. Proto3-era enums
+    /// are open — an unknown integer is legal on the wire — and §7.4's default policy for one
+    /// arriving inbound is a structured translation error, loud and honest (the threat model's
+    /// integrity property: an open-enum value is named, never mapped to a constant it is not);
+    /// `(keryx.unknown) = PRESERVE` (Increment 5) opts into the `unknown(N)` escape hatch instead.
+    /// Named at the offending field's path (a sequence element or map value alike). The walk's,
+    /// which resolves each number against the enum's mapping; Increment 3.
+    UnknownEnumValue,
+    /// A `float` or `double` field the walk reached has no lowering: §6 gives the two
+    /// floating-point types no default — an annotation is required, `(keryx.scale) = n` (a
+    /// fixed-point integer, value × 10ⁿ, range-checked) or `(keryx.opaque) = true` (a
+    /// decimal-string constant) — and the detail carries that two-choice fix-it (architecture
+    /// §6). §6 makes the *field* the error, not the value, so an unannotated float field is
+    /// refused whenever the walk reaches it, its materialised zero included (§5). Named at the
+    /// offending field's path. The inbound scalar policy's, Increment 3; the annotations that
+    /// discharge it are Increment 5's option vocabulary.
+    UnannotatedFloat,
+    /// The root type a caller named to `Codec::shred` resolves to no message of the codec's
+    /// schema — or, given as a short name, to more than one, which only the fully-qualified name
+    /// separates. The library is the one type-resolution site, so this is a caller's argument
+    /// error rather than a translation failure: the payload was never decoded, and the CLI routes
+    /// it to `Exit::Usage`, not `Translation`. Named at the whole-payload locus — there is no
+    /// field path, decoded or otherwise; the detail names the type as given. Increment 3.
+    UnknownRootType,
+    /// A payload's compositional nesting (message-typed fields, §8) exceeds keryx's uniform payload
+    /// ceiling: 99 levels — one below the engine's own decode-recursion limit, the deepest a
+    /// binary payload decodes at all — imposed alike on every payload format (§26's
+    /// "interchangeably", made exact) as a door-admission policy, not a limit of the translation:
+    /// §8's "no depth limit" holds of path-term construction, and the walk itself runs on a
+    /// managed stack (the threat model's property 3, branch (b)). Enforced by the walk's depth
+    /// counter for every format — binding for JSON, whose decoder's own limit sits above it — and,
+    /// ahead of the unbounded text parser, by the textproto pre-parse guard; a binary payload past
+    /// it is refused by the engine at decode (`UndecodablePayload`), so there the counter is
+    /// defense-in-depth. Named at the whole-payload locus. Increment 3: the walk's counter lands
+    /// with the binary format, the per-format guards and instruments with theirs.
+    PayloadTooDeep,
 }
 
 impl DiagnosticKind {
@@ -194,6 +257,13 @@ impl DiagnosticKind {
             DiagnosticKind::SourceOutsideRoot => "source_outside_root",
             DiagnosticKind::SourceImportGraphTooLarge => "source_import_graph_too_large",
             DiagnosticKind::UndecodablePayload => "undecodable_payload",
+            DiagnosticKind::ValueOutOfRange => "value_out_of_range",
+            DiagnosticKind::InteriorNul => "interior_nul",
+            DiagnosticKind::UnrepresentableText => "unrepresentable_text",
+            DiagnosticKind::UnknownEnumValue => "unknown_enum_value",
+            DiagnosticKind::UnannotatedFloat => "unannotated_float",
+            DiagnosticKind::UnknownRootType => "unknown_root_type",
+            DiagnosticKind::PayloadTooDeep => "payload_too_deep",
         }
     }
 }
@@ -526,6 +596,28 @@ mod tests {
             DiagnosticKind::UndecodablePayload.as_str(),
             "undecodable_payload"
         );
+        assert_eq!(
+            DiagnosticKind::ValueOutOfRange.as_str(),
+            "value_out_of_range"
+        );
+        assert_eq!(DiagnosticKind::InteriorNul.as_str(), "interior_nul");
+        assert_eq!(
+            DiagnosticKind::UnrepresentableText.as_str(),
+            "unrepresentable_text"
+        );
+        assert_eq!(
+            DiagnosticKind::UnknownEnumValue.as_str(),
+            "unknown_enum_value"
+        );
+        assert_eq!(
+            DiagnosticKind::UnannotatedFloat.as_str(),
+            "unannotated_float"
+        );
+        assert_eq!(
+            DiagnosticKind::UnknownRootType.as_str(),
+            "unknown_root_type"
+        );
+        assert_eq!(DiagnosticKind::PayloadTooDeep.as_str(), "payload_too_deep");
         // A new kind must be added above: this exhaustive match (no wildcard,
         // allowed in-crate despite #[non_exhaustive]) fails to compile otherwise.
         match DiagnosticKind::UnreadableDescriptorSet {
@@ -543,7 +635,14 @@ mod tests {
             | DiagnosticKind::SourceTooDeep
             | DiagnosticKind::SourceOutsideRoot
             | DiagnosticKind::SourceImportGraphTooLarge
-            | DiagnosticKind::UndecodablePayload => {}
+            | DiagnosticKind::UndecodablePayload
+            | DiagnosticKind::ValueOutOfRange
+            | DiagnosticKind::InteriorNul
+            | DiagnosticKind::UnrepresentableText
+            | DiagnosticKind::UnknownEnumValue
+            | DiagnosticKind::UnannotatedFloat
+            | DiagnosticKind::UnknownRootType
+            | DiagnosticKind::PayloadTooDeep => {}
         }
     }
 
