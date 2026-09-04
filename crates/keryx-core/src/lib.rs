@@ -12,11 +12,13 @@
 
 pub mod diagnostics;
 mod fault;
+pub(crate) mod terms;
 pub mod descriptor;
 pub mod schema_facts;
 pub mod policy;
 pub mod emit;
 pub mod manifest;
+pub mod codec;
 
 /// The one public path to the foreign-fault containment flag: a consumer's panic hook may consult
 /// `keryx_core::is_containing()` to stay quiet for a fault keryx returns as a value rather than a
@@ -25,6 +27,10 @@ pub use fault::is_containing;
 
 /// themelios's identifier type, re-exported so keryx's public surface is self-contained: a
 /// `Mapping`'s predicates and constants *are* `Name`s (R1), and a client names them through
-/// keryx alone, never a direct rev-pinned dependency on `themelios-program`. The `Symbol`
-/// value vocabulary (`ToSymbol`/`FromSymbol`) joins this re-export at the codec (Increment 3).
+/// keryx alone, never a direct rev-pinned dependency on `themelios-program`.
 pub use themelios_program::Name;
+
+/// themelios's ground value, re-exported for the same reason: a payload's facts *are*
+/// `Symbol`s (R1) — the library seam hands a client the codec's facts as `Symbol`s directly,
+/// no text between (R6) — and a client reads them through keryx alone.
+pub use themelios_program::Symbol;

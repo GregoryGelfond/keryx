@@ -10,8 +10,6 @@
 //!
 //! [`Schema`]: crate::descriptor::model::Schema
 
-mod terms;
-
 use themelios_program::prelude::*;
 use themelios_program::render::render as render_ast;
 
@@ -20,6 +18,7 @@ use crate::descriptor::model::{
     Scalar, Schema, ValueType,
 };
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
+use crate::terms;
 
 /// Render `schema` to its descriptor facts as clingo-dialect ASP text (Appendix C).
 /// Total over any input: doc and path text always render as string terms, keryx's

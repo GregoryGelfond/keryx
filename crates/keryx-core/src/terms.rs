@@ -1,0 +1,227 @@
+//! themelios term and fact constructors — the one fact-construction vocabulary the
+//! descriptor facts (`schema_facts`) and the payload facts (`codec`) share, so a fact,
+//! and the applied term beneath it (`apply`), is built one way crate-wide. Proto-derived
+//! text (names, paths, doc prose, payload strings) becomes string terms — faithful,
+//! escaping-safe, and never an identifier a CamelCase name or a dot would make illegal.
+//!
+//! Two doors, two discharges (§6):
+//!
+//! - **The literal door** — `constant`, `function`, `fact`. keryx's own closed
+//!   vocabulary — predicate names, scalar kinds, presence, cardinality, openness, and the
+//!   `msg`/`enum`/`map` type functors — is always a fixed compile-time literal, so it
+//!   lowers through `vocabulary`'s `expect`: a discharged invariant, not a live risk.
+//! - **The `Name` door** — `apply`, `fact_named`, `atom_symbol`. A predicate or functor
+//!   that is a runtime value — a mapping name the policy derived from a schema — arrives as an
+//!   already-validated [`Name`], whose text always re-lexes as an identifier (its one
+//!   validation happened at the policy's `Name::new` door, where a failure is diagnosed),
+//!   so nothing here re-validates or `expect`s it. The two doors build a fact's two
+//!   representations — the statement and its head [`Symbol`] — independently from one
+//!   `(predicate, arguments)`, each through themelios's own canonicalization, so they
+//!   agree with no bridge from one to the other; `atom_symbol`'s doc states the one
+//!   discharge that collapse rests on.
+//!
+//! An option key (`Annotation::key`) is neither: a `String`, not a literal, and not yet
+//! validated. `descriptor::options::read` admits an option by matching its extension's
+//! *file name* against `keryx/options.proto` — a best-effort heuristic, not true
+//! extension identity (see that function's doc) — so a key reaching here is never assumed
+//! to be one of keryx's own registry. `try_constant` is the total counterpart to
+//! `constant` for exactly this one runtime-derived string: it returns `Err` instead of
+//! panicking, so `schema_facts::render` stays total over any input (§6).
+//!
+//! `emit::build` stays separate: it constructs *declaration* statements — `#defined`
+//! signatures and view rules over variables — never a ground fact, so the two
+//! construction sites share no door.
+
+use themelios_program::prelude::*;
+use themelios_program::term::TermParts;
+
+/// A string term, e.g. `"dispatch.v1.Shipment"`.
+pub(crate) fn text(value: &str) -> Term {
+    Term::Symbolic(Symbol::String(value.to_owned()))
+}
+
+/// An integer term.
+pub(crate) fn int(value: i32) -> Term {
+    Term::from(value)
+}
+
+/// A constant (0-arity function) over a keryx-vocabulary identifier, e.g.
+/// `implicit`, `singular`, `int32`.
+pub(crate) fn constant(name: &str) -> Term {
+    function(name, Vec::new())
+}
+
+/// A ground function term over a keryx-vocabulary functor, e.g. `msg("...")`,
+/// `map(string, int32)` — the literal door over [`apply`].
+pub(crate) fn function(name: &str, arguments: Vec<Term>) -> Term {
+    apply(vocabulary(name), arguments)
+}
+
+/// An application term `name(args…)` (a constant when `arguments` is empty) over an
+/// already-validated functor, canonicalized at the door — a ground constructor collapses
+/// to a `Symbol`. The one spelling of the *ground* applied term across the
+/// fact-construction doors (`function`, `try_constant`, [`atom_symbol`]'s head,
+/// `Root::term`); the declaration-side `emit::build::apply`, applied to view variables,
+/// stays separate — see the module doc.
+pub(crate) fn apply(name: Name, arguments: Vec<Term>) -> Term {
+    Term::Function { name, arguments }.canonicalize()
+}
+
+/// A fact statement `pred(args...).` over a keryx-vocabulary predicate, carrying a
+/// constructed provenance — the literal door over [`fact_named`].
+pub(crate) fn fact(predicate: &str, arguments: Vec<Term>) -> WithProvenance<Statement> {
+    fact_named(vocabulary(predicate), arguments)
+}
+
+/// A fact statement `pred(args...).` over an already-validated predicate, carrying a
+/// constructed provenance. The arguments canonicalize at themelios's atom door, so the
+/// head is the same application [`atom_symbol`] builds from the same
+/// `(predicate, arguments)`.
+pub(crate) fn fact_named(predicate: Name, arguments: Vec<Term>) -> WithProvenance<Statement> {
+    WithProvenance::constructed(Statement::Rule(Rule::fact(Atom::new(predicate, arguments))))
+}
+
+/// The fact head `pred(args...)` as its ground [`Symbol`] — the value the library seam
+/// hands a client — built from the same `(predicate, arguments)` as [`fact_named`]'s
+/// statement, through the same canonicalization, so the two never drift and no bridge
+/// from one to the other exists. The applied head collapses to a symbol when every
+/// argument is a ground leaf — the one discharge here (§6): every term a keryx door
+/// builds (`text`, `int`, `constant`, `function`, `apply`, `try_constant`, `Root::term`)
+/// is already such a leaf, and a payload's values reach a head only through those
+/// doors, so the uncollapsed arm is unreachable — a keryx programming error, never a
+/// foreign input.
+// The codec is this door's production caller and lands with it; until then it is exercised
+// only by this module's own tests, so the expectation is stated for the library build alone
+// (an unfulfilled expectation is itself a lint) and retires when the codec builds a fact's
+// symbol here.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "no production caller until the codec lands")
+)]
+pub(crate) fn atom_symbol(predicate: Name, arguments: Vec<Term>) -> Symbol {
+    let head = apply(predicate, arguments);
+    match head.into_parts() {
+        TermParts::Symbolic(symbol) => symbol,
+        _ => unreachable!("a keryx-built fact head is ground and collapses to its symbol"),
+    }
+}
+
+/// The `opt/3` key constant for `key`, or the reason it is not a themelios
+/// identifier. Unlike `constant`, total: an option key is the one runtime-derived
+/// string that can reach a `Name::new` door (see the module doc), so it is
+/// checked here rather than `expect`ed — `annotation_facts` composes a
+/// diagnostic on `Err` instead of panicking (§6).
+pub(crate) fn try_constant(key: &str) -> Result<Term, NotAnIdentifier> {
+    Ok(apply(Name::new(key)?, Vec::new()))
+}
+
+/// A validated keryx-vocabulary identifier — a fixed, all-legal set, so the
+/// `expect` is discharged (§6); proto text never arrives here (it uses `text`),
+/// and the one runtime-derived string that could (the option key) uses
+/// `try_constant` instead.
+fn vocabulary(name: &str) -> Name {
+    Name::new(name).expect("keryx vocabulary is a valid identifier")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use themelios_program::render::render;
+
+    fn name(text: &str) -> Name {
+        Name::new(text).expect("a test name is a valid identifier")
+    }
+
+    // A mapping predicate's fact statement and its head symbol are built independently
+    // from one `(predicate, arguments)`, each through themelios's own canonicalization:
+    // the statement's head atom, re-applied as a term, canonicalizes to exactly the head
+    // symbol — the two representations cannot drift — and that symbol is the positive
+    // ground application the arguments denote, the fact rendering as it spells.
+    #[test]
+    fn a_named_fact_and_its_head_symbol_are_one_head() {
+        let predicate = name("reading");
+        let arguments = vec![
+            text("s-101"),
+            int(44),
+            constant("celsius"),
+            function("msg", vec![text("x")]),
+        ];
+        let symbol = atom_symbol(predicate.clone(), arguments.clone());
+        let statement = fact_named(predicate.clone(), arguments);
+
+        let Statement::Rule(rule) = statement.get() else {
+            panic!("a fact is a rule");
+        };
+        let Head::Literal(Literal {
+            negation: DefaultNegation::None,
+            inner: LiteralInner::Atom(atom),
+        }) = rule.head().get()
+        else {
+            panic!("a fact's head is one positive literal");
+        };
+        let atom = atom.get();
+        assert_eq!(atom.name, predicate);
+        assert_eq!(atom.sign, Sign::Positive);
+        assert!(!atom.is_pooled());
+        let reapplied = Term::Function {
+            name: atom.name.clone(),
+            arguments: atom.argument_terms().cloned().collect(),
+        }
+        .canonicalize();
+        assert_eq!(reapplied, Term::from(symbol.clone()));
+
+        assert_eq!(
+            symbol,
+            Symbol::Function {
+                name: predicate,
+                arguments: vec![
+                    Symbol::String("s-101".to_owned()),
+                    Symbol::Number(44),
+                    Symbol::Function {
+                        name: name("celsius"),
+                        arguments: Vec::new(),
+                        sign: Sign::Positive,
+                    },
+                    Symbol::Function {
+                        name: name("msg"),
+                        arguments: vec![Symbol::String("x".to_owned())],
+                        sign: Sign::Positive,
+                    },
+                ],
+                sign: Sign::Positive,
+            }
+        );
+        assert_eq!(
+            render(&Program::of([statement]), Dialect::Clingo).expect("renders"),
+            "reading(\"s-101\", 44, celsius, msg(\"x\")).\n"
+        );
+    }
+
+    // The literal door is the named door over keryx's vocabulary — one construction, so
+    // the descriptor facts and the payload facts cannot build a fact two ways.
+    #[test]
+    fn a_literal_fact_is_the_named_fact_over_the_vocabulary() {
+        let arguments = vec![text("a.proto"), text("a")];
+        assert_eq!(
+            fact("file", arguments.clone()),
+            fact_named(name("file"), arguments)
+        );
+    }
+
+    // The premise of `atom_symbol`'s discharge, pinned: every term a keryx door builds —
+    // the doors here and a payload's root — is a collapsed ground leaf, so an applied head
+    // over them always canonicalizes to its symbol.
+    #[test]
+    fn every_door_builds_a_collapsed_ground_leaf() {
+        let built = [
+            text("a.B"),
+            int(-1),
+            constant("implicit"),
+            function("map", vec![constant("string"), constant("int32")]),
+            apply(name("readings"), vec![constant("r0"), int(0)]),
+            try_constant("set").expect("`set` is an identifier"),
+            crate::codec::Root::fresh(0).term(),
+        ];
+        assert!(built.iter().all(|term| matches!(term, Term::Symbolic(_))));
+    }
+}

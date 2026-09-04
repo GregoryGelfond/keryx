@@ -21,3 +21,7 @@ dead_code = "deny"
 # themelios's philosophy.
 [workspace.lints.clippy]
 pedantic = { level = "deny", priority = -1 }
+# A total door whose body discharges an invariant with an `expect` states its
+# totality in prose; a mandatory `# Panics` heading would advertise a panic the
+# invariant makes unreachable. Mirrors themelios.
+missing_panics_doc = "allow"
