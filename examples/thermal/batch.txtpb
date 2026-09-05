@@ -1,0 +1,5 @@
+# proto-file: thermal.proto
+# proto-message: thermal.v1.ReadingBatch
+
+readings { sensor: "s-101" temp_c: 44 }
+readings { sensor: "s-107" temp_c: 21 }
