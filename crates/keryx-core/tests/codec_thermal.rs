@@ -10,12 +10,11 @@ use std::path::{Path, PathBuf};
 use keryx_test_support as support;
 use keryx_test_support::wire::{batch, delimited, reading};
 use prost::encoding;
-use themelios_program::prelude::Sign;
 
 use keryx_core::codec::{Codec, Facts, PayloadFormat, Root};
 use keryx_core::diagnostics::{DiagnosticKind, Diagnostics};
 use keryx_core::policy::Element;
-use keryx_core::{Name, Symbol};
+use keryx_core::{Name, Sign, Symbol};
 
 /// The thermal example's directory (`examples/thermal`), the subject of spec §28.
 fn thermal_dir() -> PathBuf {
@@ -47,9 +46,8 @@ fn refused(codec: &Codec, root_type: &str, payload: &[u8]) -> Diagnostics {
         .expect_err("the payload is refused")
 }
 
-// Expected symbols, built as a client of keryx builds them: through the re-exported `Symbol`
-// and `Name` alone (R1) — the one themelios item named directly is the strong sign, which
-// `Symbol::Function` carries.
+// Expected symbols, built as a client of keryx builds them: through the re-exported `Symbol`,
+// `Name`, and `Sign` alone (R1) — nothing of themelios named directly.
 
 fn name(text: &str) -> Name {
     Name::new(text).expect("an identifier")

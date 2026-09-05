@@ -8,12 +8,11 @@
 
 use keryx_test_support as support;
 use keryx_test_support::wire::{self, delimited};
-use themelios_program::prelude::Sign;
 
 use keryx_core::codec::{Codec, Facts, PayloadFormat, Root};
 use keryx_core::descriptor::Scalar;
 use keryx_core::policy::{Element, ScalarTreatment, ValueMapping};
-use keryx_core::{Name, Symbol};
+use keryx_core::{Name, Sign, Symbol};
 
 /// The well-known-type fixture's codec: an `Event` carrying a `Timestamp` (`at`, #2), a
 /// `Duration` (`elapsed`, #3), and an `Int32Value` (`retries`, #4) beside its `name` (#1).
@@ -53,9 +52,8 @@ fn seconds_nanos(seconds: i64, nanos: i32) -> Vec<u8> {
     buf
 }
 
-// Expected symbols, built as a client of keryx builds them: through the re-exported `Symbol` and
-// `Name` alone — the one themelios item named directly is the strong sign `Symbol::Function`
-// carries.
+// Expected symbols, built as a client of keryx builds them: through the re-exported `Symbol`,
+// `Name`, and `Sign` alone — nothing of themelios named directly (R1).
 
 fn name(text: &str) -> Name {
     Name::new(text).expect("an identifier")

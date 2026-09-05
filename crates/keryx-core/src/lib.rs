@@ -34,3 +34,8 @@ pub use themelios_program::Name;
 /// `Symbol`s (R1) — the library seam hands a client the codec's facts as `Symbol`s directly,
 /// no text between (R6) — and a client reads them through keryx alone.
 pub use themelios_program::Symbol;
+
+/// themelios's strong sign, re-exported to complete the value plane (R1): a `Symbol::Function`
+/// carries its sign, so a client destructuring or building one names `Sign` — through keryx
+/// alone, as it names `Symbol` and `Name`.
+pub use themelios_program::Sign;
