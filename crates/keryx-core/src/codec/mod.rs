@@ -148,21 +148,17 @@ impl Codec {
     ) -> Result<Facts, Diagnostics> {
         let sort = self.index.root(&self.mapping, root_type)?;
         let proto = sort.in_mapping(&self.mapping).proto();
-        // A sort of the mapping is a message of the pool the schema was walked from; the lookup
-        // is checked rather than assumed, and a miss diagnosed at the one resolution site.
-        let descriptor = self
-            .pool
-            .message_by_name(proto.as_str())
-            .ok_or_else(|| {
-                Diagnostics::from(Diagnostic::new(
-                    DiagnosticKind::UnknownRootType,
-                    Locus::whole(),
-                    format!(
-                        "`{}` is a sort of the mapping but the descriptor pool declares no such message",
-                        proto.as_str()
-                    ),
-                ))
-            })?;
+        // A sort of the mapping is a message of the pool: the mapping is walked from the schema
+        // this very pool was ingested into (`over`), so the lookup cannot miss — the one-pool
+        // invariant the walk's own can't-happens rest on. Discharged loud, as they are: a miss is
+        // a keryx error, never a diagnosis under the caller's `UnknownRootType`, which would
+        // blame the caller's argument for a bug in keryx.
+        let Some(descriptor) = self.pool.message_by_name(proto.as_str()) else {
+            unreachable!(
+                "`{}` is a sort of the mapping but the descriptor pool declares no such message; the mapping is walked from this pool, so the miss is a keryx error",
+                proto.as_str()
+            )
+        };
         let decoded = match format {
             PayloadFormat::Binary => engine::decode_binary(&descriptor, payload)?,
         };
@@ -249,5 +245,23 @@ mod tests {
             render(&Program::of([batch]), Dialect::Clingo).expect("renders"),
             "reading_batch(r0).\n"
         );
+    }
+
+    // The one-pool invariant, pinned from the other side: a codec assembled over one schema's
+    // mapping and another schema's pool breaks it, and the miss at the root's lookup is a keryx
+    // error, loud — never reported under the caller's `UnknownRootType`, which would blame the
+    // caller's argument for a bug in keryx. No public door assembles such a codec: `new` and
+    // `from_source` ingest the pool the mapping is walked from.
+    #[test]
+    #[should_panic(expected = "declares no such message")]
+    fn a_sort_the_pool_does_not_declare_is_a_keryx_error_not_a_usage_error() {
+        let (schema, _) =
+            descriptor::ingest_retaining(&keryx_test_support::compile_fixture("proto3.proto"))
+                .expect("the fixture ingests");
+        let (_, other_pool) =
+            descriptor::ingest_retaining(&keryx_test_support::compile_fixture("maps.proto"))
+                .expect("the fixture ingests");
+        let codec = Codec::over(&schema, other_pool).expect("the mapping indexes");
+        let _ = codec.shred("Reading", &[], PayloadFormat::Binary, &Root::fresh(0));
     }
 }
