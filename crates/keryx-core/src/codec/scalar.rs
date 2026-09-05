@@ -111,9 +111,13 @@ fn decimal(value: impl fmt::Display) -> Term {
 /// value's content, not of its first offending character: `InteriorNul` when a NUL occurs
 /// anywhere — §6's named refusal takes precedence, so a consumer keyed on it never misses a NUL
 /// behind an earlier tab — else `UnrepresentableText` when any other control character but
-/// `\n` does, else the term. The admission set is exactly the clingo dialect's spellable set
-/// (`is_control` less `\n` — the very set themelios's renderer refuses), pinned character by
-/// character in this module's tests.
+/// `\n` does, else the term. The admission set is exactly the clingo dialect's spellable set:
+/// the dialect's string rule (themelios grammar §4.4) has three escapes — `\"`, `\\`, `\n` —
+/// and no other control character has a spelling, so its renderer refuses by the predicate
+/// the policy refuses by, `char::is_control` less `\n`. Pinned in this module's tests:
+/// character by character across the control range, and past it at the separator, format,
+/// boundary, and astral code points where a printer could plausibly refuse and this one does
+/// not.
 fn text(value: &str, at: &str) -> Result<Term, Diagnostic> {
     if let Some(offset) = value.chars().position(|character| character == '\0') {
         return Err(interior_nul(offset, at));
@@ -452,27 +456,35 @@ mod tests {
         assert_eq!(alone.kind(), DiagnosticKind::InteriorNul);
     }
 
+    /// Whether the policy admits the one-character string `character`, and whether the clingo
+    /// dialect spells it — the two sides of the parity the admission set claims.
+    fn admitted_and_spelled(character: char) -> (Result<Term, Diagnostic>, bool) {
+        let value = character.to_string();
+        let admitted = lower(
+            Scalar::String,
+            ScalarTreatment::Text,
+            &Datum::Str(&value),
+            AT,
+        );
+        let spells = spelled(terms::text(&value)).is_ok();
+        (admitted, spells)
+    }
+
     #[test]
     fn the_text_admission_set_is_the_clingo_dialect_s_spellable_set() {
         // Every C0 control, printable ASCII (the escaped `"` and `\` included), DEL, every C1
         // control, and the first character past them, each as a one-character string: the policy
         // admits it exactly when the clingo dialect spells it, so a string the policy admits never
         // meets a rendering `Unspellable` — the claim behind refusing here rather than at render,
-        // pinned character by character.
+        // pinned character by character across the whole control range (Unicode's `Cc` ends at
+        // U+009F).
         for code in 0..=0xA0 {
             let character = char::from_u32(code).expect("a scalar value below the surrogates");
-            let value = character.to_string();
-            let admitted = lower(
-                Scalar::String,
-                ScalarTreatment::Text,
-                &Datum::Str(&value),
-                AT,
-            );
-            let rendered = spelled(terms::text(&value));
+            let (admitted, spelled) = admitted_and_spelled(character);
             assert_eq!(
                 admitted.is_ok(),
-                rendered.is_ok(),
-                "U+{code:04X}: the policy and the dialect disagree ({admitted:?} / {rendered:?})"
+                spelled,
+                "U+{code:04X}: the policy and the dialect disagree ({admitted:?})"
             );
             if let Err(diagnostic) = admitted {
                 let expected = if character == '\0' {
@@ -482,6 +494,44 @@ mod tests {
                 };
                 assert_eq!(diagnostic.kind(), expected, "U+{code:04X}");
             }
+        }
+
+        // Past the control range, the parity rests on the dialect's rule (themelios grammar
+        // §4.4: three escapes, and no other *control* character has a spelling — the same
+        // `char::is_control` the policy refuses by), and is pinned where a printer could
+        // plausibly refuse and this one does not: the soft hyphen, the zero-width space, the
+        // line and paragraph separators, the byte-order mark (Unicode's `Cf`/`Zl`/`Zp`, not
+        // `Cc`); a private-use character; the replacement character and a noncharacter; the
+        // scalars bounding the surrogate gap; and astral-plane scalars up to the last one.
+        // Each is admitted by the policy *and* spelled by the dialect, rendered through
+        // themelios rather than assumed.
+        for code in [
+            0x00AD,
+            0x200B,
+            0x2028,
+            0x2029,
+            0xD7FF,
+            0xE000,
+            0xFEFF,
+            0xFFFD,
+            0xFFFF,
+            0x1F600,
+            u32::from(char::MAX),
+        ] {
+            let character = char::from_u32(code).expect("a scalar value");
+            assert!(
+                !character.is_control(),
+                "U+{code:04X} is not a control character"
+            );
+            let (admitted, spelled) = admitted_and_spelled(character);
+            assert!(
+                admitted.is_ok(),
+                "U+{code:04X}: the policy refuses a non-control character ({admitted:?})"
+            );
+            assert!(
+                spelled,
+                "U+{code:04X}: the dialect refuses a character the policy admits"
+            );
         }
     }
 
