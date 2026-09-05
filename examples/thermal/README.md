@@ -45,11 +45,14 @@ default would, so the generated vocabulary is the same.
 
 Run `keryx gen` (the schema imports `keryx/options.proto` for `(keryx.set)`, which keryx
 resolves from its embedded registry — no `-I` for it), then `keryx facts` over the committed
-payload [`batch.binpb`](batch.binpb):
+payload — [`batch.binpb`](batch.binpb) on the wire, or the same message as text,
+[`batch.txtpb`](batch.txtpb); the format is named by the extension, and either shreds to the
+same facts:
 
 ```sh
 keryx gen thermal.proto -I . -o gen/
 keryx facts --root ReadingBatch=batch.binpb thermal.proto -I . > gen/thermal.v1.facts.lp
+keryx facts --root ReadingBatch=batch.txtpb thermal.proto -I .   # the same seven facts
 ```
 
 `gen` writes one file set per package (spec §13). For `thermal.v1` that is the three files in
@@ -144,8 +147,10 @@ temp_c(readings(r0, 1), 21).
 Each reading is the access-path term `readings(r0, i)` — its index in the sequence, hanging
 from the root (spec §4.1) — not a minted identity, and the very term the `readings/3` view in
 `views.lp` joins on. `sensor` and `temp_c` are total, so both atoms exist for every reading.
-The same payload always shreds to the same facts, so this file is golden-comparable like the
-three beside it.
+The same payload always shreds to the same facts, in either form — [`batch.txtpb`](batch.txtpb)
+is this batch in the protobuf text format, its `# proto-file:` / `# proto-message:` header naming
+the schema and the root type, and it shreds to this very file — so the file is golden-comparable
+like the three beside it.
 
 ## The solver-free path
 
@@ -164,8 +169,9 @@ Increment 4; this example is the piece that is real today.
 
 ## Scope at this stage
 
-- **Binary payloads only.** `facts` reads the binary wire format (`.binpb`); the JSON and
-  textproto forms every payload door is to accept (spec §26) follow.
+- **Binary and textproto payloads.** `facts` reads the binary wire format (`.binpb`) and the
+  protobuf text format (`.txtpb`), nesting in either bounded at the same ceiling — text ahead of
+  its parser; the canonical JSON form every payload door is to accept (spec §26) follows.
 - **`(keryx.set)` is inert at this stage.** keryx ingests the annotation (it appears as an `opt/3`
   descriptor fact) but does not yet read it for translation, so `AlertSet.alerts` is generated
   as a **sequence**, exactly like `ReadingBatch.readings` — `alerts/2` with a sequence view

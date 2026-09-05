@@ -27,8 +27,13 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 
 /// Bound a textproto payload's nesting before the engine parses it: `Ok(())` for a payload whose
 /// message values nest at most [`NESTING_CEILING`] levels below the root — the uniform ceiling,
-/// the walk's own, so a textproto payload is admitted exactly as deep as a binary one — and
-/// `PayloadTooDeep` past it, before `parse_text_format` recurses on a single level. `text` is
+/// the walk's own, counted here in message *values* where the walk counts *occupants*: exact for
+/// a singular or repeated message field (one opener, one occupant), so such a payload is admitted
+/// exactly as deep as its binary form; conservative for a map entry (two openers, the entry's and
+/// its value's, per occupant) and an expanded `Any` (an opener for the expansion, and more for
+/// whatever it nests, which the walk never enters), which are admitted to a shallower message
+/// depth than on the wire, never a deeper one — and `PayloadTooDeep` past it, before
+/// `parse_text_format` recurses on a single level. `text` is
 /// the payload already validated as UTF-8 by the decode that calls this — a non-UTF-8 payload is
 /// that decode's `UndecodablePayload` — so the scan reads bytes no structural character can hide
 /// in.
@@ -98,9 +103,17 @@ pub(crate) fn depth(text: &str) -> Result<(), Diagnostics> {
 /// terminator (`mod.rs:60-62`, the only site that consumes a `}` or `>`); the lexer emits those
 /// tokens exactly at the `{`/`<`/`}`/`>` bytes outside literals and comments, where the scanner
 /// counts them. So at every token the parser reaches, the scanner's count is the parser's live
-/// message depth — exactly, for a payload the parser accepts, so the guard refuses nothing the
-/// walk would admit — and past a lexer error it can only be higher. No counted bracket is ever
-/// skipped as literal or comment content the lexer would tokenize.
+/// message depth — exactly, for a payload the parser accepts — and past a lexer error it can only
+/// be higher. No counted bracket is ever skipped as literal or comment content the lexer would
+/// tokenize. Against the *walk* the count is a bound, not always the same number: a singular or
+/// repeated message field is one message value and one occupant, but a map entry is two message
+/// values (`m { key: … value { … } }`) for the one occupant the walk counts, and an expanded
+/// `Any` (`[type.googleapis.com/pkg.Msg] { … }`) is a message value the walk never enters, with
+/// whatever it nests (`Any` is opaque to the walk, spec §10). So the guard never admits deeper
+/// than the walk would — the safe direction — and binds those two forms conservatively earlier: a
+/// map-of-message chain is admitted to 49 levels here where its wire form is admitted to 99 — a
+/// settled, documented consequence of bounding the parser lexically (a bracket scan cannot tell an
+/// entry's opener from an occupant's); the threat model's property 3 and spec §26 record it.
 fn deepest(text: &str) -> usize {
     /// Where the scan stands: in ordinary text, in a `#` comment, or in a string literal opened
     /// by the quote it holds.

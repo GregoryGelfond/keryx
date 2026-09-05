@@ -44,7 +44,21 @@ policy. This ledger states what keryx *delivers* as of the inbound codec (Increm
 |-------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | binary (`.binpb`)       | supported (golden-tested on the thermal example). Compositional nesting is admitted to **99** message-typed levels below the root — spec §8's door-admission policy, one below the descriptor engine's decode recursion limit; a payload nesting deeper is refused whole — `PayloadTooDeep` from the walk at the 100th level, `UndecodablePayload` from the engine's own limit past it. Every §6 refusal is a diagnostic at its field's path; bytes that do not decode as the root type are `UndecodablePayload` |
 | canonical JSON (`.json`) | following — the same `Codec`, the same walk, the same ceiling                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| textproto (`.txtpb`)    | following — the same, with a pre-parse nesting bound ahead of the engine's text parser                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| textproto (`.txtpb`)    | supported (golden-tested on the thermal example: `batch.txtpb` shreds to the facts `batch.binpb` does). The same `Codec`, walk, and §6 refusals, under the same ceiling of **99** — bound *ahead* of the engine's text parser by a pre-parse guard that counts message values, so a map entry or an expanded `Any` spends more of it than on the wire (below); a deeper payload is refused whole, `PayloadTooDeep`. Text that is not UTF-8, or does not parse as the root type, is `UndecodablePayload`                   |
+
+**Textproto's ceiling is counted in message values, the wire's in occupants.** The engine's text
+parser recurses natively on every nested message value and bounds nothing, so keryx bounds a text
+payload *before* it: a pre-parse guard measures the text's `{ }`/`< >` nesting (outside string
+literals and `#` comments) and refuses past 99 whole — `PayloadTooDeep`, naming the depth and the
+ceiling and nothing of the text — before the parser sees a token; the parse then runs on a thread
+keryx sizes for the deepest admitted payload (8 MiB), so no admitted payload overflows whatever
+thread the caller decodes on. The measure is exact for a singular or repeated message field (one
+opener, one occupant), so such a payload is admitted exactly as deep as its binary form; it is
+conservative for a map entry (two openers per occupant — the entry's and its value's) and an
+expanded `Any` (an opener the walk never enters, plus whatever it nests), which bind earlier in
+text than on the wire — a map-of-message chain is admitted to 49 levels as text where its wire
+form is admitted to 99 — and never later: the guard over-refuses, and never admits deeper than the
+walk would. Settled, a documented consequence of bounding the text parser lexically.
 
 The codec has no proto-version branch of its own: presence is decided from the mapping's totality
 (spec §5), which the descriptor door resolves from features, never from syntax era.
