@@ -41,20 +41,15 @@ pub(crate) enum Dependency {
     ProstTypes,
     /// prost-reflect — the descriptor engine, at both the pool decode and the accessor walk; and
     /// the payload engine, at the payload door's binary decode (`codec::engine::decode_binary`)
-    /// and its textproto parse (`codec::engine::decode_textproto`).
+    /// and its textproto parse (`codec::engine::decode_textproto`). Its `serde` mapping runs
+    /// under the JSON decode's frame, which names [`SerdeJson`](Dependency::SerdeJson).
     ProstReflect,
     /// protox — the `.proto` source compiler, at the source door's compile.
     Protox,
     /// `serde_json` — the JSON deserializer the payload door's JSON decode drives the engine's
-    /// `serde` mapping with, at that decode (`codec::engine::decode_json`).
-    // The payload door's JSON decode is this variant's production caller and lands with it; until
-    // then it is constructed only by this module's own tests, so the expectation is stated for the
-    // library build alone (an unfulfilled expectation is itself a lint) and retires when
-    // `decode_json` contains its first call.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "no production caller until the JSON decode lands")
-    )]
+    /// `serde` mapping with, at that decode (`codec::engine::decode_json`). The engine's visitors
+    /// run beneath the deserializer inside the one frame, so a fault in either reads as this
+    /// dependency's: the frame names the code keryx calls, and keryx calls the deserializer.
     SerdeJson,
 }
 

@@ -287,7 +287,7 @@ fn parse_root(root: &str) -> Result<(&str, &Path), String> {
     Ok((root_type, Path::new(payload)))
 }
 
-/// The payload formats keryx reads, by extension (spec §25 `payload.(binpb|txtpb|…)`): the
+/// The payload formats keryx reads, by extension (spec §25 `payload.(binpb|json|txtpb)`): the
 /// extension (matched ASCII-case-insensitively, as a spec's `.binpb` is), the codec's format, and
 /// the description the usage note gives it. The one statement both [`payload_format`] and the note
 /// naming the admitted formats derive from, so a format the codec comes to admit joins here alone.
@@ -298,6 +298,7 @@ const PAYLOAD_FORMATS: &[(&str, PayloadFormat, &str)] = &[
         PayloadFormat::Textproto,
         "the protobuf text format",
     ),
+    ("json", PayloadFormat::Json, "the protobuf JSON mapping"),
 ];
 
 /// The wire form a payload file is in, by its extension — its entry in [`PAYLOAD_FORMATS`]. A
@@ -457,10 +458,10 @@ mod tests {
 
     #[test]
     fn a_payload_format_is_named_by_its_extension() {
-        // `.binpb`, in any case, is the binary wire format and `.txtpb` the text format; any
-        // other extension, or none, is a form the codec does not read. The table is the one
-        // source: every entry resolves to its format, and the usage note names every entry's
-        // extension.
+        // `.binpb`, in any case, is the binary wire format, `.txtpb` the text format, and `.json`
+        // the JSON mapping; any other extension, or none, is a form the codec does not read. The
+        // table is the one source: every entry resolves to its format, and the usage note names
+        // every entry's extension.
         assert_eq!(
             payload_format(Path::new("batch.binpb")),
             Some(PayloadFormat::Binary)
@@ -477,7 +478,15 @@ mod tests {
             payload_format(Path::new("batch.TXTPB")),
             Some(PayloadFormat::Textproto)
         );
-        assert_eq!(payload_format(Path::new("batch.json")), None);
+        assert_eq!(
+            payload_format(Path::new("batch.json")),
+            Some(PayloadFormat::Json)
+        );
+        assert_eq!(
+            payload_format(Path::new("batch.JSON")),
+            Some(PayloadFormat::Json)
+        );
+        assert_eq!(payload_format(Path::new("batch.yaml")), None);
         assert_eq!(payload_format(Path::new("batch")), None);
         let admitted = admitted_payload_formats();
         for (extension, format, _) in PAYLOAD_FORMATS {

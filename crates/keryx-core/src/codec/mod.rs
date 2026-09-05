@@ -37,6 +37,18 @@ pub enum PayloadFormat {
     /// before the engine's parser sees it and parsed on a thread keryx sizes for that bound — one
     /// thread spawn per payload, the one cost the binary form does not pay (spec §26).
     Textproto,
+    /// The protobuf JSON mapping (a `.json` payload), canonical (spec §26): one JSON value —
+    /// the empty message is `{}`, an empty text is no value — deserialized whole against the
+    /// root type, with no guard before it: the deserializer bounds its own nesting, refusing the
+    /// 128th nested array or object, and the walk's uniform ceiling stands beneath that count.
+    /// Which of the two a payload meets first goes by its fields' form. A chain of singular
+    /// message fields spends one object a level and meets the walk's ceiling (`PayloadTooDeep`
+    /// past 99 levels); a repeated or map chain spends two containers a level and meets the
+    /// deserializer's count first, at a shallower message depth (`UndecodablePayload`) — refusal
+    /// in the safe direction, never admission past the ceiling. Deserialized on a thread keryx
+    /// sizes for the deepest payload the deserializer admits — one thread spawn per payload, as
+    /// the text format pays.
+    Json,
 }
 
 /// The root constant of one payload (spec §4.1 item 6): the only extrinsic identity in the
@@ -142,12 +154,14 @@ impl Codec {
     ///
     /// `UnknownRootType` for a name resolving to no message, or to more than one (the payload is
     /// then never decoded); `UndecodablePayload` for bytes that do not decode as that message
-    /// (over-deep binary included; a textproto payload that is not UTF-8, or does not parse);
+    /// (over-deep binary included; a textproto payload that is not UTF-8, or does not parse; a
+    /// JSON payload that is not one canonical JSON value of that message — a field the type does
+    /// not declare, a container past the deserializer's own count, text after the value);
     /// `DependencyFault` for a contained engine fault; the walk's diagnoses — the §6 refusals at
     /// their fields' paths (`ValueOutOfRange`, `InteriorNul`, `UnrepresentableText`,
     /// `UnannotatedFloat`) and `UnknownEnumValue` (§7.4); and `PayloadTooDeep` past the uniform
-    /// nesting ceiling (§8, §26) — the walk's refusal, or for textproto the pre-parse guard's,
-    /// ahead of the engine's parser.
+    /// nesting ceiling (§8, §26) — the walk's refusal (for JSON the one place the ceiling binds),
+    /// or for textproto the pre-parse guard's, ahead of the engine's parser.
     pub fn shred(
         &self,
         root_type: &str,
@@ -171,6 +185,7 @@ impl Codec {
         let decoded = match format {
             PayloadFormat::Binary => engine::decode_binary(&descriptor, payload)?,
             PayloadFormat::Textproto => engine::decode_textproto(&descriptor, payload)?,
+            PayloadFormat::Json => engine::decode_json(&descriptor, payload)?,
         };
         walk::shred(
             &self.mapping,

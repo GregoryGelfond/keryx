@@ -1,6 +1,6 @@
 //! `keryx facts` end to end (spec §11, §25; architecture §6): a payload and its schema in — the
-//! `--root Type=payload` pair, the payload's format named by its extension (`.binpb`, `.txtpb`),
-//! and a `.proto` source or `.binpb` descriptor set — the ground
+//! `--root Type=payload` pair, the payload's format named by its extension (`.binpb`, `.txtpb`,
+//! `.json`), and a `.proto` source or `.binpb` descriptor set — the ground
 //! facts as a `.lp` fact module on stdout (`keryx facts … | clingo`), diagnostics on stderr, and
 //! the §6 exit taxonomy with its translation class (8): a payload that does not translate is
 //! distinct from a file that cannot be read (`Input`, 3), a schema that builds no codec (`Schema`,
@@ -90,6 +90,12 @@ readings { sensor: \"s-101\" temp_c: 44 }
 readings { sensor: \"s-107\" temp_c: 21 }
 ";
 
+/// The same payload in the protobuf JSON mapping (§26), canonical: the two readings of
+/// [`section_28_batch`] as the objects of the `readings` array, each field under the mapping's
+/// own name (`tempC` for `temp_c`).
+const SECTION_28_JSON: &str = r#"{"readings": [{"sensor": "s-101", "tempC": 44}, {"sensor": "s-107", "tempC": 21}]}
+"#;
+
 /// The `--root` argument `Type=payload`, the path joined as the OS gives it.
 fn root(root_type: &str, payload: &Path) -> OsString {
     let mut root = OsString::from(root_type);
@@ -154,6 +160,19 @@ fn shreds_a_textproto_batch_to_the_same_facts() {
     // on stdout, stderr quiet, exit 0.
     let fx = fixture("facts_textproto");
     let payload = fx.payload("batch.txtpb", SECTION_28_TEXTPROTO.as_bytes());
+    let out = facts(root("ReadingBatch", &payload), &fx.set, &[], &[]);
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), SECTION_28_FACTS);
+    assert!(out.stderr.is_empty(), "stderr is quiet on success");
+}
+
+#[test]
+fn shreds_a_json_batch_to_the_same_facts() {
+    // §26: a `.json` is the protobuf JSON mapping, canonical — and the §28 batch in that form
+    // shreds to the seven facts its binary and text forms do: the same product on stdout, stderr
+    // quiet, exit 0. The three-way parity the spec asks, at the command.
+    let fx = fixture("facts_json");
+    let payload = fx.payload("batch.json", SECTION_28_JSON.as_bytes());
     let out = facts(root("ReadingBatch", &payload), &fx.set, &[], &[]);
     assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
     assert_eq!(String::from_utf8(out.stdout).unwrap(), SECTION_28_FACTS);
@@ -326,11 +345,12 @@ fn a_payload_path_may_itself_contain_an_equals() {
 
 #[test]
 fn an_unsupported_payload_format_is_a_usage_error() {
-    // The payload's format is its extension; one the codec does not read — a `.json` until that
-    // format lands, or no extension at all — is a usage error (2), decided by the extension before
-    // the file is read (the files exist), and the note names every format keryx does read.
+    // The payload's format is its extension; one the codec does not read — an extension naming
+    // no format keryx has (a `.yaml`), or no extension at all — is a usage error (2), decided by
+    // the extension before the file is read (the files exist), and the note names every format
+    // keryx does read.
     let fx = fixture("facts_unsupported_format");
-    for name in ["batch.json", "batch"] {
+    for name in ["batch.yaml", "batch"] {
         let payload = fx.payload(name, &section_28_batch());
         let out = facts(root("ReadingBatch", &payload), &fx.set, &[], &[]);
         assert_eq!(
@@ -340,7 +360,9 @@ fn an_unsupported_payload_format_is_a_usage_error() {
             stderr(&out)
         );
         assert!(
-            stderr(&out).contains("binpb") && stderr(&out).contains("txtpb"),
+            stderr(&out).contains("binpb")
+                && stderr(&out).contains("txtpb")
+                && stderr(&out).contains("json"),
             "the formats keryx reads are named: {}",
             stderr(&out)
         );

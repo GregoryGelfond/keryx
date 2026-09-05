@@ -1,5 +1,6 @@
 //! The decode engine's adapter (architecture §5, inbound) — the one place in `codec` that names
-//! prost-reflect. A payload — in the binary wire format or the text format — is decoded against
+//! prost-reflect, and `serde_json`, the deserializer the JSON form drives the engine with. A
+//! payload — in the binary wire format, the text format, or the JSON mapping — is decoded against
 //! its root message's descriptor under foreign-fault containment, and the decoded tree is
 //! presented in keryx's own **borrowing** value vocabulary:
 //! [`Decoded`] owns the one decoded tree, and [`SubMessage`], [`FieldValue`], [`Element`], [`Key`],
@@ -63,7 +64,7 @@ pub(crate) fn decode_binary(
     // its global well-known-type pool on a descriptor's option decode and in its reflection of
     // prost-types' own well-known types (prost-reflect 0.16.5 `src/descriptor/api.rs:1959`,
     // `src/descriptor/build/options.rs:310`, `src/reflect/wkt.rs:5485`, its every `global()` site),
-    // never on a payload decode in either format — so no process-global state can be left
+    // never on a payload decode in any format — so no process-global state can be left
     // inconsistent, and keryx's own logic inside the frame is one infallible clone; the
     // `AssertUnwindSafe` is sound.
     let decoded = contain(Dependency::ProstReflect, "decoding a payload", || {
@@ -176,6 +177,126 @@ pub(crate) fn decode_textproto(
         })
     })?;
     parsed
+        .map(|root| Decoded { root })
+        .map_err(|error| undecodable(desc, &error.to_string()))
+}
+
+/// The stack the JSON decode runs on: 8 MiB, on a thread keryx sizes itself. No guard precedes
+/// this decode — the deserializer bounds its own nesting, refusing the 128th nested array or
+/// object (`serde_json` 1.0.151 `src/de.rs:63`, `:1372-1384`), a count the engine's `serde`
+/// mapping recurses natively beneath with no counter of its own — so the deepest payload the
+/// decode admits nests 127 containers, and it is deserialized *whole* on this thread before the
+/// walk, on the caller's thread, applies the uniform ceiling: the thread carries the
+/// deserializer's full admit, not the ceiling's 99 levels. **The measure of record**, which the
+/// door's doc and its instruments cite rather than restate — against the pinned engine,
+/// prost-reflect 0.16.5 over `serde_json` 1.0.151, in debug and release builds, for the deepest
+/// payload of each form the deserializer admits: a chain of 126 singular message fields (127
+/// objects) needs some 896 KB in a debug build (768 KB overflows — some 7 KB a level) and 160 KB
+/// in release (128 KB overflows); a chain of 63 repeated or 63 map-of-message fields (127
+/// containers again) less — 512 KB and 640 KB in debug, 80 KB and 128 KB in release. The
+/// costliest is an `Any`: one whose `@type` follows the value it holds is buffered by the engine
+/// as it reads and then deserialized again from the buffer, natively, at the `Any`'s depth, at
+/// some 14 KB a level in debug — twice a plain level — so an `Any` whose `@type` follows a
+/// 125-level chain needs 1.75 MB in debug (1.5 MB overflows) and 224 KB in release (192 KB
+/// overflows), and a nest of 126 such `Any` values, each buffered by the one above, 2 MB in debug
+/// (1.75 MB overflows) and 320 KB in release (256 KB overflows). A `google.protobuf.Value` chain
+/// binds earlier, at the engine's own message-decode limit as it materialises the value (50
+/// levels admitted, 51 a decode error), and needs 448 KB in debug, 96 KB in release. This size
+/// carries the costliest need four times over in debug and twenty-five in release — where a
+/// spawned thread's 2 MB default, the test harness's threads among them, would carry it in debug
+/// with nothing to spare, and a 1 MB main thread would not — and it holds whatever thread the
+/// caller decodes on, so the margin is keryx's by construction, not the host's. The stack is
+/// reserved address space, committed a page at a time as the deserialization descends, so a
+/// shallow payload pays a thread spawn and little else.
+const JSON_DECODE_STACK: usize = 8 << 20;
+
+/// Decode a canonical JSON (`.json`) payload as an instance of `desc` — the payload door's third
+/// engine crossing, the JSON mapping's — and return the tree, owned: the same [`Decoded`] view
+/// the binary and text decodes yield, so the walk and the §6 policy read a JSON payload exactly as
+/// they read its other forms (spec §26 parity). The door is one step, total, with no guard before
+/// it: the deserializer bounds its own nesting — `serde_json`'s recursion limit, on by default
+/// and never lifted, counts down from 128 and refuses the 128th nested array or object (1.0.151
+/// `src/de.rs:63`, `:1372-1384`) — so the engine's `serde` mapping, which recurses natively
+/// beneath that count with no counter of its own (prost-reflect 0.16.5 `src/dynamic/serde/de/`:
+/// `KindSeed::deserialize` `kind.rs:20` → `deserialize_message` `mod.rs:14` →
+/// `MessageVisitor::visit_map` `kind.rs:544` → `MessageVisitorInner::visit_map` `kind.rs:563` →
+/// the next field's seed), sees no payload nesting past 127 containers. The whole admitted payload
+/// is deserialized here, on a thread keryx sizes for that admit ([`JSON_DECODE_STACK`]), *before*
+/// the walk applies the uniform ceiling on the caller's thread — so a chain of singular message
+/// fields 100 to 126 levels deep, which the deserializer admits, is the walk's `PayloadTooDeep`,
+/// and one 127 deep, or a repeated or map chain 64 deep (two containers a level), is the
+/// deserializer's own refusal, `UndecodablePayload` — a shallower message depth than the ceiling,
+/// never a deeper one. The containment frame sits *inside* the sized thread, the order the text
+/// decode keeps and for the same reason: a stack overflow aborts rather than unwinds, so no frame
+/// can catch one — the sized thread *prevents* it, for every payload the deserializer admits —
+/// and the frame catches what does unwind, an unforeseen fault in the deserializer or in the
+/// engine's visitors beneath it, as a `DependencyFault` naming the code keryx drives,
+/// `serde_json`.
+///
+/// Canonical (spec §26), by the deserializer's defaults: a field the type does not declare — by
+/// its JSON name or its proto name, both of which the mapping admits — is refused, as the
+/// mapping asks of a conforming parser by default and as the text format's parser refuses one,
+/// where the binary wire keeps an unknown field it cannot name; a payload is one JSON value, so
+/// text after the value is refused too; and the empty message is `{}` — an empty text is no
+/// value. Every such failure — an undeclared field, a value outside its kind, malformed or
+/// non-UTF-8 text, the deserializer's count exceeded, text after the value — is
+/// `UndecodablePayload`, its message composed into the detail (§6), never its type exposed.
+///
+/// Single-threaded for all that it runs on its own thread, as the text decode is: the thread
+/// exists for its stack alone, the caller waits on it, and the tree comes back owned — so a JSON
+/// payload's facts are the same function of the payload a binary one's are (the threat model's
+/// determinism).
+///
+/// # Errors
+///
+/// `UndecodablePayload` when the bytes are not one canonical JSON value of `desc`;
+/// `DependencyFault` for a contained fault.
+pub(crate) fn decode_json(desc: &MessageDescriptor, bytes: &[u8]) -> Result<Decoded, Diagnostics> {
+    let operation = "decoding a JSON payload";
+    let deserialized = thread::scope(|scope| {
+        // The closure borrows only `desc` (a handle over the pool's shared state, cloned in) and
+        // `bytes`; a fault drops the half-built message with the unwind, so nothing keryx observes
+        // survives it. The deserialization reads the pool only through that handle — an `Any`
+        // value's type resolves against the root descriptor's own pool (prost-reflect 0.16.5
+        // `src/dynamic/serde/de/mod.rs:24`, `desc.parent_pool()`), never the engine's global one
+        // — so no process-global state can be left inconsistent, and keryx's own logic inside the
+        // frame is one infallible clone and two `?`s; the `AssertUnwindSafe` is sound. The frame's
+        // thread-local flag is set on the thread the deserialization runs on — the thread a panic
+        // hook consults it from.
+        let handle = thread::Builder::new()
+            .name("keryx-json".to_owned())
+            .stack_size(JSON_DECODE_STACK)
+            .spawn_scoped(scope, || {
+                contain(
+                    Dependency::SerdeJson,
+                    operation,
+                    || -> Result<DynamicMessage, serde_json::Error> {
+                        // The deserializer as built: its recursion limit on, the engine's
+                        // `deny_unknown_fields` on. A payload is one value, so `end` refuses text
+                        // after it.
+                        let mut deserializer = serde_json::Deserializer::from_slice(bytes);
+                        let root = DynamicMessage::deserialize(desc.clone(), &mut deserializer)?;
+                        deserializer.end()?;
+                        Ok(root)
+                    },
+                )
+            })
+            // A thread the host cannot spawn is the host out of a resource — threads, or the
+            // address space to reserve the stack in — and nothing the payload's content brings
+            // about: the spawn reads none of it and asks the same of the host for every payload
+            // alike. Discharged as `decode_textproto` discharges the same spawn — a host invariant
+            // against the adversary the threat model names, whose repetition the consuming
+            // service's resource limits bound, not this door's diagnosis.
+            .expect("the host can spawn the JSON decode thread");
+        handle.join().unwrap_or_else(|unwind| {
+            // A panic that escaped the frame — none can, the frame catching every unwind inside it
+            // — is re-raised inside a frame here, on the caller's thread, so it is contained as it
+            // would have been: the same fault, from the one seam. `resume_unwind` runs no panic
+            // hook, so the fault is reported once.
+            contain(Dependency::SerdeJson, operation, || resume_unwind(unwind))
+        })
+    })?;
+    deserialized
         .map(|root| Decoded { root })
         .map_err(|error| undecodable(desc, &error.to_string()))
 }

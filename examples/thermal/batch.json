@@ -1,0 +1,6 @@
+{
+  "readings": [
+    { "sensor": "s-101", "tempC": 44 },
+    { "sensor": "s-107", "tempC": 21 }
+  ]
+}
