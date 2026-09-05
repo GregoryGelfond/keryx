@@ -30,7 +30,28 @@ themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", r
 # calls (`codec/engine.rs::decode_textproto`). protox enables it transitively
 # today; it is declared here because keryx-core's own call must not rest on
 # another crate's defaults.
-prost-reflect = { version = "=0.16.5", features = ["text-format"] }
+# `serde` gates the engine's JSON mapping — `DynamicMessage::deserialize`, which the
+# payload door's JSON decode drives with a serde_json deserializer
+# (`codec/engine.rs::decode_json`). It brings the engine's own `serde-value` (it
+# buffers a well-known type's entries before it reads them) and `base64` (a `bytes`
+# field's JSON spelling) in transitively; keryx-core's code names neither, so neither
+# is declared — the lockfile pins them, and the feature set is re-owed with the
+# pre-empt catalogue on any deliberate bump.
+prost-reflect = { version = "=0.16.5", features = ["text-format", "serde"] }
+
+# The JSON deserializer — the payload door's JSON decode drives the engine's `serde`
+# mapping with it (`codec/engine.rs::decode_json`), the one place a payload's JSON
+# syntax is parsed. Pinned exact (`=`) for the same class of coupling as prost-reflect
+# and protox: the JSON form's bounded-depth property (threat model, property 3, branch
+# (a)) rests on serde_json's *default* recursion limit — on by default, a constant of
+# this version's deserializer, and never lifted (the `unbounded_depth` feature stays
+# off, so `disable_recursion_limit` is not so much as compiled in) — a claim about
+# serde_json at exactly this version, guarded by a boundary test at the payload door.
+# Which binds first, the walk's uniform nesting ceiling or this limit, goes by the
+# field's form — a chain of singular message fields reaches the walk's ceiling first;
+# a repeated or map chain, spending a container of its own per level, meets this limit
+# first — as the JSON form records when it lands. Default features, no more.
+serde_json = "=1.0.151"
 
 # The pure-Rust `.proto` compiler — the `keryx gen` front door (§20, spec §31 M1).
 # Read only through `descriptor::source`'s private internals; bytes are the seam to

@@ -45,6 +45,17 @@ pub(crate) enum Dependency {
     ProstReflect,
     /// protox — the `.proto` source compiler, at the source door's compile.
     Protox,
+    /// `serde_json` — the JSON deserializer the payload door's JSON decode drives the engine's
+    /// `serde` mapping with, at that decode (`codec::engine::decode_json`).
+    // The payload door's JSON decode is this variant's production caller and lands with it; until
+    // then it is constructed only by this module's own tests, so the expectation is stated for the
+    // library build alone (an unfulfilled expectation is itself a lint) and retires when
+    // `decode_json` contains its first call.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "no production caller until the JSON decode lands")
+    )]
+    SerdeJson,
 }
 
 impl Dependency {
@@ -54,6 +65,7 @@ impl Dependency {
             Dependency::ProstTypes => "prost-types",
             Dependency::ProstReflect => "prost-reflect",
             Dependency::Protox => "protox",
+            Dependency::SerdeJson => "serde_json",
         }
     }
 }
@@ -135,6 +147,33 @@ mod tests {
     #[test]
     fn a_clean_call_passes_through() {
         assert_eq!(contain(Dependency::ProstTypes, "op", || 42u8).unwrap(), 42);
+    }
+
+    #[test]
+    fn a_json_fault_names_serde_json_as_the_crate_is_spelled() {
+        // The one crate name in the set spelled with an underscore, as crates.io spells it: the
+        // detail reads on the wire, so a hyphenated misspelling would split one dependency into
+        // two there.
+        let diagnostics = contain(
+            Dependency::SerdeJson,
+            "deserializing a JSON payload",
+            || -> u8 { panic!("boom") },
+        )
+        .unwrap_err();
+        let diagnostic = diagnostics.iter().next().unwrap();
+        assert_eq!(diagnostic.kind(), DiagnosticKind::DependencyFault);
+        assert!(
+            diagnostic
+                .detail()
+                .contains("the serde_json dependency faulted")
+                && diagnostic.detail().contains("deserializing a JSON payload")
+                && diagnostic.detail().contains("boom"),
+            "the fault names serde_json, the operation, and the payload: {diagnostic}"
+        );
+        assert!(
+            !is_containing(),
+            "the flag is cleared once the frame returns"
+        );
     }
 
     #[test]
