@@ -33,6 +33,10 @@ use walk::Index;
 pub enum PayloadFormat {
     /// The protobuf binary wire format (a `.binpb` payload).
     Binary,
+    /// The protobuf text format (a `.txtpb` payload): UTF-8 text, its message nesting bounded
+    /// before the engine's parser sees it and parsed on a thread keryx sizes for that bound — one
+    /// thread spawn per payload, the one cost the binary form does not pay (spec §26).
+    Textproto,
 }
 
 /// The root constant of one payload (spec §4.1 item 6): the only extrinsic identity in the
@@ -138,10 +142,12 @@ impl Codec {
     ///
     /// `UnknownRootType` for a name resolving to no message, or to more than one (the payload is
     /// then never decoded); `UndecodablePayload` for bytes that do not decode as that message
-    /// (over-deep binary included); `DependencyFault` for a contained engine fault; and the walk's
-    /// diagnoses — the §6 refusals at their fields' paths (`ValueOutOfRange`, `InteriorNul`,
-    /// `UnrepresentableText`, `UnannotatedFloat`), `UnknownEnumValue` (§7.4), and `PayloadTooDeep`
-    /// past the uniform nesting ceiling (§8, §26).
+    /// (over-deep binary included; a textproto payload that is not UTF-8, or does not parse);
+    /// `DependencyFault` for a contained engine fault; the walk's diagnoses — the §6 refusals at
+    /// their fields' paths (`ValueOutOfRange`, `InteriorNul`, `UnrepresentableText`,
+    /// `UnannotatedFloat`) and `UnknownEnumValue` (§7.4); and `PayloadTooDeep` past the uniform
+    /// nesting ceiling (§8, §26) — the walk's refusal, or for textproto the pre-parse guard's,
+    /// ahead of the engine's parser.
     pub fn shred(
         &self,
         root_type: &str,
@@ -164,6 +170,7 @@ impl Codec {
         };
         let decoded = match format {
             PayloadFormat::Binary => engine::decode_binary(&descriptor, payload)?,
+            PayloadFormat::Textproto => engine::decode_textproto(&descriptor, payload)?,
         };
         walk::shred(
             &self.mapping,

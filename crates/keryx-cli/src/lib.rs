@@ -75,7 +75,7 @@ struct ExplainArgs {
 
 #[derive(clap::Args)]
 struct FactsArgs {
-    /// The root: `Type=payload.binpb` — the message type the payload is an instance of (a
+    /// The root: `Type=payload` — the message type the payload is an instance of (a
     /// fully-qualified proto path, or a short name one message bears) and the payload file, its
     /// format named by its extension.
     #[arg(long, value_name = "TYPE=PAYLOAD")]
@@ -287,12 +287,18 @@ fn parse_root(root: &str) -> Result<(&str, &Path), String> {
     Ok((root_type, Path::new(payload)))
 }
 
-/// The payload formats keryx reads, by extension (spec §25 `payload.(binpb|…)`): the extension
-/// (matched ASCII-case-insensitively, as a spec's `.binpb` is), the codec's format, and the
-/// description the usage note gives it. The one statement both [`payload_format`] and the note
+/// The payload formats keryx reads, by extension (spec §25 `payload.(binpb|txtpb|…)`): the
+/// extension (matched ASCII-case-insensitively, as a spec's `.binpb` is), the codec's format, and
+/// the description the usage note gives it. The one statement both [`payload_format`] and the note
 /// naming the admitted formats derive from, so a format the codec comes to admit joins here alone.
-const PAYLOAD_FORMATS: &[(&str, PayloadFormat, &str)] =
-    &[("binpb", PayloadFormat::Binary, "the binary wire format")];
+const PAYLOAD_FORMATS: &[(&str, PayloadFormat, &str)] = &[
+    ("binpb", PayloadFormat::Binary, "the binary wire format"),
+    (
+        "txtpb",
+        PayloadFormat::Textproto,
+        "the protobuf text format",
+    ),
+];
 
 /// The wire form a payload file is in, by its extension — its entry in [`PAYLOAD_FORMATS`]. A
 /// payload in no form the codec reads (no extension, or one the table lacks) is `None`: a usage
@@ -451,9 +457,10 @@ mod tests {
 
     #[test]
     fn a_payload_format_is_named_by_its_extension() {
-        // `.binpb`, in any case, is the binary wire format; any other extension, or none, is a
-        // form the codec does not read. The table is the one source: every entry resolves to its
-        // format, and the usage note names every entry's extension.
+        // `.binpb`, in any case, is the binary wire format and `.txtpb` the text format; any
+        // other extension, or none, is a form the codec does not read. The table is the one
+        // source: every entry resolves to its format, and the usage note names every entry's
+        // extension.
         assert_eq!(
             payload_format(Path::new("batch.binpb")),
             Some(PayloadFormat::Binary)
@@ -461,6 +468,14 @@ mod tests {
         assert_eq!(
             payload_format(Path::new("batch.BINPB")),
             Some(PayloadFormat::Binary)
+        );
+        assert_eq!(
+            payload_format(Path::new("batch.txtpb")),
+            Some(PayloadFormat::Textproto)
+        );
+        assert_eq!(
+            payload_format(Path::new("batch.TXTPB")),
+            Some(PayloadFormat::Textproto)
         );
         assert_eq!(payload_format(Path::new("batch.json")), None);
         assert_eq!(payload_format(Path::new("batch")), None);

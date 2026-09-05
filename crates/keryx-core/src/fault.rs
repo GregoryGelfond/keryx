@@ -40,7 +40,8 @@ pub(crate) enum Dependency {
     /// prost-types — the descriptor door's pre-read (`descriptor::pre_validate`, a plain decode).
     ProstTypes,
     /// prost-reflect — the descriptor engine, at both the pool decode and the accessor walk; and
-    /// the payload engine, at the payload door's binary decode (`codec::engine::decode_binary`).
+    /// the payload engine, at the payload door's binary decode (`codec::engine::decode_binary`)
+    /// and its textproto parse (`codec::engine::decode_textproto`).
     ProstReflect,
     /// protox — the `.proto` source compiler, at the source door's compile.
     Protox,

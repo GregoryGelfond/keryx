@@ -26,7 +26,11 @@ themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", r
 # leading-dot name), its `options()` lazy decode, its unbounded text-format parse
 # of an option aggregate — so a silent patch bump could invalidate it; the
 # pre-empt catalogue is re-owed on any deliberate bump.
-prost-reflect = "=0.16.5"
+# `text-format` gates the text-format parser the payload door's textproto decode
+# calls (`codec/engine.rs::decode_textproto`). protox enables it transitively
+# today; it is declared here because keryx-core's own call must not rest on
+# another crate's defaults.
+prost-reflect = { version = "=0.16.5", features = ["text-format"] }
 
 # The pure-Rust `.proto` compiler — the `keryx gen` front door (§20, spec §31 M1).
 # Read only through `descriptor::source`'s private internals; bytes are the seam to

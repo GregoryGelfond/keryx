@@ -1,6 +1,7 @@
 //! The decode engine's adapter (architecture §5, inbound) — the one place in `codec` that names
-//! prost-reflect. A payload is decoded against its root message's descriptor under foreign-fault
-//! containment, and the decoded tree is presented in keryx's own **borrowing** value vocabulary:
+//! prost-reflect. A payload — in the binary wire format or the text format — is decoded against
+//! its root message's descriptor under foreign-fault containment, and the decoded tree is
+//! presented in keryx's own **borrowing** value vocabulary:
 //! [`Decoded`] owns the one decoded tree, and [`SubMessage`], [`FieldValue`], [`Element`], [`Key`],
 //! and [`Datum`] borrow into it — so the walk and the §6 scalar policy read in keryx's terms, and
 //! the engine stays swappable behind this file. No prost-reflect type crosses out of it: the
@@ -23,11 +24,14 @@
 //! §5 assigns it to the generator's totalized view, not to the shred.
 
 use std::borrow::Cow;
+use std::panic::resume_unwind;
+use std::thread;
 
 use prost_reflect::{
     DynamicMessage, FieldDescriptor, Kind, MapKey, MessageDescriptor, ReflectMessage as _, Value,
 };
 
+use super::guard;
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use crate::fault::{Dependency, contain};
 
@@ -55,10 +59,13 @@ pub(crate) fn decode_binary(
 ) -> Result<Decoded, Diagnostics> {
     // The closure borrows only `desc` (a handle over the pool's shared state, cloned in) and
     // `bytes`; a fault drops the half-built message with the unwind, so nothing keryx observes
-    // survives it. A binary decode reads the pool only through that handle — the engine's global
-    // well-known-type pool is consulted on the descriptor's option decode and on the text and JSON
-    // formats, never here — so no process-global state can be left inconsistent, and keryx's own
-    // logic inside the frame is one infallible clone; the `AssertUnwindSafe` is sound.
+    // survives it. A binary decode reads the pool only through that handle — the engine consults
+    // its global well-known-type pool on a descriptor's option decode and in its reflection of
+    // prost-types' own well-known types (prost-reflect 0.16.5 `src/descriptor/api.rs:1959`,
+    // `src/descriptor/build/options.rs:310`, `src/reflect/wkt.rs:5485`, its every `global()` site),
+    // never on a payload decode in either format — so no process-global state can be left
+    // inconsistent, and keryx's own logic inside the frame is one infallible clone; the
+    // `AssertUnwindSafe` is sound.
     let decoded = contain(Dependency::ProstReflect, "decoding a payload", || {
         DynamicMessage::decode(desc.clone(), bytes)
     })?;
@@ -67,9 +74,105 @@ pub(crate) fn decode_binary(
         .map_err(|error| undecodable(desc, &error.to_string()))
 }
 
+/// The stack the textproto parse runs on: 8 MiB, on a thread keryx sizes itself. The engine's
+/// text-format parser recurses natively on every nested message value and bounds nothing
+/// (`super::guard`), so the deepest payload the guard admits — `NESTING_CEILING` levels — must
+/// fit whatever stack carries the parse. Measured against the pinned engine (the guard's pin,
+/// debug and release builds): 99 levels need some 2.5 MB in a debug build (2 MB overflows; an
+/// 8 MB stack overflows between 300 and 400 levels) and 256 KB in release (192 KB overflows). This
+/// size carries the ceiling's need some three times over in debug and thirty in release — where a
+/// spawned thread's 2 MB default, the test harness's threads among them, would not carry it in
+/// debug at all — and it holds whatever thread the caller decodes on, so the margin is keryx's by
+/// construction, not the host's. The stack is reserved address space, committed a page at a time
+/// as the parse descends, so a shallow payload pays a thread spawn and little else.
+const TEXTPROTO_PARSE_STACK: usize = 8 << 20;
+
+/// Decode a textproto (`.txtpb`) payload as an instance of `desc` — the payload door's second
+/// engine crossing, the text format's — and return the tree, owned: the same [`Decoded`] view the
+/// binary decode yields, so the walk and the §6 policy read a text payload exactly as they read
+/// its binary form (spec §26 parity). The door is three steps, each total. The bytes must be
+/// UTF-8 — the text format is text — or the payload is `UndecodablePayload`. The text's message
+/// nesting is then measured and bounded by the pre-parse guard (`super::guard`), so the engine's
+/// parser, which recurses natively and bounds nothing, sees no payload nesting past the uniform
+/// ceiling (`PayloadTooDeep` past `super::walk::NESTING_CEILING`). And the parse itself runs on a
+/// thread keryx sizes for the deepest admitted payload ([`TEXTPROTO_PARSE_STACK`]), with the
+/// dependency boundary's containment frame *inside* it. That order is load-bearing: a stack
+/// overflow aborts the process rather than unwinding, so no frame can catch one — the guard and
+/// the sized thread *prevent* it, for every payload this door admits — and the frame catches what
+/// does unwind, an unforeseen engine panic, as a `DependencyFault`. The engine's own parse
+/// failure — a field the type does not declare, a value left open, a literal outside its kind's
+/// range — is `UndecodablePayload`, its message composed into the detail (§6), never its type
+/// exposed.
+///
+/// The parse is single-threaded for all that it runs on its own thread: the thread exists for its
+/// stack alone, the caller waits on it, and the tree comes back owned — so a text payload's facts
+/// are the same function of the payload a binary one's are (the threat model's determinism).
+///
+/// # Errors
+///
+/// `UndecodablePayload` when the bytes are not UTF-8 or do not parse as `desc`; `PayloadTooDeep`
+/// when the text nests message values past the uniform ceiling; `DependencyFault` for a contained
+/// engine panic.
+pub(crate) fn decode_textproto(
+    desc: &MessageDescriptor,
+    bytes: &[u8],
+) -> Result<Decoded, Diagnostics> {
+    // The text format is UTF-8 text: a payload that is not is refused before the engine sees it,
+    // with the failure's position in the detail — the error names an index and a length — and
+    // never its bytes.
+    let text = std::str::from_utf8(bytes).map_err(|error| {
+        undecodable(
+            desc,
+            &format!("the text format is UTF-8 text, and the payload is not ({error})"),
+        )
+    })?;
+    // Measured and bounded on the caller's thread — one pass over the bytes, no recursion — so the
+    // parse below sees only a text nesting at most `NESTING_CEILING` levels, the depth its stack
+    // is sized for.
+    guard::depth(text)?;
+    let operation = "parsing a textproto payload";
+    let parsed = thread::scope(|scope| {
+        // The closure borrows only `desc` (a handle over the pool's shared state, cloned in) and
+        // `text`; a fault drops the half-built message with the unwind, so nothing keryx observes
+        // survives it. The parser reads the pool only through that handle — an `Any` value's type
+        // resolves against the root descriptor's own pool (prost-reflect 0.16.5
+        // `src/dynamic/text_format/parse/mod.rs:104-108`), never the engine's global one — so no
+        // process-global state can be left inconsistent, and keryx's own logic inside the frame
+        // is one infallible clone; the `AssertUnwindSafe` is sound. The frame's thread-local flag
+        // is set on the thread the parse runs on — the thread a panic hook consults it from.
+        let handle = thread::Builder::new()
+            .name("keryx-textproto".to_owned())
+            .stack_size(TEXTPROTO_PARSE_STACK)
+            .spawn_scoped(scope, || {
+                contain(Dependency::ProstReflect, operation, || {
+                    DynamicMessage::parse_text_format(desc.clone(), text)
+                })
+            })
+            // A thread the host cannot spawn is the host out of a resource — threads, or the
+            // address space to reserve the stack in — and nothing the payload brings about: by
+            // here the payload is validated, measured, and bounded, and the spawn asks the same of
+            // the host for every payload alike. Discharged as a host invariant, not a foreign-input
+            // path (§6).
+            .expect("the host can spawn the textproto parse thread");
+        handle.join().unwrap_or_else(|unwind| {
+            // A panic that escaped the frame — none can, the frame catching every unwind inside it
+            // — is re-raised inside a frame here, on the caller's thread, so it is contained as it
+            // would have been: the same fault, from the one seam. `resume_unwind` runs no panic
+            // hook, so the fault is reported once.
+            contain(Dependency::ProstReflect, operation, || {
+                resume_unwind(unwind)
+            })
+        })
+    })?;
+    parsed
+        .map(|root| Decoded { root })
+        .map_err(|error| undecodable(desc, &error.to_string()))
+}
+
 /// Compose the `UndecodablePayload` for bytes that did not decode as `desc`: the whole-payload
 /// locus (the wire itself is unreadable, so no field path is finer), naming the root type, with
-/// the engine's own message composed into the detail (§6), never exposed as its type.
+/// the failure's own message — the engine's, or the UTF-8 check's — composed into the detail (§6),
+/// never exposed as its type.
 fn undecodable(desc: &MessageDescriptor, error: &str) -> Diagnostics {
     Diagnostic::new(
         DiagnosticKind::UndecodablePayload,

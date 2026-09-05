@@ -1,5 +1,6 @@
 //! `keryx facts` end to end (spec §11, §25; architecture §6): a payload and its schema in — the
-//! `--root Type=payload.binpb` pair and a `.proto` source or `.binpb` descriptor set — the ground
+//! `--root Type=payload` pair, the payload's format named by its extension (`.binpb`, `.txtpb`),
+//! and a `.proto` source or `.binpb` descriptor set — the ground
 //! facts as a `.lp` fact module on stdout (`keryx facts … | clingo`), diagnostics on stderr, and
 //! the §6 exit taxonomy with its translation class (8): a payload that does not translate is
 //! distinct from a file that cannot be read (`Input`, 3), a schema that builds no codec (`Schema`,
@@ -82,6 +83,13 @@ fn section_28_batch() -> Vec<u8> {
     batch(&[reading("s-101", 44), reading("s-107", 21)])
 }
 
+/// The same payload in the protobuf text format (§26): the two readings of
+/// [`section_28_batch`], each a message value in the format's `{ }` form.
+const SECTION_28_TEXTPROTO: &str = "\
+readings { sensor: \"s-101\" temp_c: 44 }
+readings { sensor: \"s-107\" temp_c: 21 }
+";
+
 /// The `--root` argument `Type=payload`, the path joined as the OS gives it.
 fn root(root_type: &str, payload: &Path) -> OsString {
     let mut root = OsString::from(root_type);
@@ -137,6 +145,44 @@ fn accepts_a_proto_source_spec() {
     );
     assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
     assert_eq!(String::from_utf8(out.stdout).unwrap(), SECTION_28_FACTS);
+}
+
+#[test]
+fn shreds_a_textproto_batch_to_the_same_facts() {
+    // §26: the payload's format is its extension — a `.txtpb` is the protobuf text format — and
+    // the §28 batch in that form shreds to the seven facts its binary form does: the same product
+    // on stdout, stderr quiet, exit 0.
+    let fx = fixture("facts_textproto");
+    let payload = fx.payload("batch.txtpb", SECTION_28_TEXTPROTO.as_bytes());
+    let out = facts(root("ReadingBatch", &payload), &fx.set, &[], &[]);
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), SECTION_28_FACTS);
+    assert!(out.stderr.is_empty(), "stderr is quiet on success");
+}
+
+#[test]
+fn a_textproto_payload_that_is_not_utf_8_is_a_translation_error() {
+    // The text format is UTF-8 text: a `.txtpb` that is not — a Latin-1 `é` in the sensor's
+    // string — read fine (not `Input`) against a sound schema (not `Schema`); the payload is what
+    // failed, a translation error (8) naming the decode failure, with no partial product.
+    let fx = fixture("facts_textproto_not_utf8");
+    let payload = fx.payload(
+        "latin1.txtpb",
+        b"readings { sensor: \"s-\xe9\" temp_c: 44 }",
+    );
+    let out = facts(root("ReadingBatch", &payload), &fx.set, &[], &[]);
+    assert_eq!(
+        out.status.code(),
+        Some(8),
+        "exit Translation: {}",
+        stderr(&out)
+    );
+    assert!(out.stdout.is_empty(), "no partial product on error");
+    assert!(
+        stderr(&out).contains("undecodable_payload"),
+        "the diagnostic names the decode failure: {}",
+        stderr(&out)
+    );
 }
 
 #[test]
@@ -282,7 +328,7 @@ fn a_payload_path_may_itself_contain_an_equals() {
 fn an_unsupported_payload_format_is_a_usage_error() {
     // The payload's format is its extension; one the codec does not read — a `.json` until that
     // format lands, or no extension at all — is a usage error (2), decided by the extension before
-    // the file is read (the files exist).
+    // the file is read (the files exist), and the note names every format keryx does read.
     let fx = fixture("facts_unsupported_format");
     for name in ["batch.json", "batch"] {
         let payload = fx.payload(name, &section_28_batch());
@@ -294,8 +340,8 @@ fn an_unsupported_payload_format_is_a_usage_error() {
             stderr(&out)
         );
         assert!(
-            stderr(&out).contains("binpb"),
-            "the format keryx reads is named: {}",
+            stderr(&out).contains("binpb") && stderr(&out).contains("txtpb"),
+            "the formats keryx reads are named: {}",
             stderr(&out)
         );
     }
