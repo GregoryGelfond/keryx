@@ -4,11 +4,14 @@
 //! CLI seam (R6), identical in content (§11) and ground by construction (P10). [`Codec`] is built once per schema and shreds
 //! any number of payloads; [`Facts`] is one payload's result; [`PayloadFormat`] and [`Root`] are
 //! the surface's value types. Beneath the surface: the decode engine's adapter (`engine`, the one
-//! place in the codec that names prost-reflect), the §6 scalar policy (`scalar`), and the
-//! managed-stack walk with its referent index (`walk`). No engine type crosses the surface: a
-//! caller names a root *type* by proto name, and the descriptor it resolves to stays inside.
+//! place in the codec that names prost-reflect), the textproto pre-parse depth guard (`guard`,
+//! bounding a text payload's nesting ahead of the engine's unbounded text parser), the §6 scalar
+//! policy (`scalar`), and the managed-stack walk with its referent index (`walk`). No engine type
+//! crosses the surface: a caller names a root *type* by proto name, and the descriptor it
+//! resolves to stays inside.
 
 pub(crate) mod engine;
+pub(crate) mod guard;
 pub(crate) mod scalar;
 pub(crate) mod walk;
 
