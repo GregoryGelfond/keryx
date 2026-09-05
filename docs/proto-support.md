@@ -36,14 +36,18 @@ and update this row.
 
 ## Payload formats
 
-The inbound codec (`Codec::shred`; `keryx facts`) is to accept a payload in each wire form spec
-§26 names — binary, canonical JSON, textproto — through one `Codec`, one walk, and one admission
-policy. This ledger states what keryx *delivers* as of the inbound codec (Increment 3).
+The inbound codec (`Codec::shred`; `keryx facts`) accepts a payload in each wire form spec §26
+names — binary, canonical JSON, textproto — through one `Codec`, one walk, and one admission
+policy: the same §6 refusals at the same field paths, the same uniform nesting ceiling of **99**
+message-typed levels below the root, and the same facts from the same message in any of the three
+forms. Where the three differ is in what each *admits* on the way to the walk, and in how its
+decoder's own bound meets the ceiling — stated per form below. This ledger states what keryx
+*delivers* as of the inbound codec (Increment 3).
 
 | format                  | status as of the inbound codec (Increment 3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 |-------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | binary (`.binpb`)       | supported (golden-tested on the thermal example). Compositional nesting is admitted to **99** message-typed levels below the root — spec §8's door-admission policy, one below the descriptor engine's decode recursion limit; a payload nesting deeper is refused whole — `PayloadTooDeep` from the walk at the 100th level, `UndecodablePayload` from the engine's own limit past it. Every §6 refusal is a diagnostic at its field's path; bytes that do not decode as the root type are `UndecodablePayload` |
-| canonical JSON (`.json`) | following — the same `Codec`, the same walk, the same ceiling                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| canonical JSON (`.json`) | supported (golden-tested on the thermal example: `batch.json` shreds to the facts `batch.binpb` does, three-way with `batch.txtpb`). The same `Codec`, walk, and §6 refusals, under the same ceiling of **99** — with no bound of keryx's ahead of the engine: the deserializer bounds its own nesting, counting arrays and objects (127 nested containers admitted, the 128th refused), and the walk's counter binds beneath that count for a chain of singular message fields, where a repeated or map-of-message chain meets the count first, at about 63 levels (below); either way a deeper payload is refused whole. A payload that is not one canonical JSON value of the root type — not UTF-8, a member the type does not declare, a value outside its kind, text after the value, or the empty text (the empty message is `{}`) — is `UndecodablePayload` |
 | textproto (`.txtpb`)    | supported (golden-tested on the thermal example: `batch.txtpb` shreds to the facts `batch.binpb` does). The same `Codec`, walk, and §6 refusals, under the same ceiling of **99** — bound *ahead* of the engine's text parser by a pre-parse guard that counts message values, so a map entry or an expanded `Any` spends more of it than on the wire (below); a deeper payload is refused whole, `PayloadTooDeep`. Text that is not UTF-8, or does not parse as the root type, is `UndecodablePayload`                   |
 
 **Textproto's ceiling is counted in message values, the wire's in occupants.** The engine's text
@@ -59,6 +63,34 @@ expanded `Any` (an opener the walk never enters, plus whatever it nests), which 
 text than on the wire — a map-of-message chain is admitted to 49 levels as text where its wire
 form is admitted to 99 — and never later: the guard over-refuses, and never admits deeper than the
 walk would. Settled, a documented consequence of bounding the text parser lexically.
+
+**JSON's ceiling is counted in containers by its deserializer, the wire's in occupants.** The JSON
+form has no guard: the deserializer keryx drives the engine's JSON mapping with bounds its own
+nesting — its recursion limit, on by default and never lifted, counts arrays and objects and refuses
+the 128th nested one — and the engine's mapping recurses natively beneath that count with no counter
+of its own, so the whole admitted payload (127 nested containers at most) is deserialized on a thread
+keryx sizes for that admit (8 MiB, `engine::JSON_DECODE_STACK`; the decode pays a thread spawn per
+payload, as the text parse does, the stack reserved address space committed as the deserialization
+descends), and the walk then applies the uniform ceiling. Which of the two binds goes by the
+field's form. A chain of singular message fields spends one object a level and reaches the ceiling
+inside the count: 99 levels shred whole, to the facts the same chain shreds to from the wire; 100
+through 126 — every depth the deserializer admits past the ceiling — are the walk's
+`PayloadTooDeep`; 127 is the deserializer's own refusal, `UndecodablePayload`. A chain of repeated
+message fields spends an array and an object a level and meets the count first: 63 levels shred
+whole, to the facts the same chain shreds to from the wire and from text, and 64 — which the wire
+admits — is `UndecodablePayload`, 35 levels short of the ceiling. A map-of-message chain spends the
+map's object and the value's object a level and so meets the count at about the same depth, 63, by
+the same arithmetic; and a chain through `google.protobuf.Value`, `Struct`, or `ListValue` binds
+earlier still, at about 50 levels, at the engine's own message-decode limit as it materialises the
+dynamic value. Those two bindings are documented from the engine's measure of record, not
+instrumented: no fixture of the suite nests a recursive chain of maps of messages — its one map of
+messages, `maps.proto`'s `Inventory.items`, is a single level — or declares a `Value`. Every one is a
+refusal in the safe direction — a shallower message depth than the ceiling, never admission past it
+— and the mechanism is not the text form's: there a lexical guard over-counts openers; here keryx
+scans nothing, and the deserializer counts containers. One asymmetry of reading, not of content: an
+empty payload is the empty message on the wire and as text, and no JSON value at all —
+`UndecodablePayload` for the JSON form, whose empty message is `{}`. Settled, a documented
+consequence of the deserializer bounding itself by container rather than by occupant.
 
 The codec has no proto-version branch of its own: presence is decided from the mapping's totality
 (spec §5), which the descriptor door resolves from features, never from syntax era.

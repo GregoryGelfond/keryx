@@ -64,7 +64,7 @@ back into a `Batch` arrives with the first end-to-end path.
 ## Status
 
 Under construction. The compiler (`keryx gen`, `keryx explain`) and the inbound codec
-(`keryx facts`, binary and textproto payloads; JSON follows) are built; outbound reassembly,
+(`keryx facts`, binary, textproto, and JSON payloads) are built; outbound reassembly,
 annotations, and `.lp` admission follow. The worked [`examples/thermal`](examples/thermal/)
 walkthrough shows the built half — schema to vocabulary, payload to facts — and completes
 with the first end-to-end path. See
