@@ -127,11 +127,8 @@ const TEXTPROTO_PARSE_STACK: usize = 8 << 20;
 /// there), in the engine call, and in the error type it returns. At two instances the parallel
 /// form keeps each of those differences legible at the site it belongs to, beside the doc that
 /// argues it, where a lift would carry them as arguments and split each door's reading between its
-/// site and the helper's. The lift is available — a
-/// `decode_on_sized_thread(dependency, operation, name, stack, decode)` generic over the decode's
-/// error type, so the differences generalise — and is deferred to a third sized-thread door, or
-/// to a reading of the codec's three forms as one: the point at which the shared form becomes
-/// the rule and these differences its exceptions, and the helper pays for the arguments it adds.
+/// site and the helper's. The lift into a single shared
+/// helper is available, and is deferred until a third sized-thread door earns it.
 ///
 /// # Errors
 ///
