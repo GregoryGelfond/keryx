@@ -37,6 +37,20 @@ themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", r
 # field's JSON spelling) in transitively; keryx-core's code names neither, so neither
 # is declared — the lockfile pins them, and the feature set is re-owed with the
 # pre-empt catalogue on any deliberate bump.
+# The JSON form's strictness is a coupling of the same kind as serde_json's recursion
+# default (below), and is catalogued with it: a member the root type does not declare
+# is refused because `DynamicMessage::deserialize` reads the engine's *default*
+# deserialize options, in which `deny_unknown_fields` is on (0.16.5
+# `src/dynamic/serde/mod.rs:140` passes `Default::default()` and `:177-181` sets it;
+# the refusal is `src/dynamic/serde/de/kind.rs:595-596`, and `:621` for an enum value
+# named by a name the enum does not declare) — the canonical JSON the specification
+# asks (§26), which integrity (threat model, property 4) holds the door to. A claim
+# about prost-reflect at exactly this version, as the recursion default is about
+# serde_json: guarded by the undeclared-member case of the payload door's boundary
+# test (`tests/codec_json.rs`,
+# `a_json_payload_that_is_not_one_canonical_value_of_the_root_type_is_undecodable`,
+# which asserts `UndecodablePayload`), and re-owed with the catalogue on any
+# deliberate bump.
 prost-reflect = { version = "=0.16.5", features = ["text-format", "serde"] }
 
 # The JSON deserializer — the payload door's JSON decode drives the engine's `serde`
