@@ -1,8 +1,9 @@
-# The thermal example — `keryx gen`
+# The thermal example — `keryx gen` and `keryx facts`
 
 A worked example of keryx's solver-free half (spec §28): a small Protocol Buffers schema
-of sensor readings and overheating alerts, and the Answer Set Programming *vocabulary* keryx
-generates from it. This is the front half of the bridge — schema to vocabulary — with no
+of sensor readings and overheating alerts, the Answer Set Programming *vocabulary* keryx
+generates from it, and a batch of readings shredded to ground *facts* over that vocabulary.
+This is the front half of the bridge — schema to vocabulary, payload to facts — with no
 solver in the loop; the round trip through clingo is sketched at the end.
 
 ## The schema
@@ -40,17 +41,21 @@ Editions is transliterated to proto3 here (the pure-Rust front-door compiler doe
 cover editions; spec §31). proto3's implicit scalars resolve exactly as an edition-2023
 default would, so the generated vocabulary is the same.
 
-## Generating the vocabulary
+## Generating the vocabulary, shredding a payload
 
 Run `keryx gen` (the schema imports `keryx/options.proto` for `(keryx.set)`, which keryx
-resolves from its embedded registry — no `-I` for it):
+resolves from its embedded registry — no `-I` for it), then `keryx facts` over the committed
+payload [`batch.binpb`](batch.binpb):
 
 ```sh
 keryx gen thermal.proto -I . -o gen/
+keryx facts --root ReadingBatch=batch.binpb thermal.proto -I . > gen/thermal.v1.facts.lp
 ```
 
-keryx writes one file set per package (spec §13). For `thermal.v1` that is the three files in
+`gen` writes one file set per package (spec §13). For `thermal.v1` that is the three files in
 [`gen/`](gen/): `thermal.v1.core.lp`, `thermal.v1.views.lp`, and `thermal.v1.keryx-manifest`.
+`facts` prints to stdout — the product, ready for `| clingo` — so the fourth file there,
+`thermal.v1.facts.lp`, is that output captured.
 
 ## What it generates
 
@@ -119,24 +124,49 @@ later revision of the schema is checked against — the record of what each elem
 a rename, a renumber, or a treatment change is a visible, reviewable diff rather than a silent
 break (schema-diff checking lands at Increment 5).
 
+### `thermal.v1.facts.lp` — the ground facts (spec §11)
+
+[`batch.binpb`](batch.binpb) is the spec's own payload (§28) on the wire: two readings,
+`{sensor: "s-101", temp_c: 44}` and `{sensor: "s-107", temp_c: 21}`. Shredded as a
+`ReadingBatch` — `--root` names the message type the payload is an instance of — from the root
+constant `r0` that `facts` mints for the invocation, it is seven facts over the vocabulary above:
+
+```prolog
+reading(readings(r0, 0)).
+reading(readings(r0, 1)).
+reading_batch(r0).
+sensor(readings(r0, 0), "s-101").
+sensor(readings(r0, 1), "s-107").
+temp_c(readings(r0, 0), 44).
+temp_c(readings(r0, 1), 21).
+```
+
+Each reading is the access-path term `readings(r0, i)` — its index in the sequence, hanging
+from the root (spec §4.1) — not a minted identity, and the very term the `readings/3` view in
+`views.lp` joins on. `sensor` and `temp_c` are total, so both atoms exist for every reading.
+The same payload always shreds to the same facts, so this file is golden-comparable like the
+three beside it.
+
 ## The solver-free path
 
-`gen` is the front half of the bridge. The whole round trip is:
+`gen` and `facts` are the front half of the bridge. The whole round trip is:
 
 1. **`keryx gen`** — schema → the ASP vocabulary above (this example).
-2. **`keryx` fact codec** — a `ReadingBatch` payload → ground facts over that vocabulary
-   (the inbound codec, Increments 3–4).
+2. **`keryx facts`** — a `ReadingBatch` payload → ground facts over that vocabulary (this
+   example).
 3. **your clingo** — the facts plus your own model (constraints, derivations) → an answer set.
    keryx invokes no solver; the solver is yours.
 4. **reassemble** — an answer set → an outbound protobuf payload (Increment 4).
 
-Everything keryx does here is a pure, deterministic function of the schema — no solver, no
-network, golden-comparable. The end-to-end transient solve is wired together at Increment 4;
-this example is the piece that is real today.
+Everything keryx does here is a pure, deterministic function of the schema and the payload —
+no solver, no network, golden-comparable. The end-to-end transient solve is wired together at
+Increment 4; this example is the piece that is real today.
 
-## Scope at the gen stage
+## Scope at this stage
 
-- **`(keryx.set)` is inert at the gen stage.** keryx ingests the annotation (it appears as an `opt/3`
+- **Binary payloads only.** `facts` reads the binary wire format (`.binpb`); the JSON and
+  textproto forms every payload door is to accept (spec §26) follow.
+- **`(keryx.set)` is inert at this stage.** keryx ingests the annotation (it appears as an `opt/3`
   descriptor fact) but does not yet read it for translation, so `AlertSet.alerts` is generated
   as a **sequence**, exactly like `ReadingBatch.readings` — `alerts/2` with a sequence view
   `alerts/3`.

@@ -1,0 +1,5 @@
+# Serialized protobuf — a descriptor set or a payload — is bytes on the wire, never text to
+# diff or normalize: the diff heuristic looks only for a NUL byte, so a NUL-free payload would
+# otherwise show as a garbled text hunk, and one dominated by string content can be classed as
+# text and have its line endings converted on checkout.
+*.binpb binary
