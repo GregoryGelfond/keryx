@@ -2,7 +2,7 @@
 
 **Version:** 0.1 (preliminary design, for local refinement)
 **Date:** 2026-08-28
-**Status:** The founding specification — the design of record *beneath* `docs/design/architecture.md`, which is the architecture of record and reconciles this document via its "deltas from the spec" table. Where the two differ, the architecture governs. In particular, keryx is **translation-only** — it invokes no solver and defines no solver backend (architecture R4/R5) — so this document's aspis / `keryx-driver` / `keryx solve` material (§18, §22–§23, §25) is superseded: the consuming tool invokes the solver and composes keryx's translation.
+**Status:** The founding specification — the design of record *beneath* `docs/design/architecture.md`, which is the architecture of record and reconciles this document via its "deltas from the spec" table. Where the two differ, the architecture governs. In particular, keryx is **translation-only** — it invokes no solver and defines no solver backend (architecture R4/R5) — so this document's aspis / `keryx-driver` / `keryx solve` material (§18, §23, §25; §22 is reconciled in place) is superseded: the consuming tool invokes the solver and composes keryx's translation.
 
 **Name:** *keryx* (κῆρυξ — the herald who carries messages between parties) is provisional and the maintainer's to change. Candidate alternates in the house style: *angelia*, *hermeneus*. All names in this document (crates, CLI, options namespace) follow the provisional name and rename mechanically with it.
 
@@ -121,7 +121,7 @@ Term shapes are type-directed (P5). Range violations are structured translation-
 | `int64`, `uint64`, `fixed64`, `sfixed64`, `sint64` | **decimal-string constant** (opaque; e.g. `"9007199254740993"`) | `(keryx.numeric) = NATIVE_CHECKED` (small-count fields) or `= CLINGCON` (constraint-participating fields; clingcon profile only, lowered to `&dom`/`&sum` variables) |
 | `float`, `double` | **no default — annotation required** | `(keryx.scale) = n` → fixed-point integer (value × 10ⁿ, range-checked), or `(keryx.opaque) = true` → decimal-string constant. Unannotated float fields are a translation error with a two-choice fix-it message. |
 | `bool` | constants `true` / `false` as term | under `(keryx.zero)=ABSENT`: unary predicate, atom iff true (§5) |
-| `string` | clingo string constant `"…"` | escaping: `\"`, `\\`, `\n`; other control characters escaped `\xNN`-free via decimal fallback is **not** attempted — non-UTF-8 is impossible in proto strings; embedded NUL is a translation error |
+| `string` | clingo string constant `"…"` | escaping: `\"`, `\\`, `\n`; other control characters escaped `\xNN`-free via decimal fallback is **not** attempted — non-UTF-8 is impossible in proto strings; embedded NUL is a translation error (`InteriorNul`), and so is **any other control character but newline** — a tab, a carriage return (so a CRLF line ending), an escape, DEL, a C1 control — which the dialect's escape set (the three named) cannot spell: `UnrepresentableText`, refused before the value becomes a fact, so both delivery forms of §11 carry identical content |
 | `bytes` | lowercase-hex string constant | `(keryx.value) = true` → content-hash constant (§9); base64 rejected as canonical form (case/padding ambiguity) |
 | enum | symbolic constant (§7.4) | open-enum policy in §7.4 |
 
@@ -156,7 +156,7 @@ Arms are EXPLICIT-presence fields on the parent sort — ordinary partial functi
 ### 8. Nesting, recursion, reification
 
 - **Lexical nesting** (`message A { message B {…} }`) is namespacing only. It influences qualifier *choice* (§4.2) and nothing else. Moving a type between nesting levels is wire-invisible and must be vocabulary-semantics-invisible (P3).
-- **Compositional nesting** (message-typed fields) is fully handled by path terms (§4.1). No depth limit; no special cases.
+- **Compositional nesting** (message-typed fields) is fully handled by path terms (§4.1). No depth limit in the translation — path-term construction imposes no ceiling of its own — and no special cases. What bounds a *payload's* nesting is a **door-admission policy**, stated once for every payload format (§26): the inbound walk admits at most 99 message-typed levels below the root (one below the descriptor engine's decode recursion limit, from which it is derived) and refuses a deeper payload totally — one `PayloadTooDeep` at the whole-payload locus, no facts beside it, no panic, the walk running on a managed stack. The walk's counter is where the ceiling binds; a format's decoder adds an outer bound of its own beyond it — for the binary wire format the engine decodes a payload nesting exactly 100 levels and refuses the 101st and deeper (`UndecodablePayload`), so the walk refuses the 100th level and the engine everything past it. (Binary as of the inbound codec; JSON and textproto bind under the same ceiling as they land, textproto ahead of its parser.)
 - **Recursion.** If a message type participates in a cycle of the schema's *containment graph* (reachability through message-typed fields, including via repeated/map), path terms remain sound for any finite payload — but the compile-time analysis flags the cycle, because recursive schemas are precisely where authors typically *want* reified, quantifiable individuals rather than ever-deepening paths. v0 behavior: emit a prominent note in `keryx explain` and the manifest; translate with path terms regardless. A `(keryx.reify)` annotation reserving content-addressed or key-addressed occupants for such types is sketched in Appendix A and marked open (§32) — it must be designed against P4 (additive, never renaming) before it ships.
 - **Reification triggers** (design guidance, for `explain` output and documentation): reify when (a) the type is recursive, (b) it is a genuine domain concept whose extension the model quantifies over *independently of containment* — though note occupancy sorts already give quantification, so this trigger is rarer than it sounds — or (c) deliberate graph semantics is wanted, which per P7 is expressed with explicit ID fields in the schema, not by keryx machinery.
 
@@ -180,10 +180,10 @@ The two directions share one vocabulary (P2) and one theory, but stand in opposi
 
 ### 11. Inbound: shredding
 
-- Decode wire bytes (or canonical JSON, or textproto — §26) against the descriptor; walk the tree; build symbols per Part II. Ground by construction (P10): no gringo on this path.
+- Decode wire bytes (or canonical JSON, or textproto — §26) against the descriptor; walk the tree; build symbols per Part II. Ground by construction (P10): no gringo on this path. (Realised for wire bytes by `Codec::shred` and `keryx facts`; the JSON and textproto forms follow.)
 - Root supplied by caller (§4.1.6). All facts of one payload are attributable to its root by term structure alone.
 - Delivery has two forms with identical content: (a) **text** — a `.lp` fact module (the human-readable, diffable, archival serialization of the data plane), and (b) **symbols** — a `Vec<Symbol>` the consuming tool feeds its solver directly, with no text and no grounding pass. The `.lp` form exists for inspection, fixtures, and archival; it is never required.
-- Inbound validation: range checks (`NATIVE_CHECKED`), open-enum policy, `Any` registry, UTF-8/NUL. Failures are structured errors naming the field path (§26); partial shreds are never delivered.
+- Inbound validation: range checks (`NATIVE_CHECKED`), open-enum policy, `Any` registry, UTF-8/NUL and the other control characters the dialect cannot spell (§6), the unannotated-float refusal (§6), the nesting ceiling (§8). Failures are structured errors naming the field path (§26) — an undecodable or over-deep payload, the whole payload; partial shreds are never delivered: every fact or every diagnosis.
 
 ### 12. Outbound: emission
 
@@ -401,10 +401,12 @@ Pure function of the mapping model: the module set (§13), manifest, scaffolds, 
 
 ### 22. The codec
 
-- **Data model:** a `Sym` value type isomorphic to clingo symbols (int, string, function/constant, tuple) so `keryx-core` stays solver-free; `keryx-driver` maps `Sym` onto aspis symbols losslessly.
-- **Inbound:** dynamic decode against the pool (accepting binary, canonical JSON, textproto — §26) → tree walk → `Vec<Atom<Sym>>` + validation report. Serializers: `.lp` text (via the emission trait) and the driver's backend injection.
-- **Outbound:** answer-set atoms (from aspis models or parsed `.lp` fixtures) → reachable-subgraph collection → validation (§12.3) → dynamic message construction → binary/JSON/textproto.
-- Both directions are total functions with structured error results; no panics on foreign input.
+*Reconciled in place to the architecture's R1/R4/R6 at the inbound codec: the value type is themelios's `Symbol` (R1), there is no driver and no backend injection (R4), and the two delivery seams are the library's symbols and the CLI's `.lp` text (R6).*
+
+- **Data model:** the clingo symbol algebra as themelios's `Symbol` — no keryx `Sym` type (R1); `keryx-core` stays solver-free by never invoking a solver at all (R4).
+- **Inbound:** a `Codec` built once per schema — the descriptor set (or `.proto` source) ingested and retained, its mapping model computed and indexed — shredding any number of payloads: dynamic decode against the retained pool (the binary wire format as of the inbound codec; canonical JSON and textproto follow — §26) → the managed-stack tree walk under the mapping model, the §6 scalar policy, and the §8 nesting ceiling → `Facts`: the ground `Vec<Symbol>` of the library seam and the `.lp` fact module of the CLI seam, both built from one `(predicate, arguments)` per fact, so they cannot disagree (§11). The root *type* is named by proto name and resolved by the library, the one type-resolution site; the root *constant* is the caller's, or the CLI's fresh `r0` (§4.1).
+- **Outbound (Increment 4):** answer-set symbols (from the consuming tool's solver, or parsed `.lp` fixtures) → reachable-subgraph collection → validation (§12.3) → dynamic message construction → binary/JSON/textproto.
+- Both directions are total functions with structured error results; no panics on foreign input — an unforeseen fault in the decode engine is contained as a typed dependency fault (the threat model's dependency boundary).
 
 ### 23. Solve lifecycles
 
@@ -458,12 +460,12 @@ keryx check     <model.lp> <gen-dir>             # lint: signature conformance, 
 protoc-gen-keryx                                  # plugin shim (same gen pipeline)
 ```
 
-`explain` is keryx lore delivered at point of use instead of documentation: what each field maps to, why, and where an annotation would change semantics ("`tags` is repeated: treated as ordered; if order is incidental, mark it `set = true`"). `facts` is the single fastest way to learn a generated vocabulary — watching real data become atoms — and makes the decode inspectable rather than trusted (P1, legible rightward).
+`explain` is keryx lore delivered at point of use instead of documentation: what each field maps to, why, and where an annotation would change semantics ("`tags` is repeated: treated as ordered; if order is incidental, mark it `set = true`"). `facts` is the single fastest way to learn a generated vocabulary — watching real data become atoms — and makes the decode inspectable rather than trusted (P1, legible rightward). As of the inbound codec, `facts` reads `.binpb` payloads; `.json` and `.txtpb` follow (§26).
 
 ### 26. Interchange and structured failure
 
-- Every payload entry point accepts and emits **binary, canonical JSON, and textproto** interchangeably (the dynamic descriptor layer provides all three), so services are curl-able and fixtures are human-writable.
-- Failures are **structure, not logs**: translation errors, range violations, open-enum rejections, and shape diagnostics travel as data — in the envelope's `Result` for solve paths, as JSON diagnostics for CLI paths — always naming **field paths, not atoms** on the message-facing side. A non-ASP consumer gets machine-readable *why*; exit codes distinguish domain-UNSAT from schema violation from translation error.
+- Every payload entry point accepts and emits **binary, canonical JSON, and textproto** interchangeably (the dynamic descriptor layer provides all three), so services are curl-able and fixtures are human-writable. Interchangeably under one admission policy, too: the §8 nesting ceiling is uniform across the three. (Inbound binary is built; JSON and textproto follow.)
+- Failures are **structure, not logs**: translation errors, range violations, open-enum rejections, and shape diagnostics travel as data — in the envelope's `Result` for solve paths, as JSON diagnostics for CLI paths — always naming **field paths, not atoms** on the message-facing side. A non-ASP consumer gets machine-readable *why*; exit codes distinguish a schema violation from a translation error (the CLI's `Exit::Schema` and `Exit::Translation`; domain-UNSAT is the consuming tool's, architecture R4).
 - Determinism guarantees restated as testable properties: identical payload ⇒ identical facts; identical answer set ⇒ identical bytes (canonical set ordering, canonical map ordering, sequence indices).
 
 ### 27. Evolution and testing

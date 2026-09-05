@@ -1,10 +1,10 @@
-//! themelios constructors for emitted vocabulary (architecture R2): a view variable, a
-//! ground application term, the documented `#defined` signature statement, and the
-//! relational view rule. The one place emit touches themelios's construction surface, so
-//! the binding is confined and greppable. Emitted predicate names arrive pre-validated as
-//! `Name`s from the `Mapping` (policy), so nothing here re-validates or `expect`s a runtime
-//! string; the only `expect` is on the fixed compile-time set of view-variable letters (a
-//! discharged invariant, §6).
+//! themelios constructors for emitted vocabulary (architecture R2): a view variable, an
+//! occupant application term over view variables, the documented `#defined` signature
+//! statement, and the relational view rule. The one place emit touches themelios's
+//! construction surface, so the binding is confined and greppable. Emitted predicate names
+//! arrive pre-validated as `Name`s from the `Mapping` (policy), so nothing here re-validates
+//! or `expect`s a runtime string; the only `expect` is on the fixed compile-time set of
+//! view-variable letters (a discharged invariant, §6).
 
 use themelios_program::prelude::*;
 
@@ -18,9 +18,10 @@ pub(super) fn var(letter: &str) -> Term {
     ))
 }
 
-/// A ground application term `name(args…)` (a constant when `args` is empty) — an occupant
-/// access-path term (§4.1). The `Name` is pre-validated (from the `Mapping`); the term
-/// canonicalizes at the door.
+/// An application term `name(args…)` over view variables — an occupant access-path term (§4.1)
+/// as a view rule spells it, `readings(P, I)`, so not ground: the rule deconstructs it against
+/// the bound element. The `Name` is pre-validated (from the `Mapping`); the term canonicalizes
+/// at the door.
 pub(super) fn apply(name: Name, args: Vec<Term>) -> Term {
     Term::Function {
         name,

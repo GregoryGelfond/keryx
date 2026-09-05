@@ -173,7 +173,7 @@ fn explain(args: &ExplainArgs, format: Format) -> Exit {
         Err(diagnostics) => return report(format, Exit::Schema, &diagnostics),
     };
     // §25's `explain` also proposes a scalar treatment for an un-annotated field (the
-    // annotation prompt); that half lands with the codec (Increment 5).
+    // annotation prompt); that half lands with the annotation vocabulary (Increment 5).
     if let Some(path) = args.fq_path.as_deref() {
         return explain_element(&mapping, path, format);
     }

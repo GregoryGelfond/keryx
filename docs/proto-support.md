@@ -1,4 +1,4 @@
-# keryx proto-version support
+# keryx proto support — versions and payload formats
 
 keryx branches on *resolved features*, never on syntax era (spec §5, §20), so
 supporting a proto version is a matter of the descriptor engine resolving its
@@ -33,3 +33,18 @@ deliberate dependency bump) — at which point keryx's own presence/`enum_type` 
 feature-based rather than era-based, resolves editions with no redesign. Spec §31's (M1)
 capability test is the tripwire; when it flips to SUPPORTED, add the editions fixture and golden
 and update this row.
+
+## Payload formats
+
+The inbound codec (`Codec::shred`; `keryx facts`) is to accept a payload in each wire form spec
+§26 names — binary, canonical JSON, textproto — through one `Codec`, one walk, and one admission
+policy. This ledger states what keryx *delivers* as of the inbound codec (Increment 3).
+
+| format                  | status as of the inbound codec (Increment 3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+|-------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| binary (`.binpb`)       | supported (golden-tested on the thermal example). Compositional nesting is admitted to **99** message-typed levels below the root — spec §8's door-admission policy, one below the descriptor engine's decode recursion limit; a payload nesting deeper is refused whole — `PayloadTooDeep` from the walk at the 100th level, `UndecodablePayload` from the engine's own limit past it. Every §6 refusal is a diagnostic at its field's path; bytes that do not decode as the root type are `UndecodablePayload` |
+| canonical JSON (`.json`) | following — the same `Codec`, the same walk, the same ceiling                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| textproto (`.txtpb`)    | following — the same, with a pre-parse nesting bound ahead of the engine's text parser                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+
+The codec has no proto-version branch of its own: presence is decided from the mapping's totality
+(spec §5), which the descriptor door resolves from features, never from syntax era.

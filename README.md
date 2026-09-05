@@ -57,13 +57,17 @@ hot(B, R) :- readings(B, _, R), temp_c(R, T), T > 100.   % ⊢ hot(b, readings(b
 ```
 
 Solve that with **your own clingo**, and keryx turns the answer set **back into a
-`Batch`**. keryx never runs the solver — the codec that grounds and reassembles
-arrives with the first end-to-end path; `gen` is real today.
+`Batch`**. keryx never runs the solver. `gen` and `facts` — the schema-to-vocabulary and
+payload-to-facts halves above — are real today; the reassembly that turns the answer set
+back into a `Batch` arrives with the first end-to-end path.
 
 ## Status
 
-Founding. The compiler, codec, and CLI are under construction; a worked
-`examples/` walkthrough lands with the first end-to-end path. See
+Under construction. The compiler (`keryx gen`, `keryx explain`) and the inbound codec
+(`keryx facts`, binary payloads; JSON and textproto follow) are built; outbound reassembly,
+annotations, and `.lp` admission follow. The worked [`examples/thermal`](examples/thermal/)
+walkthrough shows the built half — schema to vocabulary, payload to facts — and completes
+with the first end-to-end path. See
 [`docs/design/architecture.md`](docs/design/architecture.md) for the build plan
 and [`docs/specification.md`](docs/specification.md) for the full design.
 

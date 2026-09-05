@@ -51,13 +51,15 @@ pub enum EmitForm {
 
 /// A field value's emitted treatment (spec §6, §4.1). A scalar's *default* §6
 /// classification, or a reference to the referent's emitted sort predicate. The scalar
-/// classification is recorded for the codec/shape (Increments 3–4); nothing in the gen-stage
-/// emit reads it (the signature shows the proto type; the views concern message fields).
+/// classification is what the inbound codec's scalar policy lowers a payload value under
+/// (`codec::scalar::lower`, Increment 3) and what the shape module verifies outbound (Increment
+/// 4); nothing in the gen-stage emit reads it (the signature shows the proto type; the views
+/// concern message fields).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValueMapping {
     /// A scalar — its proto `kind` (the §13.1 signature shows the proto type) and its §6
-    /// default `treatment` (consumed by the codec/shape at Increments 3–4; not read by the
-    /// gen-stage emit).
+    /// default `treatment` (consumed by the inbound codec's scalar policy, Increment 3, and by
+    /// the shape module at Increment 4; not read by the gen-stage emit).
     Scalar {
         /// The proto scalar kind (for the signature).
         kind: Scalar,
