@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use keryx_test_support as support;
-use keryx_test_support::wire::delimited;
+use keryx_test_support::wire::{batch, delimited, reading};
 use prost::encoding;
 use themelios_program::prelude::Sign;
 
@@ -45,26 +45,6 @@ fn refused(codec: &Codec, root_type: &str, payload: &[u8]) -> Diagnostics {
     codec
         .shred(root_type, payload, PayloadFormat::Binary, &Root::fresh(0))
         .expect_err("the payload is refused")
-}
-
-// Wire-format builders: the payloads are written as bytes on the wire, never through the
-// engine's encoder, so the door is seen to read the wire.
-
-/// A thermal `Reading { sensor = 1; temp_c = 2 }`.
-fn reading(sensor: &str, temp_c: i32) -> Vec<u8> {
-    let mut buf = Vec::new();
-    delimited(1, sensor.as_bytes(), &mut buf);
-    encoding::int32::encode(2, &temp_c, &mut buf);
-    buf
-}
-
-/// A thermal `ReadingBatch { repeated Reading readings = 1 }`.
-fn batch(readings: &[Vec<u8>]) -> Vec<u8> {
-    let mut buf = Vec::new();
-    for reading in readings {
-        delimited(1, reading, &mut buf);
-    }
-    buf
 }
 
 // Expected symbols, built as a client of keryx builds them: through the re-exported `Symbol`

@@ -28,6 +28,14 @@ pub enum Exit {
     /// fault keryx caught and returned as a value. `5`/`6` are reserved for the `Admission`/`Shape`
     /// classes their increments land; the integer is tunable and named here alone.
     Dependency = 7,
+    /// A translation error — the payload could not be translated to facts: it did not decode as
+    /// the root type, or carried a value the §6 policy refuses (out of range, an interior NUL,
+    /// text the dialect cannot spell, an unannotated float), an enum number the schema does not
+    /// declare, or nesting past the ceiling. The payload's own error — distinct from a file that
+    /// cannot be read (`Input`, strictly file I/O) and from a schema that does not build
+    /// (`Schema`), the distinction spec §26 asks of the exit codes. The integer is tunable and
+    /// named here alone.
+    Translation = 8,
 }
 
 impl Exit {
@@ -43,6 +51,7 @@ impl Exit {
             Exit::Input => "input",
             Exit::Schema => "schema",
             Exit::Dependency => "dependency",
+            Exit::Translation => "translation",
         }
     }
 
@@ -239,6 +248,29 @@ mod tests {
             "x",
         ));
         assert_eq!(Exit::classify(Exit::Schema, &diagnostics), Exit::Schema);
+    }
+
+    #[test]
+    fn the_translation_class_is_its_own_code_and_slug() {
+        // The payload's error class stands apart by code and by wire slug; a §6 refusal keeps it,
+        // and a contained fault beneath a translation still dominates it.
+        assert_eq!(Exit::Translation as u8, 8);
+        assert_eq!(Exit::Translation.slug(), "translation");
+        let refusal = Diagnostics::one(Diagnostic::new(
+            DiagnosticKind::ValueOutOfRange,
+            Locus::whole(),
+            "x",
+        ));
+        assert_eq!(
+            Exit::classify(Exit::Translation, &refusal),
+            Exit::Translation
+        );
+        let fault = Diagnostics::one(Diagnostic::new(
+            DiagnosticKind::DependencyFault,
+            Locus::whole(),
+            "x",
+        ));
+        assert_eq!(Exit::classify(Exit::Translation, &fault), Exit::Dependency);
     }
 
     #[test]

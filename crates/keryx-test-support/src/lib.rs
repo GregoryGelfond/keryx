@@ -75,8 +75,9 @@ pub fn try_compile_in(includes: &[PathBuf], file: &str) -> Result<Vec<u8>, Strin
 
 /// Wire-format builders over prost's encoding primitives, so a suite writes a payload as bytes
 /// on the wire — never through the engine's own encoder — and the payload door is seen to read
-/// the wire. The scalar primitives (`prost::encoding::int32::encode` and kin) are used directly;
-/// this module carries only what they lack.
+/// the wire. The scalar encoders are thin wrappers over prost's, so a suite needs no `prost`
+/// dependency of its own to write one; the thermal story's `Reading`/`ReadingBatch` builders
+/// (spec §28) live here once, for every suite that shreds that shape.
 pub mod wire {
     use prost::encoding::{self, WireType};
 
@@ -89,6 +90,36 @@ pub mod wire {
             buf,
         );
         buf.extend_from_slice(payload);
+    }
+
+    /// Append an `int32` field numbered `tag` carrying `value`.
+    pub fn int32(tag: u32, value: i32, buf: &mut Vec<u8>) {
+        encoding::int32::encode(tag, &value, buf);
+    }
+
+    /// Append a `uint32` field numbered `tag` carrying `value`.
+    pub fn uint32(tag: u32, value: u32, buf: &mut Vec<u8>) {
+        encoding::uint32::encode(tag, &value, buf);
+    }
+
+    /// A thermal `Reading { string sensor = 1; int32 temp_c = 2; }` (spec §28).
+    #[must_use]
+    pub fn reading(sensor: &str, temp_c: i32) -> Vec<u8> {
+        let mut buf = Vec::new();
+        delimited(1, sensor.as_bytes(), &mut buf);
+        int32(2, temp_c, &mut buf);
+        buf
+    }
+
+    /// A thermal `ReadingBatch { repeated Reading readings = 1; }` (spec §28) over `readings`,
+    /// each as [`reading`] builds it.
+    #[must_use]
+    pub fn batch(readings: &[Vec<u8>]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        for bytes in readings {
+            delimited(1, bytes, &mut buf);
+        }
+        buf
     }
 }
 

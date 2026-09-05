@@ -16,7 +16,9 @@ keryx-core = { path = "../keryx-core" }
 clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
-# Fixture compilation via the shared test-support crate (protox lives there now).
+# Fixture compilation via the shared test-support crate (protox lives there now), and its `wire`
+# builders: the payloads `facts` shreds are written as bytes on the wire, never through the
+# engine's encoder.
 keryx-test-support = { path = "../keryx-test-support" }
 
 [lints]
