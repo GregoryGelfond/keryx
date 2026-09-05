@@ -226,16 +226,17 @@ pub enum DiagnosticKind {
     /// field path, decoded or otherwise; the detail names the type as given. Increment 3.
     UnknownRootType,
     /// A payload's compositional nesting (message-typed fields, §8) exceeds keryx's uniform payload
-    /// ceiling: 99 levels — one below the engine's own decode-recursion limit, the deepest a
-    /// binary payload decodes at all — imposed alike on every payload format (§26's
-    /// "interchangeably", made exact) as a door-admission policy, not a limit of the translation:
-    /// §8's "no depth limit" holds of path-term construction, and the walk itself runs on a
-    /// managed stack (the threat model's property 3, branch (b)). Enforced by the walk's depth
-    /// counter for every format — binding for JSON, whose decoder's own limit sits above it — and,
-    /// ahead of the unbounded text parser, by the textproto pre-parse guard; a binary payload past
-    /// it is refused by the engine at decode (`UndecodablePayload`), so there the counter is
-    /// defense-in-depth. Named at the whole-payload locus. Increment 3: the walk's counter lands
-    /// with the binary format, the per-format guards and instruments with theirs.
+    /// ceiling: 99 levels — one below the engine's own decode-recursion limit — imposed alike on
+    /// every payload format (§26's "interchangeably", made exact) as a door-admission policy, not a
+    /// limit of the translation: §8's "no depth limit" holds of path-term construction, and the
+    /// walk itself runs on a managed stack (the threat model's property 3, branch (b)). Enforced by
+    /// the walk's depth counter for every format — binding for JSON, whose decoder's own limit sits
+    /// above it, and for a binary payload at exactly the 100th level, the deepest the engine
+    /// decodes — and, ahead of the unbounded text parser, by the textproto pre-parse guard; a
+    /// binary payload deeper still is refused by the engine at decode (`UndecodablePayload`), so
+    /// from there the counter is defense-in-depth. Named at the whole-payload locus. Increment 3:
+    /// the walk's counter lands with the binary format, the per-format guards and instruments with
+    /// theirs.
     PayloadTooDeep,
 }
 

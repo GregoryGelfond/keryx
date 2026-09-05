@@ -102,6 +102,21 @@ pub mod wire {
         encoding::uint32::encode(tag, &value, buf);
     }
 
+    /// Append an `int64` field numbered `tag` carrying `value`.
+    pub fn int64(tag: u32, value: i64, buf: &mut Vec<u8>) {
+        encoding::int64::encode(tag, &value, buf);
+    }
+
+    /// Append a `fixed32` field numbered `tag` carrying `value`.
+    pub fn fixed32(tag: u32, value: u32, buf: &mut Vec<u8>) {
+        encoding::fixed32::encode(tag, &value, buf);
+    }
+
+    /// Append a `float` field numbered `tag` carrying `value`.
+    pub fn float(tag: u32, value: f32, buf: &mut Vec<u8>) {
+        encoding::float::encode(tag, &value, buf);
+    }
+
     /// A thermal `Reading { string sensor = 1; int32 temp_c = 2; }` (spec §28).
     #[must_use]
     pub fn reading(sensor: &str, temp_c: i32) -> Vec<u8> {

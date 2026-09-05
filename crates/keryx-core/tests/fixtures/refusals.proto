@@ -1,0 +1,24 @@
+syntax = "proto3";
+package keryx.refusals;
+
+// Every §6 refusal the inbound scalar policy makes, reachable in isolation: each field of
+// `Probe` carries one class of value the policy may refuse, and the one field refused whatever
+// its value — an unannotated float — sits behind a message field, so the walk reaches it only
+// when the payload carries that message.
+message Probe {
+  uint32 count = 1;             // Native: refused above i32::MAX (ValueOutOfRange)
+  fixed32 stamp = 2;            // Native: the same range obligation on the fixed width
+  string label = 3;             // Text: InteriorNul, UnrepresentableText
+  Kind kind = 4;                // an open enum: UnknownEnumValue for an undeclared number
+  map<string, int32> tags = 5;  // a map key lowers per §6 like a value (§7.2)
+  Ratio ratio = 6;              // carried, its float is reached and refused (UnannotatedFloat)
+}
+
+message Ratio {
+  float value = 1;
+}
+
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  KIND_ONE = 1;
+}

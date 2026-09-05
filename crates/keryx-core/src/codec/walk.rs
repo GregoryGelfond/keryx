@@ -48,11 +48,13 @@ use crate::terms;
 
 /// The uniform payload nesting ceiling (spec §8, §26; the threat model's property 3): the deepest
 /// compositional nesting — message-typed fields below the root — a payload of any format may
-/// carry, `RECURSION_LIMIT − 1`, one below the engine's decode-recursion limit and so the deepest a
-/// binary payload decodes at all. A door-admission policy, not a limit of the translation: §8's
-/// path terms impose no ceiling, and the walk runs on a managed stack; the counter here is where
-/// the ceiling binds for a format whose decoder admits deeper (JSON), and defense-in-depth for one
-/// the engine already bounds below it (binary). Named once, derived from the engine's constant.
+/// carry, `RECURSION_LIMIT − 1`, one below the engine's decode-recursion limit. A door-admission
+/// policy, not a limit of the translation: §8's path terms impose no ceiling, and the walk runs on
+/// a managed stack; the counter here is where the ceiling binds for a format whose decoder admits
+/// deeper — JSON, and binary at exactly one level, since the engine decodes a payload nesting
+/// `RECURSION_LIMIT` levels and refuses only past that (`engine::decode_binary`), so the counter
+/// refuses that deepest decodable level itself and stands as defense-in-depth beneath the engine
+/// from there on. Named once, derived from the engine's constant.
 pub(crate) const NESTING_CEILING: usize = RECURSION_LIMIT - 1;
 
 /// The referent index over a [`Mapping`], built once per codec: predicate-keyed sort and enum
@@ -759,10 +761,11 @@ mod tests {
 
     #[test]
     fn the_ceiling_is_one_below_the_engine_s_recursion_limit_and_refuses_the_level_past_it() {
-        // The uniform ceiling (R2-F4): a message at nesting level 99 walks; one at level 100 is
-        // `PayloadTooDeep`. A binary payload never reaches level 100 — the engine refuses it at
-        // decode — so the counter is seeded past the ceiling here, as a deeper-admitting format's
-        // decoder would leave it.
+        // The uniform ceiling: a message at nesting level 99 walks; one at level 100 is
+        // `PayloadTooDeep`. The counter is seeded past the ceiling here, as a deeper-admitting
+        // format's decoder leaves it; a binary payload reaches level 100 exactly — the engine
+        // decodes that level and refuses the next — which `tests/codec_depth.rs` pins through the
+        // door.
         assert_eq!(NESTING_CEILING, RECURSION_LIMIT - 1);
         assert_eq!(NESTING_CEILING, 99);
         assert_eq!(

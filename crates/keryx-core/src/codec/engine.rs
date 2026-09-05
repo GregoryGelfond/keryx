@@ -33,9 +33,11 @@ use crate::fault::{Dependency, contain};
 
 /// Decode a binary (`.binpb`) payload as an instance of `desc` — the payload door's engine call,
 /// the one crossing into prost-reflect on the payload path — and return the tree, owned. The
-/// engine bounds a payload's message nesting at its decode recursion limit (a message chain
-/// `descriptor::RECURSION_LIMIT` deep or deeper is a decode error), so a binary payload this door
-/// admits nests at most `RECURSION_LIMIT - 1` levels.
+/// engine bounds a payload's message nesting at its decode recursion limit: each nested message
+/// spends one level of `descriptor::RECURSION_LIMIT`, so a payload nesting message-typed fields
+/// exactly `RECURSION_LIMIT` levels below the root still decodes and one level deeper is a decode
+/// error — the deepest tree this door delivers nests `RECURSION_LIMIT` levels, one past the walk's
+/// uniform ceiling, which refuses that level itself (`super::walk::NESTING_CEILING`).
 ///
 /// Total on foreign input (§6): a payload that does not decode as `desc` — malformed, truncated,
 /// or over-deep — is `UndecodablePayload` at the whole-payload locus, and an unforeseen engine
