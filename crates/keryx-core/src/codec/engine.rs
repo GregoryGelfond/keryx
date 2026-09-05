@@ -112,6 +112,27 @@ const TEXTPROTO_PARSE_STACK: usize = 8 << 20;
 /// stack alone, the caller waits on it, and the tree comes back owned — so a text payload's facts
 /// are the same function of the payload a binary one's are (the threat model's determinism).
 ///
+/// **Two instances, not one helper.** This decode and the JSON decode ([`decode_json`]) share a
+/// skeleton — the foreign decode spawned onto a `thread::scope` thread keryx sizes above the
+/// deepest payload it admits, the containment frame *inside* that thread (a stack overflow aborts
+/// rather than unwinds, so no frame holds one and the thread's size is what prevents it, while the
+/// frame catches what does unwind), and an unwind that escaped the frame re-raised inside a fresh
+/// frame on the caller's thread, the one `DependencyFault` seam — and are kept as two parallel
+/// instances rather than lifted into a shared helper. The two differ before the thread: this
+/// decode validates UTF-8 and runs the pre-parse guard on the caller's thread, where the JSON
+/// decode has no guard, its deserializer bounding itself. They differ in the stack each is sized
+/// by — [`TEXTPROTO_PARSE_STACK`] for the guard's ceiling, [`JSON_DECODE_STACK`] for the
+/// deserializer's own, deeper admit — measured and owed separately, each under its own measure of
+/// record. And they differ in the dependency the frame names (`ProstReflect` here, `SerdeJson`
+/// there), in the engine call, and in the error type it returns. At two instances the parallel
+/// form keeps each of those differences legible at the site it belongs to, beside the doc that
+/// argues it, where a lift would carry them as arguments and split each door's reading between its
+/// site and the helper's. The lift is available — a
+/// `decode_on_sized_thread(dependency, operation, name, stack, decode)` generic over the decode's
+/// error type, so the differences generalise — and is deferred to a third sized-thread door, or
+/// to a reading of the codec's three forms as one: the point at which the shared form becomes
+/// the rule and these differences its exceptions, and the helper pays for the arguments it adds.
+///
 /// # Errors
 ///
 /// `UndecodablePayload` when the bytes are not UTF-8 or do not parse as `desc`; `PayloadTooDeep`
@@ -246,6 +267,12 @@ const JSON_DECODE_STACK: usize = 8 << 20;
 /// exists for its stack alone, the caller waits on it, and the tree comes back owned — so a JSON
 /// payload's facts are the same function of the payload a binary one's are (the threat model's
 /// determinism).
+///
+/// The text decode's parallel instance, deliberately, and not its shared helper: the skeleton the
+/// two share and the differences that keep them apart — what precedes the thread, the stack each
+/// is sized by, the dependency and the error type each names — are argued once, at
+/// [`decode_textproto`] (*Two instances, not one helper*), and the lift that would join them is
+/// named and deferred there.
 ///
 /// # Errors
 ///
