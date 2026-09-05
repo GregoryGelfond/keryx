@@ -1,7 +1,7 @@
 //! The inbound codec (architecture §5, inbound; spec §11, §22): a payload, decoded against the
 //! pool its schema came from and lowered under the mapping model and a root constant, to ground
-//! facts — `Symbol`s for the library seam, a `.lp` fact module for the CLI seam (R6), identical in
-//! content (§11) and ground by construction (P10). [`Codec`] is built once per schema and shreds
+//! facts — `Symbol`s for the library seam and, rendered from them, a `.lp` fact module for the
+//! CLI seam (R6), identical in content (§11) and ground by construction (P10). [`Codec`] is built once per schema and shreds
 //! any number of payloads; [`Facts`] is one payload's result; [`PayloadFormat`] and [`Root`] are
 //! the surface's value types. Beneath the surface: the decode engine's adapter (`engine`, the one
 //! place in the codec that names prost-reflect), the §6 scalar policy (`scalar`), and the
@@ -176,18 +176,18 @@ impl Codec {
     }
 }
 
-/// The facts of one shredded payload (spec §11), in both delivery forms from one construction:
-/// the ground [`Symbol`]s a consuming tool feeds its solver directly (the library seam — no text
-/// between, R6), and the statements the `.lp` fact module renders from (the CLI seam). Both are
-/// built from one `(predicate, arguments)` per fact at the walk's one emit site, so the two
-/// never disagree; holding both costs twice the facts' memory steady-state, and three times
-/// transiently while [`render`](Facts::render) builds the canonical program. Two deterministic
-/// orders of the same facts: [`symbols`](Facts::symbols) in `Symbol::Ord`, the rendering in
-/// themelios's statement order.
+/// The facts of one shredded payload (spec §11), held once: the ground [`Symbol`]s a consuming
+/// tool feeds its solver directly (the library seam — no text between, R6) are the one model of
+/// the payload's facts, each built as one `(predicate, arguments)` at the walk's one emit site.
+/// The `.lp` fact module of the CLI seam is a view of that model, rendered from the symbols by
+/// [`render`](Facts::render), so the two seams cannot disagree — there is one structure, and
+/// nothing beside it to differ from. Cost: the facts' memory, steady-state; the rendering's
+/// program and text are a transient of the render alone. Two deterministic orders of the same
+/// facts: [`symbols`](Facts::symbols) in `Symbol::Ord`, the rendering in themelios's statement
+/// order — a function of the facts' content, whatever order the statements are derived in.
 #[derive(Clone, Debug)]
 pub struct Facts {
     symbols: Vec<Symbol>,
-    statements: Vec<WithProvenance<Statement>>,
 }
 
 impl Facts {
@@ -199,7 +199,9 @@ impl Facts {
     }
 
     /// The facts as a clingo-dialect `.lp` fact module — the CLI seam (spec §11): one fact per
-    /// line, in themelios's canonical statement order, each spelled once.
+    /// line, in themelios's canonical statement order, each spelled once. A view of
+    /// [`symbols`](Facts::symbols): each symbol's statement is derived from it (`terms::fact_of`)
+    /// and the program they make rendered canonically.
     ///
     /// # Errors
     ///
@@ -209,7 +211,7 @@ impl Facts {
     /// facts' rendering is.
     pub fn render(&self) -> Result<String, Diagnostics> {
         render_ast(
-            &Program::of(self.statements.iter().cloned()),
+            &Program::of(self.symbols.iter().map(terms::fact_of)),
             Dialect::Clingo,
         )
         .map_err(|unspellable| {

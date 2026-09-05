@@ -17,9 +17,10 @@
 //! occupant becomes a work item — its occupancy atom `s(occupant)` and its fields are emitted when
 //! the item is popped — so nesting lives inside the path terms and the walk's memory is the heap's.
 //!
-//! **One `(predicate, arguments)` per fact.** [`Walker::emit`] builds a fact's two
-//! representations — the head [`Symbol`] of the library seam and the statement of the `.lp` seam
-//! — from one pair through `crate::terms`, so the two seams cannot disagree (spec §11).
+//! **One representation per fact.** [`Walker::emit`] builds a fact's head [`Symbol`] through
+//! `crate::terms` — the one structure [`Facts`] holds; the `.lp` seam's statements are derived
+//! from those symbols when the facts render (`Facts::render`), so the two seams cannot disagree:
+//! there is nothing beside the symbols to disagree with (spec §11).
 //!
 //! **Every refusal is collected (§6, §26).** A refused value is a [`Diagnostic`] at its field's
 //! fully-qualified proto path; the walk continues, and delivers either every fact or every
@@ -297,14 +298,13 @@ struct Work<'a> {
     depth: usize,
 }
 
-/// The walk's state: the managed stack, the two representations of every fact emitted so far,
-/// and every diagnosis collected. `'m` is the mapping's lifetime, `'a` the decoded tree's.
+/// The walk's state: the managed stack, every fact emitted so far as its head symbol, and every
+/// diagnosis collected. `'m` is the mapping's lifetime, `'a` the decoded tree's.
 struct Walker<'m, 'a> {
     mapping: &'m Mapping,
     index: &'m Index,
     stack: Vec<Work<'a>>,
     symbols: Vec<Symbol>,
-    statements: Vec<WithProvenance<Statement>>,
     diagnostics: Vec<Diagnostic>,
     /// Whether the ceiling has been diagnosed: once per shred, the locus being the whole
     /// payload — a wide over-deep layer adds nothing a second copy would say.
@@ -345,7 +345,6 @@ fn run(mapping: &Mapping, index: &Index, seed: Work<'_>) -> Result<Facts, Diagno
         index,
         stack: vec![seed],
         symbols: Vec::new(),
-        statements: Vec::new(),
         diagnostics: Vec::new(),
         too_deep: false,
     };
@@ -569,15 +568,13 @@ impl<'m, 'a> Walker<'m, 'a> {
             .ok_or_else(|| unknown_enum_value(enumeration, number, at))
     }
 
-    /// Emit one fact `predicate(arguments…)` in both representations, from the one pair: the
-    /// head symbol for the library seam and the statement for the `.lp` seam, each through
-    /// themelios's own canonicalization at `crate::terms`, so no bridge from one to the other
-    /// exists and the seams carry identical content (spec §11).
+    /// Emit one fact `predicate(arguments…)` as its head symbol, through themelios's own
+    /// canonicalization at `crate::terms` — the fact's one representation; the `.lp` seam's
+    /// statement is derived from it at the rendering, so the seams carry identical content
+    /// (spec §11).
     fn emit(&mut self, predicate: &Name, arguments: Vec<Term>) {
         self.symbols
-            .push(terms::atom_symbol(predicate.clone(), arguments.clone()));
-        self.statements
-            .push(terms::fact_named(predicate.clone(), arguments));
+            .push(terms::atom_symbol(predicate.clone(), arguments));
     }
 
     /// Refuse a message past the ceiling: `PayloadTooDeep` at the whole-payload locus, once per
@@ -598,18 +595,14 @@ impl<'m, 'a> Walker<'m, 'a> {
         ));
     }
 
-    /// The walk's result: every diagnosis, or every fact — the symbols in `Symbol::Ord`, the
-    /// statements as emitted (their rendering orders them canonically).
+    /// The walk's result: every diagnosis, or every fact — the symbols in `Symbol::Ord`.
     fn finish(self) -> Result<Facts, Diagnostics> {
         if let Some(diagnostics) = Diagnostics::collect(self.diagnostics) {
             return Err(diagnostics);
         }
         let mut symbols = self.symbols;
         symbols.sort_unstable();
-        Ok(Facts {
-            symbols,
-            statements: self.statements,
-        })
+        Ok(Facts { symbols })
     }
 }
 
