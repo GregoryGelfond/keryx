@@ -18,7 +18,12 @@
 //! with no call stack spent on the way. The deepest admitted parse is this suite's proof of the
 //! thread the decode sizes for it (`engine::TEXTPROTO_PARSE_STACK`): in a debug build, 99 nested
 //! message values need more parser stack than the test harness's own threads carry, so the parse
-//! completes under `cargo test` only because the decode runs it on a stack it sized itself.
+//! completes under `cargo test` only because the decode runs it on a stack it sized itself. And
+//! the guard's premise — that its scanner ends a `#` comment at the byte the engine's lexer does,
+//! `\n` and no other — is held through the door: a payload that is one comment over a thousand
+//! nested message values, with no `\n` in it, is admitted and shredded as the empty message,
+//! where a lexer ending the comment at a byte the scanner does not would hand the parser every
+//! level the guard never measured.
 //!
 //! **Totality over arbitrary text.** `Codec::shred` returns facts or typed `Diagnostics` over *any*
 //! text — never a panic, an abort, or a hang — checked over a generator mixing arbitrary characters
@@ -393,6 +398,47 @@ fn the_guard_measures_before_the_parser_and_exactly_as_the_parser_would() {
         facts.render().expect("renders").contains(", \"{<\").\n"),
         "the deepest tree carries the literal"
     );
+}
+
+#[test]
+fn a_comment_the_guard_passes_over_is_a_comment_to_the_parser_to_the_same_byte() {
+    // The guard's dominance rests on its scanner ending a `#` comment where the engine's lexer
+    // does — at `\n`, and at no other byte (`#[^\n]*\n?`, prost-reflect 0.16.5
+    // `src/dynamic/text_format/parse/lex.rs:10`; `codec::guard`'s tests pin the scanner to it).
+    // Through the door, the premise itself: a payload that is one `#` comment opening with a
+    // carriage return, a Unicode line separator, or a next-line character, then `children`
+    // nested a thousand levels deep, and no `\n` anywhere — so to scanner and lexer alike every
+    // bracket is comment content. The guard measures depth 0 and admits it; the parser skips it
+    // whole and yields the empty tree — the facts the empty text and the empty wire shred to.
+    // Were the lexer to end a comment at a byte the scanner does not, the parser would see a
+    // thousand nested message values the guard never measured and recurse on every one — some
+    // three times the depth the sized parse thread carries in a debug build
+    // (`engine::TEXTPROTO_PARSE_STACK` records the measure) — and this test would abort the
+    // harness rather than fail, no frame catching an overflow; in a release build, whose stack
+    // carries that depth, the parse would complete and the shred would be the walk's
+    // `PayloadTooDeep`, not these facts. Its passing is the premise, held on the pinned engine.
+    let codec = tree_codec();
+    let empty = shred_text(&codec, "keryx.rec.Tree", "").expect("the empty text shreds");
+    assert_eq!(
+        empty.symbols(),
+        shred(&codec, "keryx.rec.Tree", &[], PayloadFormat::Binary)
+            .expect("the empty wire shreds")
+            .symbols()
+    );
+    for line_break in ["\r", "\u{2028}", "\u{85}"] {
+        let payload = format!("# {line_break}{}", nested("children", BRACES, 1_000, ""));
+        assert!(
+            !payload.contains('\n'),
+            "the whole payload is one comment: no newline"
+        );
+        let facts = shred_text(&codec, "keryx.rec.Tree", &payload)
+            .expect("a payload that is one comment is the empty message");
+        assert_eq!(facts.symbols(), empty.symbols(), "{line_break:?}");
+        assert!(
+            !facts.render().expect("renders").contains("children("),
+            "nothing nested was parsed: {line_break:?}"
+        );
+    }
 }
 
 #[test]

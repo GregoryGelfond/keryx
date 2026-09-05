@@ -73,10 +73,13 @@ pub(crate) fn depth(text: &str) -> Result<(), Diagnostics> {
 /// parser would recurse to, or more. The scanner's states mirror prost-reflect 0.16.5's text-format
 /// lexer (`src/dynamic/text_format/parse/lex.rs`) wherever that lexer continues:
 ///
-/// - **Comments.** `#` to end of line, and only that (`lex.rs:10`, the lexer's one skip pattern
-///   beside whitespace, `lex.rs:9`): the scanner drops everything from a `#` to the newline. `/`
-///   is the `ForwardSlash` token of the `Any` field name (`lex.rs:50`), so `//` and `/* */` are
-///   token sequences, not comments, and a bracket after them counts as the parser would see it.
+/// - **Comments.** `#` to end of line, and only that: the lexer's one skip pattern beside
+///   whitespace (`lex.rs:9`) is `#[logos(skip(r"#[^\n]*\n?", allow_greedy = true))]`
+///   (`lex.rs:10`) — from a `#`, every byte but `\n` is comment content, a carriage return and
+///   the Unicode line breaks among them, and `\n` alone ends it — so the scanner drops everything
+///   from a `#` to the `\n` and leaves the comment at no other byte. `/` is the `ForwardSlash`
+///   token of the `Any` field name (`lex.rs:50`), so `//` and `/* */` are token sequences, not
+///   comments, and a bracket after them counts as the parser would see it.
 /// - **Strings.** A literal opens at `'` or `"` (`lex.rs:26`) and runs to the *same* quote
 ///   (`lex.rs:197,202`); the other quote is content (`lex.rs:205`), as are `#` and every bracket
 ///   (`lex.rs:137`). An escape is `\` and its form (`lex.rs:141-150`) — `\"`, `\'`, and `\\`
@@ -142,6 +145,7 @@ fn deepest(text: &str) -> usize {
                 _ => {}
             },
             State::Comment => {
+                // `\n` alone ends a comment: the one byte the lexer's pattern excludes.
                 if byte == b'\n' {
                     state = State::Text;
                 }
@@ -289,6 +293,33 @@ mod tests {
         // name (`lex.rs:50`) — so a bracket after them counts, as the parser would see it.
         assert_eq!(deepest("// {\na { }"), 2);
         assert_eq!(deepest("/* { */ a { }"), 2);
+    }
+
+    #[test]
+    fn a_comment_ends_at_a_newline_and_at_no_other_line_break_as_the_lexer_s_does() {
+        // The lexer's comment is `#[^\n]*\n?` (`lex.rs:10`): from a `#`, every byte but `\n` is
+        // content — a carriage return, a Unicode line or paragraph separator (U+2028, U+2029),
+        // a next line (U+0085) — and `\n` alone ends it. The scanner leaves a comment at that
+        // byte and no other, so a bracket after any other line break is content it passes over,
+        // as the lexer skips it, and only the brackets after the `\n` count. A scanner ending a
+        // comment at a byte the lexer does not would count what the parser never sees — the
+        // safe direction — but a *lexer* ending one at a byte the scanner does not would hand
+        // the parser brackets the guard never measured; this pins the two to the same byte.
+        for line_break in ["\r", "\u{2028}", "\u{2029}", "\u{85}"] {
+            let text = format!("# {line_break}{{ {{ {{ <\na {{ b {{ }} }}");
+            assert_eq!(deepest(&text), 2, "{line_break:?}");
+            let text = format!("#{line_break}< < < {{\r\na < >");
+            assert_eq!(deepest(&text), 1, "{line_break:?}");
+            let text = format!("# {line_break}{{ {{ {{ {{ {line_break}< <");
+            assert_eq!(deepest(&text), 0, "no newline: {line_break:?}");
+        }
+        depth(&nested(
+            "f",
+            BRACES,
+            99,
+            "# \r{ \u{2028}{ \u{2029}< \u{85}{\n",
+        ))
+        .expect("brackets after a comment's other line breaks do not count");
     }
 
     #[test]
