@@ -38,23 +38,19 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// that decode's `UndecodablePayload` — so the scan reads bytes no structural character can hide
 /// in.
 ///
-/// **The stack margin the parse thread is sized against.** The parser spends between two and
-/// five call frames per nesting level, by the field's form (`parse/mod.rs`): four for a singular
-/// message field (`parse_message_value` 47 → `parse_field` 90 → `parse_field_value` 218 →
-/// `parse_value` 316), five for a list or map element (`parse_field_value` 176/204 →
-/// `parse_repeated_value` 253/259 → `parse_value`), two for an `Any` value (`parse_field` 115,
-/// directly) — so the deepest admitted payload holds at most `5 × 99` live frames of that cycle,
-/// plus the leaf calls. The frames are large, so the margin is measured rather than assumed (this
-/// pin, debug and release builds): 99 nested message values parse on a 256 KB thread stack in
-/// release (192 KB overflows — some 2.5 KB a level; an 8 MB stack overflows between 3,000 and
-/// 4,000 levels) but need 2.5 MB in debug (2 MB overflows — some 25 KB a level; 8 MB overflows
-/// between 300 and 400 levels), more than a spawned thread's 2 MB default, the test harness's
-/// threads among them. So the decode that calls this leaves the parse to no thread of the
-/// caller's: it runs it on a thread it sizes itself, against these figures, at 8 MiB
-/// (`engine::TEXTPROTO_PARSE_STACK`, some three times the ceiling's debug need) — closing by
-/// construction the residual a sub-standard thread stack would otherwise be, where the source
-/// door's guard leaves that residual to the consuming service's process isolation (the threat
-/// model's division of labor).
+/// **The stack the parse is sized for.** The parser spends between two and five call frames per
+/// nesting level, by the field's form (`parse/mod.rs`): four for a singular message field
+/// (`parse_message_value` 47 → `parse_field` 90 → `parse_field_value` 218 → `parse_value` 316),
+/// five for a list or map element (`parse_field_value` 176/204 → `parse_repeated_value` 253/259
+/// → `parse_value`), two for an `Any` value (`parse_field` 115, directly) — so the deepest
+/// admitted payload holds at most `5 × 99` live frames of that cycle, plus the leaf calls: a
+/// bounded need, but a large one, the frames being large, and more than a spawned thread's
+/// default stack carries in a debug build. So the decode that calls this leaves the parse to no
+/// thread of the caller's: it runs it on a thread it sizes itself for the ceiling —
+/// `engine::TEXTPROTO_PARSE_STACK`, whose doc is the record of the measure, debug and release
+/// builds, that sizes it — closing by construction the residual a sub-standard thread stack would
+/// otherwise be, where the source door's guard leaves that residual to the consuming service's
+/// process isolation (the threat model's division of labor).
 ///
 /// # Errors
 ///

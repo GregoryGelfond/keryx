@@ -294,11 +294,11 @@ fn a_textproto_at_the_ceiling_parses_and_shreds_whole_and_one_past_it_is_refused
     // and 99 nested trees, each its sort atom and its materialised label, the deepest occupant
     // 99 `children` applications below `r0`, every fact once on both seams — and exactly the
     // facts the same chain on the binary wire shreds to: parity at the ceiling. The parse runs
-    // on the thread the decode sizes for this depth (`engine::TEXTPROTO_PARSE_STACK`): in a
-    // debug build, 99 nested message values need some 2.5 MB of parser stack, more than the
-    // 2 MB thread this harness runs a test on, so this parse completes under `cargo test` only
-    // because the decode runs it on a stack it sized itself — the construction this test is the
-    // committed proof of.
+    // on the thread the decode sizes for this depth (`engine::TEXTPROTO_PARSE_STACK`, whose doc
+    // records the measure): in a debug build, 99 nested message values need more parser stack
+    // than the 2 MB thread this harness runs a test on, so this parse completes under
+    // `cargo test` only because the decode runs it on a stack it sized itself — the construction
+    // this test is the committed proof of.
     let facts = shred_text(
         &codec,
         "keryx.rec.Tree",

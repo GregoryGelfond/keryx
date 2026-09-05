@@ -76,13 +76,16 @@ pub(crate) fn decode_binary(
 
 /// The stack the textproto parse runs on: 8 MiB, on a thread keryx sizes itself. The engine's
 /// text-format parser recurses natively on every nested message value and bounds nothing
-/// (`super::guard`), so the deepest payload the guard admits — `NESTING_CEILING` levels — must
-/// fit whatever stack carries the parse. Measured against the pinned engine (the guard's pin,
-/// debug and release builds): 99 levels need some 2.5 MB in a debug build (2 MB overflows; an
-/// 8 MB stack overflows between 300 and 400 levels) and 256 KB in release (192 KB overflows). This
-/// size carries the ceiling's need some three times over in debug and thirty in release — where a
-/// spawned thread's 2 MB default, the test harness's threads among them, would not carry it in
-/// debug at all — and it holds whatever thread the caller decodes on, so the margin is keryx's by
+/// (`super::guard`, which derives the parser's frames per level and so the bounded need), so the
+/// deepest payload the guard admits — `NESTING_CEILING` levels — must fit whatever stack carries
+/// the parse. **The measure of record**, which the guard's doc and the door's instruments cite
+/// rather than restate — against the pinned engine, prost-reflect 0.16.5, in debug and release
+/// builds: 99 levels need some 2.5 MB in a debug build (2 MB overflows — some 25 KB a level; an
+/// 8 MB stack overflows between 300 and 400 levels) and 256 KB in release (192 KB overflows —
+/// some 2.5 KB a level; 8 MB overflows between 3,000 and 4,000 levels). This size carries the
+/// ceiling's need some three times over in debug and thirty in release — where a spawned
+/// thread's 2 MB default, the test harness's threads among them, would not carry it in debug at
+/// all — and it holds whatever thread the caller decodes on, so the margin is keryx's by
 /// construction, not the host's. The stack is reserved address space, committed a page at a time
 /// as the parse descends, so a shallow payload pays a thread spawn and little else.
 const TEXTPROTO_PARSE_STACK: usize = 8 << 20;
@@ -149,10 +152,18 @@ pub(crate) fn decode_textproto(
                 })
             })
             // A thread the host cannot spawn is the host out of a resource — threads, or the
-            // address space to reserve the stack in — and nothing the payload brings about: by
-            // here the payload is validated, measured, and bounded, and the spawn asks the same of
-            // the host for every payload alike. Discharged as a host invariant, not a foreign-input
-            // path (§6).
+            // address space to reserve the stack in — and nothing the payload's content brings
+            // about: by here the payload is validated, measured, and bounded, and the spawn asks
+            // the same of the host for every payload alike. Repetition can bring it about — the
+            // threat model's adversary may repeat the call, and calls admitted faster than their
+            // parse threads retire could run the host out of either — and the model assigns that
+            // to the consuming service: its side of the division of labor is isolation of the
+            // translation under resource limits, so a host exhausted by load is the operating
+            // system's to contain, as an abort or a hang is, where keryx's guarantees hold per
+            // call. Discharged as a host invariant, then, against the adversary the model names
+            // and not on payload-independence alone: a foreign-input path is one a payload's
+            // content reaches (§6), and an exhausted host is the service's to bound, not this
+            // door's to diagnose.
             .expect("the host can spawn the textproto parse thread");
         handle.join().unwrap_or_else(|unwind| {
             // A panic that escaped the frame — none can, the frame catching every unwind inside it
