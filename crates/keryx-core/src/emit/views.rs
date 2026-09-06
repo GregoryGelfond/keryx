@@ -9,7 +9,7 @@
 use themelios_program::prelude::*;
 
 use crate::diagnostics::Diagnostics;
-use crate::emit::{build, render, signature};
+use crate::emit::{build, render_client_of_core, signature};
 use crate::policy::model::{FieldMapping, SortMapping, Unit, ValueMapping, ViewKind};
 
 /// Render one generation unit's `views.lp` (spec §13.2). Total (§6).
@@ -31,16 +31,8 @@ pub fn views(unit: &Unit) -> Result<String, Diagnostics> {
         }
     }
     // Open as a client of `core.lp` (§13.2): the include makes `views.lp` loadable on its own,
-    // resolving the sorts and access-path terms its rules join on. Emitted as a raw clingo
-    // directive — `#include` is a loader meta-statement themelios does not model. The operand is
-    // `unit.package()` — a validated `Package` (a dotted identifier, no `"` or control byte), so the
-    // interpolation cannot break out of the quoted string; the door represents that shape rather than
-    // this site re-checking it (the threat model's descriptor-door package boundary).
-    Ok(format!(
-        "#include \"{}.core.lp\".\n{}",
-        unit.package().as_str(),
-        render(statements)?,
-    ))
+    // resolving the sorts and access-path terms its rules join on.
+    render_client_of_core(unit, statements)
 }
 
 /// The relational view rule for one message-typed field (spec §13.2's table): the referent

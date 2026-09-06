@@ -1,6 +1,9 @@
-//! The §13.1 signature lines — the text a `core.lp` `#defined` carries as its `%!` doc.
-//! Pure string formatting over the `Mapping` in the spec's own vocabulary (`sort`, `×
-//! index`, `->`); no themelios. Deterministic.
+//! The §13.1 signature lines — the text a `core.lp` `#defined` carries as its `%!` doc, and
+//! the same lines a `views.lp` or `emit.lp` statement carries for a standalone reader. Pure
+//! string formatting over the `Mapping` in the spec's own vocabulary (`sort`, `× index`,
+//! `->`); no themelios. Deterministic.
+
+use themelios_program::Name;
 
 use crate::descriptor::model::{Openness, Scalar};
 use crate::policy::model::{
@@ -25,6 +28,16 @@ pub(super) fn enumeration(enumeration: &EnumMapping) -> String {
         "closed"
     };
     format!("enum {}/1  ({openness})", enumeration.predicate().as_str())
+}
+
+/// A response-root marker's line (spec §12.1), in the field line's shape — the marker over
+/// the sort it marks, its role in the parenthetical: `emit_reading : reading  (root)`.
+pub(super) fn root(marker: &Name, sort: &SortMapping) -> String {
+    format!(
+        "{} : {}  (root)",
+        marker.as_str(),
+        sort.predicate().as_str()
+    )
 }
 
 /// A field's line (spec §13.1): `sensor : reading -> string  (total)`,

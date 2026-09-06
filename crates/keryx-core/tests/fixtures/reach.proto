@@ -1,0 +1,18 @@
+syntax = "proto3";
+package keryx.reach;
+
+// A plan: one parent sort holding a step in every message-typed form.
+message Plan {
+  Step first = 1;                 // singular message field
+  repeated Step steps = 2;        // sequence of messages
+  map<string, Step> by_name = 3;  // map with message values
+  oneof choice {                  // a message-typed arm beside a scalar arm
+    Step pick = 4;
+    string label = 5;
+  }
+}
+
+// One step of a plan.
+message Step {
+  string note = 1;
+}

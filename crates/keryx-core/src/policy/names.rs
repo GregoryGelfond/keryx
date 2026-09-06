@@ -3,7 +3,9 @@
 //! the proto name lowered to `lower_snake` (fields already are; a message `Reading`→
 //! `reading`; an enum value strips a shared `ENUM_NAME_` prefix, §7.4). Presence and the
 //! emit form/treatment follow §5/§6/§7. Every produced name is validated into a themelios
-//! `Name` here, so downstream is total by construction (§6).
+//! `Name` here, so downstream is total by construction (§6). keryx's own generated
+//! infrastructure names (§12.1) — the reachability predicate and the response-root marker
+//! prefix — live here as the one table the reserved-word escape and `emit` both read.
 
 use themelios_program::Name;
 use themelios_program::symbol::NotAnIdentifier;
@@ -47,18 +49,42 @@ pub(super) fn field_name(field: &Field) -> Result<(Name, bool), Diagnostics> {
 /// parses it as negation); `reach`/`violates`/`ep` and the `emit_` prefix are keryx's own
 /// generated names (§12.1). An emitted name equal to one of these, or beginning `emit_`,
 /// is suffixed `_` and the escape is recorded in the manifest (§13.4).
-const RESERVED: &[&str] = &["not", "reach", "violates", "ep"];
+const RESERVED: &[&str] = &["not", REACH, "violates", "ep"];
+
+/// The reachability predicate's identifier (spec §12.1) — keryx's own: [`RESERVED`] keeps a
+/// schema-derived name off it, and [`reach`] spells `emit.lp`'s rules with it. One string.
+const REACH: &str = "reach";
+
+/// The response-root marker prefix (spec §12.1) — a sort's marker is `emit_<sort>`:
+/// [`escape_reserved`] keeps a schema-derived name off the prefix, and [`marker`] derives
+/// from it. One string.
+const EMIT_PREFIX: &str = "emit_";
 
 /// Escape a lowered name that would collide with a reserved or generated-infrastructure
 /// identifier (spec §4.2): suffix `_`. Returns the (possibly escaped) name and whether the
 /// escape fired — the decision the manifest records as data (§13.4), never re-derived from the
 /// name. Idempotent on already-legal names. Deterministic.
 fn escape_reserved(name: &str) -> (String, bool) {
-    if RESERVED.contains(&name) || name.starts_with("emit_") {
+    if RESERVED.contains(&name) || name.starts_with(EMIT_PREFIX) {
         (format!("{name}_"), true)
     } else {
         (name.to_owned(), false)
     }
+}
+
+/// The reachability predicate `reach/1` (spec §12.1) as a validated `Name`. A fixed
+/// identifier from the table, so the `expect` is a discharged invariant (§6).
+pub(crate) fn reach() -> Name {
+    Name::new(REACH).expect("the reachability predicate is a fixed identifier")
+}
+
+/// A sort's response-root marker `emit_<sort>/1` (spec §12.1): the infrastructure prefix
+/// over the sort's validated predicate. The prefix opens with a lowercase letter and every
+/// character of an identifier may continue one, so the concatenation is again an identifier —
+/// a discharged `expect` (§6), held by the law below over the identifier domain.
+pub(crate) fn marker(sort: &Name) -> Name {
+    Name::new(format!("{EMIT_PREFIX}{}", sort.as_str()))
+        .expect("the marker prefix over an identifier is an identifier")
 }
 
 /// A message or enum in the pre-qualification sort table (`qualify`'s input): its proto path
@@ -348,10 +374,24 @@ pub(super) fn identifier(text: &str, locus: &FqName) -> Result<Name, Diagnostics
 #[cfg(test)]
 mod laws {
     use proptest::prelude::*;
+    use themelios_program::Name;
 
-    use super::{escape_reserved, lower_snake};
+    use super::{escape_reserved, lower_snake, marker};
 
     proptest! {
+        // A marker is the prefix over the sort and an identifier again, so `marker`'s `expect`
+        // is discharged over the whole identifier domain (`[_']* [a-z] ['A-Za-z0-9_]*`), not
+        // only the lowered names the policy produces.
+        #[test]
+        fn marker_of_an_identifier_is_an_identifier(
+            sort in "[_']{0,2}[a-z]['A-Za-z0-9_]{0,24}"
+        ) {
+            let sort = Name::new(sort.as_str()).expect("the generator writes identifiers");
+            let expected = format!("emit_{}", sort.as_str());
+            let marker = marker(&sort);
+            prop_assert_eq!(marker.as_str(), expected.as_str());
+        }
+
         // `lower_snake` is a normal form (§4.2): its output is already lowered, so lowering it
         // again is the identity. A mutant that failed to collapse a `_` run or trim an edge `_`
         // would not be idempotent, and this catches it over the whole identifier domain.

@@ -12,7 +12,7 @@
 //! [`Mapping`]: model::Mapping
 
 pub mod model;
-mod names;
+pub(crate) mod names;
 mod qualify;
 
 pub use model::{

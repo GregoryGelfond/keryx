@@ -1,28 +1,30 @@
 //! Stage 2 — emission (architecture §3, R2; spec §21.4, §13): the `Mapping` rendered to
-//! `core.lp` and `views.lp` directly over themelios `construct` + `render_documented` — no
-//! builder/printer trait. A pure function of the `Mapping` (P3 → golden-comparable). The
-//! honorary signature (§13.1) rides as `%!` docs on the statement carrying each line — a
-//! base-fact field's line on its own `#defined`, a message-typed field's on its parent sort's
-//! `#defined` in `core.lp` (its `views.lp` rule carries the same line for a standalone reader;
-//! architecture §4 gap #2 — themelios has no free-standing `%` block at `86c7dfb`). This
-//! module emits
-//! `core.lp` (§13.1) and `views.lp` (§13.2); the other §13 outputs — `shape.lp` (§13.3,
-//! Increment 4) and the manifest (§13.4) — are generated elsewhere.
+//! `core.lp`, `views.lp`, and `emit.lp` directly over themelios `construct` +
+//! `render_documented` — no builder/printer trait. A pure function of the `Mapping` (P3 →
+//! golden-comparable). The honorary signature (§13.1) rides as `%!` docs on the statement
+//! carrying each line — a base-fact field's line on its own `#defined`, a message-typed field's
+//! on its parent sort's `#defined` in `core.lp` (its `views.lp` rule carries the same line for
+//! a standalone reader; architecture §4 gap #2 — themelios has no free-standing `%` block at
+//! `86c7dfb`). This module emits `core.lp` (§13.1), `views.lp` (§13.2), and `emit.lp` (§13.3);
+//! the manifest (§13.4) is generated elsewhere.
 //! Submodules: `build` (themelios constructors), `signature` (the §13.1 lines), `core`,
-//! `views`.
+//! `views`, `emit_lp`.
 
 mod build;
 mod core;
+mod emit_lp;
 mod signature;
 mod views;
 
 pub use core::core;
+pub use emit_lp::{emit_diagnostic, emit_strict};
 pub use views::views;
 
 use themelios_program::prelude::*;
 use themelios_program::render::render_documented;
 
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
+use crate::policy::model::Unit;
 
 /// Combine a proto doc (if any) and a signature line into one `%!` doc string (spec §13.1,
 /// §13.2): the proto prose first, then the signature line, joined by `\n` so
@@ -39,12 +41,14 @@ pub(super) fn doc_line(proto: Option<&str>, signature: &str) -> String {
 /// statements in canonical Ord order and de-duplicates (P3); `render_documented` prepends
 /// each statement's `%!` docs. Total (§6): a themelios `Unspellable` composes an
 /// `UnrenderableFacts` diagnostic — belt-and-suspenders over a render failure that is
-/// witnessed-impossible for `core`/`views`'s own output: `Unspellable` fires only when the
-/// symbol walk spells a `Symbol::String`, and `build` never constructs one — every term
-/// `core`/`views` build is a bare `Variable` or a `Function` applied to variables (`build::var`,
-/// `build::apply`, `build::atom`), never a ground `Term::Symbolic`. The doc text (proto
-/// prose, signature lines) rides as `%!` comment lines, which `render_docs` writes verbatim
-/// and never passes through `spell_string` either.
+/// witnessed-impossible for this module's own output: `Unspellable` fires only when the
+/// renderer spells a string — a `Symbol::String`, or an `#include` path — and `build` never
+/// constructs a string symbol (every term `core`/`views`/`emit_lp` build is a bare `Variable`
+/// or a `Function` applied to variables — `build::var`, `build::apply`, `build::atom` — never
+/// a ground `Term::Symbolic`), while the one path it spells is a validated `Package` under a
+/// literal suffix ([`render_client_of_core`]), which carries no control character. The doc
+/// text (proto prose, signature lines) rides as `%!` comment lines, which `render_docs`
+/// writes verbatim and never passes through `spell_string` either.
 pub(super) fn render(statements: Vec<WithProvenance<Statement>>) -> Result<String, Diagnostics> {
     let program = Program::of(statements);
     render_documented(&program, Dialect::Clingo).map_err(|unspellable| {
@@ -54,4 +58,27 @@ pub(super) fn render(statements: Vec<WithProvenance<Statement>>) -> Result<Strin
             format!("{unspellable}"),
         ))
     })
+}
+
+/// Render a module that opens as a client of `core.lp` (spec §13.2, §13.3) — `views.lp`,
+/// `emit.lp` — as `#include "<pkg>.core.lp".` then `statements`: the include resolves the
+/// sorts and access-path terms the module's rules join on, so the module is loadable on its
+/// own. The directive heads the file, where a reader expects a dependency stated before its
+/// use; themelios's canonical statement order would sort an `Include` after every rule and
+/// `#defined`, so it is rendered as its own one-statement program ahead of the body. The one
+/// place the directive is spelled, so both clients spell it one way. Its operand is the unit's
+/// `Package` — validated at the descriptor door as dotted proto identifiers, no `"` or control
+/// byte — under the literal `core.lp` suffix, so the path is spellable and cannot break out of
+/// its quotes; the door represents that shape rather than this site re-checking it (the
+/// threat model's descriptor-door package boundary).
+pub(super) fn render_client_of_core(
+    unit: &Unit,
+    statements: Vec<WithProvenance<Statement>>,
+) -> Result<String, Diagnostics> {
+    let mut text = render(vec![build::include(format!(
+        "{}.core.lp",
+        unit.package().as_str()
+    ))])?;
+    text.push_str(&render(statements)?);
+    Ok(text)
 }
