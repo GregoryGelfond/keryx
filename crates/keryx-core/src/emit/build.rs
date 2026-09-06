@@ -1,24 +1,54 @@
 //! themelios constructors for emitted vocabulary (architecture R2): a view variable, an
 //! occupant application term over view variables, the documented `#defined` signature
 //! statement, the relational view rule, the `#include` that opens a client module, and — for
-//! `emit.lp`'s reach rules (spec §12.1) — the documented rule, an atom's positive body
-//! occurrence, and the comparison. The one place emit touches themelios's construction
-//! surface, so the binding is confined and greppable. Emitted predicate names arrive
-//! pre-validated as `Name`s from the `Mapping` (policy), so nothing here re-validates or
-//! `expect`s a runtime string; the only `expect` is on the fixed compile-time set of
-//! view-variable letters (a discharged invariant, §6).
+//! `emit.lp`'s reach rules and obligations (spec §12) — the documented rule, fact, and
+//! integrity constraint, an atom's positive and default-negated body occurrences, the
+//! comparison, and the few terms an obligation spells beside a variable: the anonymous `_`,
+//! an integer, the difference `I - 1`, and the one string constant `emit` builds, a diagnostic
+//! head's field path. The one place emit touches themelios's construction surface, so the
+//! binding is confined and greppable. Emitted predicate names arrive pre-validated as `Name`s
+//! from the `Mapping` (policy), so nothing here re-validates or `expect`s a runtime string;
+//! the only `expect` is on the fixed compile-time set of view-variable letters (a discharged
+//! invariant, §6).
 
+use themelios_program::construct::not;
 use themelios_program::prelude::*;
 
-/// A view variable, `A`/`E`/`I`/`K`/`P`/`X` — a fixed compile-time set of valid `VARIABLE`s, so
-/// the `expect` is a discharged invariant (§6); no runtime string reaches here. keryx writes
-/// `P` (parent) where §13.2's own example writes `S` (subject) — the same role, this
-/// module's own letter — and `X` for the reached parent in `emit.lp`'s closure, §12.1's own
-/// letter.
+/// A view variable, `A`/`E`/`I`/`K`/`P`/`V`/`V1`/`V2`/`X` — a fixed compile-time set of valid
+/// `VARIABLE`s, so the `expect` is a discharged invariant (§6); no runtime string reaches here.
+/// keryx writes `P` (parent) where §13.2's own example writes `S` (subject) — the same role,
+/// this module's own letter — `X` for the reached parent in `emit.lp`'s closure, §12.1's own
+/// letter, and `V`, `V1`, `V2` for the values an obligation holds or compares.
 pub(super) fn var(letter: &str) -> Term {
     Term::Variable(Variable::Named(
         VarName::new(letter).expect("view variables are valid variable names"),
     ))
+}
+
+/// The anonymous variable `_` — the argument position an obligation projects away, `f(P, _)`:
+/// each `_` is its own fresh variable, so the atom asks only that some value stand there.
+pub(super) fn anonymous() -> Term {
+    Term::Variable(Variable::Anonymous)
+}
+
+/// An integer term — the `0` an index or a range obligation compares against.
+pub(super) fn int(value: i32) -> Term {
+    Term::from(value)
+}
+
+/// A string constant — the one ground string `emit` builds: a diagnostic obligation's field
+/// path, `violates("pkg.Msg.field", P)` (spec §12.2's field-path descriptor, P1). The renderer
+/// spells it under the dialect, the one place a render can refuse; `emit::render` owns the
+/// argument for the paths keryx passes here.
+pub(super) fn text(value: &str) -> Term {
+    Term::Symbolic(Symbol::String(value.to_owned()))
+}
+
+/// The difference `term - amount` — the `I - 1` a contiguity obligation looks back to. Built
+/// through themelios's operator sugar, which canonicalizes at the door: an operator over a
+/// variable never folds, so the term renders as written, parenthesized.
+pub(super) fn minus(term: Term, amount: i32) -> Term {
+    term - amount
 }
 
 /// An application term `name(args…)` over view variables — an occupant access-path term (§4.1)
@@ -85,14 +115,39 @@ pub(super) fn view_rule(
     )
 }
 
-/// A rule `head :- body.` carrying `doc` as one `%!` doc string — a reach rule (spec §12.1)
-/// or a diagnostic obligation deriving `violates` (§12.2). The body is themelios's set:
-/// de-duplicated and rendered in its `Ord` order, not the caller's, so no emitter orders one.
+/// An integrity constraint `:- body.` carrying `doc` as one `%!` doc string — a strict
+/// obligation (spec §12.2), a falsum-headed rule. The body is themelios's set: de-duplicated
+/// and rendered in its `Ord` order, not the caller's, so no emitter orders one.
+pub(super) fn constraint(body: impl IntoBody, doc: String) -> WithProvenance<Statement> {
+    WithProvenance::new(
+        Statement::Rule(Rule::constraint(body)),
+        Provenance::empty().with_doc(doc),
+    )
+}
+
+/// A rule `head :- body.` carrying `doc` as one `%!` doc string — a reach rule (spec §12.1),
+/// a witness an obligation reads, or a diagnostic obligation deriving `violates` (§12.2). The
+/// body is themelios's set, as [`constraint`]'s.
 pub(super) fn rule(head: Atom, body: impl IntoBody, doc: String) -> WithProvenance<Statement> {
     WithProvenance::new(
         Statement::Rule(head.into_head().when(body)),
         Provenance::empty().with_doc(doc),
     )
+}
+
+/// A fact `head.` carrying `doc` as one `%!` doc string — an enum's membership table entry,
+/// `ok_e(c).` (spec §12.2).
+pub(super) fn fact(head: Atom, doc: String) -> WithProvenance<Statement> {
+    WithProvenance::new(
+        Statement::Rule(Rule::fact(head)),
+        Provenance::empty().with_doc(doc),
+    )
+}
+
+/// The atom under default negation, `not p(…)`. Default negation is a property of a body
+/// occurrence, so the result is a [`BodyElement`] and never reaches a head.
+pub(super) fn not_atom(atom: Atom) -> BodyElement {
+    not(atom)
 }
 
 /// An atom's positive body occurrence, `p(…)` — the element a mixed body (atoms beside a
@@ -165,6 +220,76 @@ mod tests {
         assert_eq!(
             render(vec![statement]).expect("renders"),
             "%!the pairs p tells apart\ndistinct(A, E) :- p(A, E), A != E.\n"
+        );
+    }
+
+    // An integrity constraint is the falsum-headed rule over its body, its doc riding as the
+    // `%!` line above it, the body in themelios's `Ord` order whatever order the caller passed.
+    #[test]
+    fn a_constraint_is_a_falsum_headed_rule_over_its_body() {
+        let statement = constraint(
+            [
+                compare(var("A"), Relation::Neq, var("E")),
+                positive(atom(name("p"), [var("A"), var("E")])),
+            ],
+            "no p pairs a value with itself".to_owned(),
+        );
+        assert_eq!(
+            render(vec![statement]).expect("renders"),
+            "%!no p pairs a value with itself\n:- p(A, E), A != E.\n"
+        );
+    }
+
+    // Default negation is a property of a body occurrence: `not_atom` yields a body element
+    // spelled `not p(…)`, which sorts after the positive elements in themelios's order, so it
+    // renders last however it was inserted.
+    #[test]
+    fn a_negated_atom_renders_under_default_negation_in_body_position() {
+        let statement = constraint(
+            [
+                not_atom(atom(name("p"), [var("P")])),
+                positive(atom(name("t"), [var("P")])),
+            ],
+            "every t is a p".to_owned(),
+        );
+        assert_eq!(
+            render(vec![statement]).expect("renders"),
+            "%!every t is a p\n:- t(P), not p(P).\n"
+        );
+    }
+
+    // A fact is a head over the empty body, rendered head-and-dot under its doc — the
+    // membership table's shape, its constant a ground application collapsed to a symbol.
+    #[test]
+    fn a_fact_renders_its_head_alone() {
+        let statement = fact(
+            atom(name("ok_level"), [apply(name("low"), Vec::new())]),
+            "membership of enum level/1  (open)".to_owned(),
+        );
+        assert_eq!(
+            render(vec![statement]).expect("renders"),
+            "%!membership of enum level/1  (open)\nok_level(low).\n"
+        );
+    }
+
+    // The obligation terms render as written: the anonymous variable as `_`, an integer as its
+    // digits, the difference parenthesized, and the string constant quoted — the diagnostic
+    // head's field path, the one string `emit` spells.
+    #[test]
+    fn the_obligation_terms_render_as_written() {
+        let statement = rule(
+            atom(name("violates"), [text("a.B.c"), var("P")]),
+            vec![
+                positive(atom(name("f"), [var("P"), anonymous()])),
+                positive(atom(name("has"), [var("P"), var("I")])),
+                compare(var("I"), Relation::Gt, int(0)),
+                not_atom(atom(name("has"), [var("P"), minus(var("I"), 1)])),
+            ],
+            "contiguity of c".to_owned(),
+        );
+        assert_eq!(
+            render(vec![statement]).expect("renders"),
+            "%!contiguity of c\nviolates(\"a.B.c\", P) :- f(P, _), has(P, I), I > 0, not has(P, (I - 1)).\n"
         );
     }
 }

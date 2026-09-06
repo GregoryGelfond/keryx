@@ -1,8 +1,8 @@
-//! Stage-2 emission of `emit.lp` (spec §13.3) — the response-root markers and the
-//! reachability closure (§12.1) — pinned to golden `.lp` per fixture in each mode. Each render
-//! is a pure, deterministic function of the `Mapping` (P3), so equality is the whole contract.
-//! Goldens are generated once, verified by eye against §12.1, and committed; a diff here is a
-//! real change, intended or a regression.
+//! Stage-2 emission of `emit.lp` (spec §13.3) — the response-root markers, the reachability
+//! closure (§12.1), and the serializability obligations (§12.2) — pinned to golden `.lp` per
+//! fixture in each mode. Each render is a pure, deterministic function of the `Mapping` (P3), so
+//! equality is the whole contract. Goldens are generated once, verified by eye against §12, and
+//! committed; a diff here is a real change, intended or a regression.
 
 use keryx_test_support as support;
 
@@ -25,13 +25,62 @@ macro_rules! golden {
     };
 }
 
+// Every scalar-valued form on one sort, each obligation `reach`-guarded and relative to its
+// sort (§12.2): an IMPLICIT field gets functionality *and* totality where an EXPLICIT one gets
+// functionality alone; a sequence gets contiguity from 0 (the index witness, the gap rule, the
+// non-negative rule); a map gets key functionality; a two-arm oneof gets its pairwise
+// exclusivity; an enum field gets membership against the enum's table, and a uint32 the
+// non-negative range — each in its singular, sequence, map-value, and map-key instance. The
+// predicate `sensor` is shared by `Gauge` and `Alarm` (§4.2): every obligation carries its own
+// sort atom, so neither sort's obligations fire on the other's occupants. Strict writes each
+// obligation as an integrity constraint; diagnostic derives `violates(path, occupant)` with the
+// field's fully-qualified proto path (the oneof's own path for exclusivity, the sort's for the
+// root instance of occupancy). Canonical order in both modes: the rules by head, the
+// constraints by body, the `#defined`s after.
+golden!(
+    obligations_strict,
+    "obligations.proto",
+    emit::emit_strict,
+    "golden/obligations.emit.lp"
+);
+golden!(
+    obligations_diagnostic,
+    "obligations.proto",
+    emit::emit_diagnostic,
+    "golden/obligations.emit-diagnostic.lp"
+);
+
+// Totality is IMPLICIT-only: a proto2 `required` field and a proto2 `optional` one are both
+// partial to the mapping, so both get functionality and neither a totality obligation —
+// `required` completeness is unenforced outbound until the mapping carries the distinction.
+// The unreferenced enum still gets its membership table: the table is the enum's own, so a
+// field in another package can hold its values to it.
+golden!(
+    required_strict,
+    "proto2.proto",
+    emit::emit_strict,
+    "golden/proto2.emit.lp"
+);
+golden!(
+    required_diagnostic,
+    "proto2.proto",
+    emit::emit_diagnostic,
+    "golden/proto2.emit-diagnostic.lp"
+);
+
 // The closure over every message-typed form on one parent sort — a singular field, a sequence,
 // a map, and a message-typed oneof arm — each reaching its occupant through the safe idiom: the
 // child sort atom binds the occupant, and the equality deconstructs it to bind the index or key
 // (§12.1). Every message sort gets a marker, and the marker carries its signature line alone —
-// the sort's proto prose stays on `core.lp`, which the module includes. The statements render
-// in themelios's canonical order — rules by head then body, the `#defined`s after — not the
-// emitter's, in both modes alike.
+// the sort's proto prose stays on `core.lp`, which the module includes. A message-typed slot has
+// no field atom of its own (§4.1), so its obligations join on occupancy: the sequence's index
+// witness reads `step(steps(P, I))`, the message arm's presence in the exclusivity pair is
+// `step(pick(P))`, and functionality of a singular slot is structural (one term), so none is
+// written. Occupancy consistency is emitted from the parent over each slot — a field atom of the
+// child sort (the base atom of `note`, the occupancy atom of `next`'s slot) on the occupant
+// obliges the occupant's sort atom — plus the root instance under each marker. The statements
+// render in themelios's canonical order — rules by head then body, the `#defined`s after — not
+// the emitter's, in both modes alike.
 golden!(
     reach_strict,
     "reach.proto",

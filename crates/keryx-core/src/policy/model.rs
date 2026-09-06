@@ -101,8 +101,10 @@ pub enum ScalarTreatment {
 
 /// A field's resolved totality (spec §5): the presence classification stage 1 makes.
 /// `Total` for IMPLICIT (the atom always exists); `Partial` for EXPLICIT and
-/// `LEGACY_REQUIRED` (`LEGACY_REQUIRED` additionally carries an outbound totality
-/// obligation, applied by `emit.lp` at Increment 4).
+/// `LEGACY_REQUIRED`. `emit.lp` emits a totality obligation for `Total` alone: the model does
+/// not tell `LEGACY_REQUIRED` from EXPLICIT, so proto2 `required` completeness is unenforced
+/// outbound — an omission faithful to the answer set, not a misrepresentation — until the
+/// distinction is carried here (a committed follow-up, not a boundary).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Totality {
     /// IMPLICIT presence — total on its sort.

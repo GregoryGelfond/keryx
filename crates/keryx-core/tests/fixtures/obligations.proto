@@ -1,0 +1,30 @@
+syntax = "proto3";
+package keryx.obligations;
+
+// A gauge: one sort carrying every scalar-valued form an obligation reaches.
+message Gauge {
+  string sensor = 1;                 // IMPLICIT: functionality and totality
+  optional int32 offset = 2;         // EXPLICIT: functionality only
+  repeated int32 samples = 3;        // sequence: contiguity from 0
+  map<string, int32> counts = 4;     // map: key functionality
+  oneof source {                     // two scalar arms: pairwise exclusivity
+    string manual = 5;
+    int32 channel = 6;
+  }
+  Level level = 7;                   // enum: membership
+  uint32 ticks = 8;                  // unsigned: non-negative range
+  repeated Level history = 9;        // sequence of enums: membership per index
+  map<string, Level> by_name = 10;   // map of enums: membership per key
+  map<uint32, uint32> by_tick = 11;  // unsigned key and value: range on each
+}
+
+// An alarm sharing `sensor` with the gauge: each sort's obligations are its own.
+message Alarm {
+  string sensor = 1;
+}
+
+// A level — the constants the membership table admits.
+enum Level {
+  LEVEL_LOW = 0;
+  LEVEL_HIGH = 1;
+}

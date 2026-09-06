@@ -4,8 +4,9 @@
 //! `reading`; an enum value strips a shared `ENUM_NAME_` prefix, §7.4). Presence and the
 //! emit form/treatment follow §5/§6/§7. Every produced name is validated into a themelios
 //! `Name` here, so downstream is total by construction (§6). keryx's own generated
-//! infrastructure names (§12.1) — the reachability predicate and the response-root marker
-//! prefix — live here as the one table the reserved-word escape and `emit` both read.
+//! infrastructure names (§12.1, §12.2) — the reachability predicate, the violation head, the
+//! response-root marker prefix, and the witness and membership-table prefixes — live here as
+//! the one table the reserved-word escape and `emit` both read.
 
 use themelios_program::Name;
 use themelios_program::symbol::NotAnIdentifier;
@@ -49,16 +50,32 @@ pub(super) fn field_name(field: &Field) -> Result<(Name, bool), Diagnostics> {
 /// parses it as negation); `reach`/`violates`/`ep` and the `emit_` prefix are keryx's own
 /// generated names (§12.1). An emitted name equal to one of these, or beginning `emit_`,
 /// is suffixed `_` and the escape is recorded in the manifest (§13.4).
-const RESERVED: &[&str] = &["not", REACH, "violates", "ep"];
+const RESERVED: &[&str] = &["not", REACH, VIOLATES, "ep"];
 
 /// The reachability predicate's identifier (spec §12.1) — keryx's own: [`RESERVED`] keeps a
 /// schema-derived name off it, and [`reach`] spells `emit.lp`'s rules with it. One string.
 const REACH: &str = "reach";
 
+/// The diagnostic obligation head's identifier (spec §12.2) — keryx's own: [`RESERVED`]
+/// keeps a schema-derived name off it, and [`violates`] spells the diagnostic `emit.lp` with
+/// it. One string.
+const VIOLATES: &str = "violates";
+
 /// The response-root marker prefix (spec §12.1) — a sort's marker is `emit_<sort>`:
 /// [`escape_reserved`] keeps a schema-derived name off the prefix, and [`marker`] derives
 /// from it. One string.
 const EMIT_PREFIX: &str = "emit_";
+
+/// The witness prefix (spec §12.2) — a field predicate's witness is `has_<field>`: the
+/// presence witness `has_f(P) :- f(P, _).` a totality obligation negates, and the index
+/// witness `has_f(P, I)` a contiguity obligation reads at `I - 1`. [`witness`] derives from
+/// it. One string.
+const WITNESS_PREFIX: &str = "has_";
+
+/// The membership-table prefix (spec §12.2, §7.4) — an enum sort's table is `ok_<enum>`, one
+/// fact per declared constant, which a membership obligation holds an enum-valued field to.
+/// [`member`] derives from it. One string.
+const MEMBER_PREFIX: &str = "ok_";
 
 /// Escape a lowered name that would collide with a reserved or generated-infrastructure
 /// identifier (spec §4.2): suffix `_`. Returns the (possibly escaped) name and whether the
@@ -85,6 +102,33 @@ pub(crate) fn reach() -> Name {
 pub(crate) fn marker(sort: &Name) -> Name {
     Name::new(format!("{EMIT_PREFIX}{}", sort.as_str()))
         .expect("the marker prefix over an identifier is an identifier")
+}
+
+/// The diagnostic obligation head `violates/2` (spec §12.2) as a validated `Name`. A fixed
+/// identifier from the table, so the `expect` is a discharged invariant (§6).
+pub(crate) fn violates() -> Name {
+    Name::new(VIOLATES).expect("the violation head is a fixed identifier")
+}
+
+/// A field predicate's witness `has_<field>` (spec §12.2): the prefix over the field's
+/// validated predicate — an identifier again, by [`marker`]'s argument, a discharged `expect`
+/// (§6) held by the law below. The prefix is not reserved-escaped: §4.2 reserves `reach`,
+/// `violates`, `emit_*`, and `ep`, and the witness is written at its own arity — `/1` for the
+/// presence witness, `/2` for the index witness — so a schema-derived name meets it only as a
+/// sort `has_<field>/1` or a singular field `has_<field>/2` beside a sequence `<field>`, which
+/// would then share the witness's extension.
+pub(crate) fn witness(field: &Name) -> Name {
+    Name::new(format!("{WITNESS_PREFIX}{}", field.as_str()))
+        .expect("the witness prefix over an identifier is an identifier")
+}
+
+/// An enum sort's membership table `ok_<enum>` (spec §12.2, §7.4): the prefix over the enum's
+/// validated sort predicate — an identifier again, by [`marker`]'s argument, a discharged
+/// `expect` (§6) held by the law below. Not reserved-escaped, as [`witness`]'s prefix is not:
+/// the table is `/1`, so a schema-derived name meets it only as a sort `ok_<enum>/1`.
+pub(crate) fn member(enumeration: &Name) -> Name {
+    Name::new(format!("{MEMBER_PREFIX}{}", enumeration.as_str()))
+        .expect("the membership-table prefix over an identifier is an identifier")
 }
 
 /// A message or enum in the pre-qualification sort table (`qualify`'s input): its proto path
@@ -376,7 +420,7 @@ mod laws {
     use proptest::prelude::*;
     use themelios_program::Name;
 
-    use super::{escape_reserved, lower_snake, marker};
+    use super::{escape_reserved, lower_snake, marker, member, witness};
 
     proptest! {
         // A marker is the prefix over the sort and an identifier again, so `marker`'s `expect`
@@ -390,6 +434,22 @@ mod laws {
             let expected = format!("emit_{}", sort.as_str());
             let marker = marker(&sort);
             prop_assert_eq!(marker.as_str(), expected.as_str());
+        }
+
+        // The witness and the membership table are their prefixes over the predicate and
+        // identifiers again — the same argument as the marker's, held over the same domain,
+        // so both `expect`s are discharged.
+        #[test]
+        fn witness_and_member_of_an_identifier_are_identifiers(
+            predicate in "[_']{0,2}[a-z]['A-Za-z0-9_]{0,24}"
+        ) {
+            let predicate = Name::new(predicate.as_str()).expect("the generator writes identifiers");
+            let expected_witness = format!("has_{}", predicate.as_str());
+            let expected_member = format!("ok_{}", predicate.as_str());
+            let witness = witness(&predicate);
+            let member = member(&predicate);
+            prop_assert_eq!(witness.as_str(), expected_witness.as_str());
+            prop_assert_eq!(member.as_str(), expected_member.as_str());
         }
 
         // `lower_snake` is a normal form (§4.2): its output is already lowered, so lowering it

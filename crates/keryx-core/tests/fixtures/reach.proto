@@ -15,4 +15,5 @@ message Plan {
 // One step of a plan.
 message Step {
   string note = 1;
+  Step next = 2;                  // a message-typed field on the child: a slot of its own
 }

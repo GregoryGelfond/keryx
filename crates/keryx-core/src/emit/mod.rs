@@ -40,13 +40,20 @@ pub(super) fn doc_line(proto: Option<&str>, signature: &str) -> String {
 /// Render a statement list to documented clingo text (spec §21.4): `Program::of` puts the
 /// statements in canonical Ord order and de-duplicates (P3); `render_documented` prepends
 /// each statement's `%!` docs. Total (§6): a themelios `Unspellable` composes an
-/// `UnrenderableFacts` diagnostic — belt-and-suspenders over a render failure that is
-/// witnessed-impossible for this module's own output: `Unspellable` fires only when the
-/// renderer spells a string — a `Symbol::String`, or an `#include` path — and `build` never
-/// constructs a string symbol (every term `core`/`views`/`emit_lp` build is a bare `Variable`
-/// or a `Function` applied to variables — `build::var`, `build::apply`, `build::atom` — never
-/// a ground `Term::Symbolic`), while the one path it spells is a validated `Package` under a
-/// literal suffix ([`render_client_of_core`]), which carries no control character. The doc
+/// `UnrenderableFacts` diagnostic. `Unspellable` fires only when the renderer spells a string
+/// — a `Symbol::String`, or an `#include` path — that bears a control character other than
+/// newline, which the clingo dialect has no escape for. Two strings reach it from this module:
+/// the `#include` path — a validated `Package` under a literal suffix
+/// ([`render_client_of_core`]), which carries no control character — and, in the diagnostic
+/// `emit.lp`, the fully-qualified proto path a `violates(path, occupant)` head names
+/// (`build::text`; the one ground string `build` constructs — every other term `core`/
+/// `views`/`emit_lp` build is a variable, a `Function` over variables, or an integer). A
+/// path's package and message segments passed the descriptor and policy doors as
+/// identifiers, and a field's own name lowered into a validated `Name` before any `Unit`
+/// formed; a oneof's name, which the exclusivity obligation's path ends in, is the
+/// descriptor's own string, so a hand-built descriptor set could carry one the dialect cannot
+/// spell — and it lands here as a diagnostic, never a panic. So the mapping is a live path
+/// with no known trigger from a compiled `.proto`, not a witnessed-impossible one. The doc
 /// text (proto prose, signature lines) rides as `%!` comment lines, which `render_docs`
 /// writes verbatim and never passes through `spell_string` either.
 pub(super) fn render(statements: Vec<WithProvenance<Statement>>) -> Result<String, Diagnostics> {

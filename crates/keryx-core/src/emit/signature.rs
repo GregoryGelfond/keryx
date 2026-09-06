@@ -40,6 +40,23 @@ pub(super) fn root(marker: &Name, sort: &SortMapping) -> String {
     )
 }
 
+/// Two arms of one oneof over their sort, in §13.1's own pair spelling (`dock | locker : oneof
+/// handoff`): `manual | channel : gauge  (oneof source)` — the line the exclusivity obligation
+/// carries, the arms in field-number order.
+pub(super) fn arms(
+    parent: &SortMapping,
+    first: &FieldMapping,
+    second: &FieldMapping,
+    oneof: &str,
+) -> String {
+    format!(
+        "{} | {} : {}  (oneof {oneof})",
+        first.predicate().as_str(),
+        second.predicate().as_str(),
+        parent.predicate().as_str()
+    )
+}
+
 /// A field's line (spec §13.1): `sensor : reading -> string  (total)`,
 /// `readings : reading_batch × index -> reading  (sequence)`,
 /// `counts : inventory × string -> int32  (map)`,
