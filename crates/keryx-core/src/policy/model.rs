@@ -256,19 +256,23 @@ impl FieldMapping {
 
     /// The relational view `emit::views` generates, if any (spec §13.2) — *derived* from the
     /// form and value, not stored: only a message-typed field gets one, and the form selects
-    /// the rule shape. A scalar or enum field is already relational; a set membership
-    /// (Increment 5) needs none. So "a view on a non-message field" is unrepresentable.
+    /// the rule shape. Yields the view kind together with the referent sort predicate the view
+    /// rule, the `emit.lp` reach closure, and slot occupancy each join on — so that pairing (a
+    /// message-typed field's kind and its referent) is named here once rather than re-derived by
+    /// each consumer re-matching the value. A scalar or enum field is already relational; a set
+    /// membership (Increment 5) needs none. So "a view on a non-message field" is unrepresentable.
     #[must_use]
-    pub fn view(&self) -> Option<ViewKind> {
-        if !matches!(self.value, ValueMapping::Message(_)) {
+    pub fn view(&self) -> Option<(ViewKind, &Name)> {
+        let ValueMapping::Message(referent) = &self.value else {
             return None;
-        }
-        match self.form {
-            EmitForm::Function | EmitForm::OneofArm { .. } => Some(ViewKind::Singular),
-            EmitForm::Sequence => Some(ViewKind::Sequence),
-            EmitForm::Map { .. } => Some(ViewKind::Map),
-            EmitForm::Set => None,
-        }
+        };
+        let kind = match self.form {
+            EmitForm::Function | EmitForm::OneofArm { .. } => ViewKind::Singular,
+            EmitForm::Sequence => ViewKind::Sequence,
+            EmitForm::Map { .. } => ViewKind::Map,
+            EmitForm::Set => return None,
+        };
+        Some((kind, referent))
     }
 
     /// Whether the predicate was reserved-word escaped with a trailing `_` (§4.2, §13.4).
@@ -524,7 +528,7 @@ mod tests {
         assert_eq!(field.presence(), Totality::Total);
         assert!(!field.escaped());
         // `view` is derived: a scalar field has no relational view (§13.2).
-        assert_eq!(field.view(), None);
+        assert!(field.view().is_none());
         assert_eq!(field.doc(), Some("the tags field"));
     }
 

@@ -10,7 +10,7 @@ use themelios_program::prelude::*;
 
 use crate::diagnostics::Diagnostics;
 use crate::emit::{build, render_client_of_core, signature};
-use crate::policy::model::{FieldMapping, SortMapping, Unit, ValueMapping, ViewKind};
+use crate::policy::model::{FieldMapping, SortMapping, Unit, ViewKind};
 
 /// Render one generation unit's `views.lp` (spec §13.2). Total (§6).
 ///
@@ -21,11 +21,11 @@ pub fn views(unit: &Unit) -> Result<String, Diagnostics> {
     let mut statements = Vec::new();
     for sort in unit.sorts() {
         for field in sort.fields() {
-            // A view exists exactly for a message-typed field: `FieldMapping::view` is `Some`
-            // iff the value is a message (and the form is not `Set`), so pairing the view kind
-            // with the referent in one match puts the referent in hand with no re-extraction —
-            // "a view on a non-message field" is not a state that reaches here to guard against.
-            if let (Some(kind), ValueMapping::Message(referent)) = (field.view(), field.value()) {
+            // A view exists exactly for a message-typed field: `FieldMapping::view` yields the
+            // view kind together with the referent iff the value is a message (and the form is
+            // not `Set`), so the referent is in hand with no re-extraction — "a view on a
+            // non-message field" is not a state that reaches here to guard against.
+            if let Some((kind, referent)) = field.view() {
                 statements.push(view(sort, field, kind, referent.clone()));
             }
         }

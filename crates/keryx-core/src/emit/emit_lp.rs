@@ -158,9 +158,9 @@ fn frame(unit: &Unit) -> Vec<WithProvenance<Statement>> {
         ));
         for field in sort.fields() {
             // Exactly a message-typed field has a slot the closure crosses: `FieldMapping::view`
-            // is `Some` iff the value is a message (and the form is not `Set`), so pairing the
-            // view kind with the referent in one match puts the child sort in hand.
-            if let (Some(kind), ValueMapping::Message(referent)) = (field.view(), field.value()) {
+            // yields the view kind together with the referent sort predicate iff the value is a
+            // message (and the form is not `Set`), so the child sort is in hand here.
+            if let Some((kind, referent)) = field.view() {
                 statements.push(step(sort, field, kind, referent.clone()));
             }
         }
@@ -238,7 +238,7 @@ fn sort_obligations(
             // the mapping does not yet produce the form.
             EmitForm::Set => {}
         }
-        if let (Some(kind), ValueMapping::Message(child)) = (field.view(), field.value()) {
+        if let Some((kind, child)) = field.view() {
             obligations.extend(slot_occupancy(unit, sort, field, kind, child));
         }
     }

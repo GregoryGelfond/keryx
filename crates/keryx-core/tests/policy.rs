@@ -68,7 +68,7 @@ fn reading_sort_and_implicit_scalar_field() {
     assert_eq!(sensor.arity(), 2);
     assert_eq!(sensor.form(), &EmitForm::Function);
     assert_eq!(sensor.presence(), Totality::Total);
-    assert_eq!(sensor.view(), None);
+    assert!(sensor.view().is_none());
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn reading_message_field_is_partial_with_a_singular_view() {
     assert_eq!(detail.arity(), 2);
     assert_eq!(detail.form(), &EmitForm::Function);
     assert_eq!(detail.presence(), Totality::Partial);
-    assert_eq!(detail.view(), Some(ViewKind::Singular));
+    assert_eq!(detail.view().map(|(k, _)| k), Some(ViewKind::Singular));
     match detail.value() {
         ValueMapping::Message(referent) => assert_eq!(referent.as_str(), "detail"),
         ValueMapping::Scalar { .. } | ValueMapping::Enum(_) => {
@@ -150,7 +150,7 @@ fn maps_scalar_value_has_no_view() {
             treatment: ScalarTreatment::Native
         }
     );
-    assert_eq!(counts.view(), None);
+    assert!(counts.view().is_none());
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn maps_message_value_gets_a_map_view() {
             key_treatment: ScalarTreatment::DecimalString,
         }
     );
-    assert_eq!(items.view(), Some(ViewKind::Map));
+    assert_eq!(items.view().map(|(k, _)| k), Some(ViewKind::Map));
     match items.value() {
         ValueMapping::Message(referent) => assert_eq!(referent.as_str(), "item"),
         ValueMapping::Scalar { .. } | ValueMapping::Enum(_) => {
@@ -314,7 +314,7 @@ fn singular_enum_field_has_no_view() {
     assert_eq!(kind.arity(), 2);
     assert_eq!(kind.form(), &EmitForm::Function);
     assert_eq!(kind.presence(), Totality::Total);
-    assert_eq!(kind.view(), None);
+    assert!(kind.view().is_none());
     match kind.value() {
         ValueMapping::Enum(referent) => assert_eq!(referent.as_str(), "kind"),
         ValueMapping::Scalar { .. } | ValueMapping::Message(_) => {
@@ -332,7 +332,7 @@ fn repeated_message_field_gets_a_sequence_view() {
     assert_eq!(notes.arity(), 3);
     assert_eq!(notes.form(), &EmitForm::Sequence);
     assert_eq!(notes.presence(), Totality::Total);
-    assert_eq!(notes.view(), Some(ViewKind::Sequence));
+    assert_eq!(notes.view().map(|(k, _)| k), Some(ViewKind::Sequence));
     match notes.value() {
         ValueMapping::Message(referent) => assert_eq!(referent.as_str(), "note"),
         ValueMapping::Scalar { .. } | ValueMapping::Enum(_) => {
@@ -348,7 +348,7 @@ fn repeated_and_mapped_enum_values_have_no_view() {
 
     let kinds = field(sample, "kinds");
     assert_eq!(kinds.form(), &EmitForm::Sequence);
-    assert_eq!(kinds.view(), None);
+    assert!(kinds.view().is_none());
     match kinds.value() {
         ValueMapping::Enum(referent) => assert_eq!(referent.as_str(), "kind"),
         ValueMapping::Scalar { .. } | ValueMapping::Message(_) => {
@@ -364,7 +364,7 @@ fn repeated_and_mapped_enum_values_have_no_view() {
             key_treatment: ScalarTreatment::Text,
         }
     );
-    assert_eq!(tags.view(), None);
+    assert!(tags.view().is_none());
     match tags.value() {
         ValueMapping::Enum(referent) => assert_eq!(referent.as_str(), "kind"),
         ValueMapping::Scalar { .. } | ValueMapping::Message(_) => {
