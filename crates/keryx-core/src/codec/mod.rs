@@ -10,6 +10,7 @@
 //! crosses the surface: a caller names a root *type* by proto name, and the descriptor it
 //! resolves to stays inside.
 
+pub(crate) mod assemble;
 pub(crate) mod engine;
 pub(crate) mod guard;
 pub(crate) mod scalar;
@@ -195,6 +196,76 @@ impl Codec {
             sort,
         )
     }
+
+    /// Reassemble an answer set (spec §12.3) — the outbound door, the mirror of [`shred`]. Every
+    /// `emit_<sort>(root)` marker names one message to rebuild; each is reconstructed from the
+    /// answer set's field and occupancy atoms and encoded to the binary wire form, and the results
+    /// are ordered by the marker atom's `Symbol::Ord` (predicate then root, so two roots of one type
+    /// stay distinguishable). Every message or every diagnosis, never a partial reassembly beside a
+    /// diagnosis (§6, property 4): an orphan field atom, a `violates` atom present, or any root's
+    /// refusal fails the whole call. Binary only in this increment; the other output forms and the
+    /// `.lp` read arrive with their tasks.
+    ///
+    /// # Errors
+    ///
+    /// `ShapeViolation` for an orphan field atom or a diagnostic theory's `violates` atom;
+    /// `ShapeViolation`/`TermTypeMismatch`/`ValueOutOfRange`/`UnknownEnumValue`/`UnannotatedFloat`/
+    /// `ReassembledTooDeep` from a root's reassembly (their meanings as the reassembler's kinds
+    /// state); `DependencyFault` for a contained encode fault.
+    ///
+    /// [`shred`]: Codec::shred
+    pub fn reassemble(&self, answer_set: &[Symbol]) -> Result<Reassembled, Diagnostics> {
+        let slots = assemble::SlotIndex::build(&self.mapping, &self.index, answer_set);
+        // The answer-set-wide refusals: a field atom no occupant declares (property 4), and each
+        // `violates(path, occupant)` the diagnostic theory derived (refused mode-free).
+        let mut diagnostics: Vec<Diagnostic> = slots.orphans().to_vec();
+        diagnostics.extend(
+            slots
+                .violations()
+                .iter()
+                .map(|violates| violation(violates)),
+        );
+        // Order the roots by their marker atom's `Symbol::Ord` (F5), so the result is deterministic
+        // and two roots of one type keep distinct positions.
+        let mut markers = slots.markers().to_vec();
+        markers.sort_by_key(|(_, first)| *first);
+        let mut messages = Vec::new();
+        for (sort, marker) in markers {
+            let Some(root) = assemble::marker_root(marker) else {
+                continue; // a marker with no root argument keys nothing; skip (never pushed by the index)
+            };
+            match assemble::assemble(&self.mapping, &self.index, &self.pool, &slots, root, sort) {
+                Ok(bytes) => messages.push(Emitted {
+                    type_name: sort.in_mapping(&self.mapping).proto().as_str().to_owned(),
+                    root: root.clone(),
+                    bytes,
+                }),
+                Err(refusals) => diagnostics.extend(refusals.iter().cloned()),
+            }
+        }
+        if let Some(diagnostics) = Diagnostics::collect(diagnostics) {
+            return Err(diagnostics);
+        }
+        Ok(Reassembled { messages })
+    }
+}
+
+/// A `ShapeViolation` from a diagnostic theory's `violates(path, occupant)` atom — named at the
+/// field path the atom's first argument carries (§12.2, §12.3). The occupant is not echoed (the
+/// answer set is the adversary's).
+fn violation(violates: &Symbol) -> Diagnostic {
+    let path = match violates {
+        Symbol::Function { arguments, .. } => match arguments.first() {
+            Some(Symbol::String(path)) => path.clone(),
+            _ => String::new(),
+        },
+        _ => String::new(),
+    };
+    Diagnostic::new(
+        DiagnosticKind::ShapeViolation,
+        Locus::at(path),
+        "the diagnostic serializability theory derived a violation for this field",
+    )
 }
 
 /// The facts of one shredded payload (spec §11), held once: the ground [`Symbol`]s a consuming
@@ -242,6 +313,54 @@ impl Facts {
                 format!("{unspellable}"),
             ))
         })
+    }
+}
+
+/// The messages one answer set reassembles to (spec §12.3) — the outbound counterpart of [`Facts`].
+/// Each [`Emitted`] is one message the answer set's `emit_<sort>` markers named, encoded to the wire;
+/// the order is the markers' `Symbol::Ord`, so the result is deterministic and two roots of one type
+/// keep distinct positions.
+#[derive(Clone, Debug)]
+pub struct Reassembled {
+    messages: Vec<Emitted>,
+}
+
+impl Reassembled {
+    /// The reassembled messages, in marker order.
+    #[must_use]
+    pub fn messages(&self) -> &[Emitted] {
+        &self.messages
+    }
+}
+
+/// One reassembled message (spec §12.3): the fully-qualified proto type it is an instance of, the
+/// answer-set root [`Symbol`] its `emit_<sort>` marker named (carried so two roots of one type are
+/// told apart), and its encoded wire bytes. No engine type crosses out — the bytes are the wire form
+/// (binary in this increment), as a payload arrives on the inbound door.
+#[derive(Clone, Debug)]
+pub struct Emitted {
+    type_name: String,
+    root: Symbol,
+    bytes: Vec<u8>,
+}
+
+impl Emitted {
+    /// The fully-qualified proto path of the message's type.
+    #[must_use]
+    pub fn type_name(&self) -> &str {
+        &self.type_name
+    }
+
+    /// The answer-set root the message was reassembled from — its `emit_<sort>` marker's occupant.
+    #[must_use]
+    pub fn root(&self) -> &Symbol {
+        &self.root
+    }
+
+    /// The message's encoded wire bytes.
+    #[must_use]
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
     }
 }
 

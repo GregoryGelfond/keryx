@@ -28,6 +28,7 @@ use std::borrow::Cow;
 use std::panic::resume_unwind;
 use std::thread;
 
+use prost::Message as _;
 use prost_reflect::{
     DynamicMessage, FieldDescriptor, Kind, MapKey, MessageDescriptor, ReflectMessage as _, Value,
 };
@@ -341,6 +342,120 @@ fn undecodable(desc: &MessageDescriptor, error: &str) -> Diagnostics {
     .into()
 }
 
+/// The stack the binary encode runs on: 8 MiB, on a thread keryx sizes itself — the outbound mirror
+/// of [`TEXTPROTO_PARSE_STACK`]/[`JSON_DECODE_STACK`]. The engine's binary serializer recurses
+/// natively on every nested message and bounds nothing (`encode_raw` → `encode_field` → the nested
+/// `encode_raw`, prost-reflect 0.16.5 `src/dynamic/message.rs:134`), so a message admitted at the
+/// reconstruction ceiling — `super::walk::NESTING_CEILING` levels, the depth the reassembly walk
+/// admits before it builds anything — must fit whatever stack carries the encode, and a
+/// sub-standard caller thread must not overflow. Depth-bounding alone does not close the abort axis
+/// (a message *at* the ceiling still recurses that deep natively at encode), so the encode runs
+/// here with the dependency boundary's containment frame *inside* the thread, exactly as the
+/// inbound parse and decode do — the margin keryx's by construction, not the host's. Sized by the
+/// inbound threads' precedent; its **measure of record** — the encoders' frames per level against
+/// the pinned engine, in debug and release — is owed where the ceiling is exercised (the
+/// reassembler's depth instrument), as the inbound stacks cite theirs (*Open*).
+const ENCODE_STACK: usize = 8 << 20;
+
+/// A message under construction — keryx's builder seam over prost-reflect, so the reassembly walk
+/// (`super::assemble`) sets fields in keryx's terms. It wraps a [`DynamicMessage`] and routes every
+/// field through the engine's **validating** setter ([`DynamicMessage::try_set_field_by_number`]),
+/// which admits exactly the `(Value, Kind)` pairings the encoders accept — so a value that does not
+/// fit the field's kind is refused here (a `TermTypeMismatch`), before any message is encoded,
+/// rather than reaching one of the engine's encode-time mismatch panics. keryx's own inverse §6
+/// lowering (`super::scalar::raise`) validates each value first, so a refusal at this seam is
+/// defense-in-depth over an axis already foreclosed — a keryx invariant, not a payload's fault.
+pub(crate) struct Building {
+    message: DynamicMessage,
+}
+
+impl Building {
+    /// A new, empty message of `desc`.
+    pub(crate) fn new(desc: &MessageDescriptor) -> Building {
+        Building {
+            message: DynamicMessage::new(desc.clone()),
+        }
+    }
+
+    /// Set the field numbered `number` to `value` through the validating setter — a value whose type
+    /// does not fit the field, or a number the descriptor does not declare, is a `TermTypeMismatch`
+    /// at `at`, never a panic. Defense-in-depth: keryx's inverse §6 lowering validated `value`
+    /// first, so a refusal here would be a keryx invariant reached, caught before the encode.
+    ///
+    /// # Errors
+    ///
+    /// `TermTypeMismatch` at `at` when the engine's setter rejects the `(value, field)` pairing.
+    pub(crate) fn set(&mut self, number: i32, value: Value, at: &str) -> Result<(), Diagnostic> {
+        let field = u32::try_from(number).map_err(|_| set_mismatch(number, at))?;
+        self.message
+            .try_set_field_by_number(field, value)
+            .map_err(|_| set_mismatch(number, at))
+    }
+
+    /// The built message as a field value, for nesting into a parent slot (a singular message field,
+    /// a sequence element, a map value).
+    pub(crate) fn into_value(self) -> Value {
+        Value::Message(self.message)
+    }
+}
+
+/// Encode a built message to binary wire bytes (`.binpb`) — the outbound mirror of
+/// [`decode_binary`]. The encode runs on a thread keryx sizes ([`ENCODE_STACK`]) with the
+/// containment frame *inside* it, as the inbound sized decodes do: a message admitted at the
+/// reconstruction ceiling recurses that deep natively in the engine's unbounded serializer, and a
+/// stack overflow aborts rather than unwinds, so the sized thread *prevents* it (for every message
+/// the walk admits) and the frame catches what does unwind — an unforeseen engine panic — as a
+/// `DependencyFault`. The mismatch-panic axis is foreclosed before here by [`Building::set`]'s
+/// validating setter. The encode is single-threaded for all that it runs on its own thread: the
+/// thread exists for its stack alone, the caller waits on it, and the bytes come back owned.
+///
+/// # Errors
+///
+/// `DependencyFault` for a contained engine panic (defense-in-depth: no keryx-admitted message is
+/// known to fault the encode, the mismatch axis being foreclosed at the setter).
+pub(crate) fn encode_binary(building: Building) -> Result<Vec<u8>, Diagnostics> {
+    let message = building.message;
+    let operation = "encoding a payload";
+    thread::scope(|scope| {
+        // The closure owns `message`; a fault drops it with the unwind, so nothing keryx observes
+        // survives it. The encode reads no process-global state — it serializes the owned tree — so
+        // the `AssertUnwindSafe` inside `contain` is sound. The frame's thread-local flag is set on
+        // the thread the encode runs on, the thread a panic hook consults it from.
+        let handle = thread::Builder::new()
+            .name("keryx-encode".to_owned())
+            .stack_size(ENCODE_STACK)
+            .spawn_scoped(scope, move || {
+                contain(Dependency::ProstReflect, operation, || {
+                    message.encode_to_vec()
+                })
+            })
+            // A thread the host cannot spawn is the host out of a resource, not the message's doing
+            // (by here it is built and bounded) — the consuming service's to contain under resource
+            // limits (the threat model's division of labor), as for the inbound parse thread.
+            .expect("the host can spawn the encode thread");
+        handle.join().unwrap_or_else(|unwind| {
+            // A panic that escaped the frame — none can — is re-raised inside a frame here, on the
+            // caller's thread, contained as the one seam would have. `resume_unwind` runs no hook.
+            contain(Dependency::ProstReflect, operation, || {
+                resume_unwind(unwind)
+            })
+        })
+    })
+}
+
+/// `TermTypeMismatch` at `at`: the validating setter rejected a value keryx's inverse §6 lowering
+/// had already accepted — a keryx invariant reached, caught before the encode. Names the field
+/// number, never the value (an answer set's is the adversary's).
+fn set_mismatch(number: i32, at: &str) -> Diagnostic {
+    Diagnostic::new(
+        DiagnosticKind::TermTypeMismatch,
+        Locus::at(at),
+        format!(
+            "the value built for field number {number} does not fit its declared type; the engine's validating setter refused it after keryx's own §6 validation (a keryx invariant, caught before any encode)"
+        ),
+    )
+}
+
 /// The one decoded tree of a payload, owned. Every view beneath it borrows from here — the root
 /// handle, each sub-message, each datum — so the tree is decoded once and never copied, and it
 /// lives as long as the walk that reads it.
@@ -588,7 +703,10 @@ mod tests {
         MessageOptions,
     };
 
-    use super::{Datum, Decoded, Element, FieldValue, Key, SubMessage, decode_binary};
+    use super::{
+        Building, Datum, Decoded, Element, FieldValue, Key, SubMessage, decode_binary,
+        encode_binary,
+    };
     use crate::descriptor::{self, RetainedPool};
     use crate::diagnostics::DiagnosticKind;
 
@@ -610,6 +728,95 @@ mod tests {
         let (_, pool) = descriptor::ingest_retaining(&keryx_test_support::compile_fixture(name))
             .expect("the fixture ingests");
         pool
+    }
+
+    #[test]
+    fn a_built_message_encodes_to_the_canonical_wire_bytes() {
+        // Build a `Reading { string sensor = 1; int32 temp_c = 2; }` through the seam, encode it,
+        // and get exactly the canonical wire form the reference builder writes (fields in number
+        // order) — the outbound mirror of `decode_binary`, and the byte-identity the round-trip
+        // property rests on. It also decodes back to a tree the walk would read the same.
+        let pool = thermal_pool();
+        let reading = pool
+            .message_by_name("thermal.v1.Reading")
+            .expect("the pool declares Reading");
+        let mut building = Building::new(&reading);
+        building
+            .set(
+                1,
+                Value::String("s-1".to_owned()),
+                "thermal.v1.Reading.sensor",
+            )
+            .expect("sensor sets");
+        building
+            .set(2, Value::I32(21), "thermal.v1.Reading.temp_c")
+            .expect("temp_c sets");
+        let bytes = encode_binary(building).expect("the built message encodes");
+        assert_eq!(bytes, keryx_test_support::wire::reading("s-1", 21));
+        // And it decodes back as `Reading` — no panic, a clean tree.
+        decode_binary(&reading, &bytes).expect("the encoded bytes decode back as Reading");
+    }
+
+    #[test]
+    fn a_mismatched_set_is_a_term_type_mismatch_never_a_panic() {
+        // `sensor` (field 1) is a `string`; a numeric value does not fit its kind. The validating
+        // setter refuses it as a `TermTypeMismatch` at the field's path, before any encode — the
+        // engine's encode-time mismatch panic never reached (the axis `Building::set` forecloses).
+        let pool = thermal_pool();
+        let reading = pool
+            .message_by_name("thermal.v1.Reading")
+            .expect("the pool declares Reading");
+        let mut building = Building::new(&reading);
+        let error = building
+            .set(1, Value::I32(7), "thermal.v1.Reading.sensor")
+            .expect_err("a numeric value does not fit a string field");
+        assert_eq!(error.kind(), DiagnosticKind::TermTypeMismatch);
+        assert_eq!(error.locus().path(), Some("thermal.v1.Reading.sensor"));
+    }
+
+    #[test]
+    fn a_nested_message_sequence_encodes_through_into_value() {
+        // A `ReadingBatch { repeated Reading readings = 1; }`: each element is a `Building` finished
+        // through `into_value` to a `Value::Message`, gathered into a `Value::List`, and set on the
+        // parent — the nested-message and sequence path the reassembly walk composes. The bytes are
+        // the canonical wire form the reference batch builder writes.
+        let pool = thermal_pool();
+        let batch_desc = pool
+            .message_by_name("thermal.v1.ReadingBatch")
+            .expect("the pool declares ReadingBatch");
+        let reading_desc = pool
+            .message_by_name("thermal.v1.Reading")
+            .expect("the pool declares Reading");
+        let reading = |sensor: &str, temp_c: i32| {
+            let mut building = Building::new(&reading_desc);
+            building
+                .set(
+                    1,
+                    Value::String(sensor.to_owned()),
+                    "thermal.v1.Reading.sensor",
+                )
+                .expect("sensor sets");
+            building
+                .set(2, Value::I32(temp_c), "thermal.v1.Reading.temp_c")
+                .expect("temp_c sets");
+            building.into_value()
+        };
+        let mut batch = Building::new(&batch_desc);
+        batch
+            .set(
+                1,
+                Value::List(vec![reading("s-1", 1), reading("s-2", 2)]),
+                "thermal.v1.ReadingBatch.readings",
+            )
+            .expect("readings sets");
+        let bytes = encode_binary(batch).expect("the batch encodes");
+        assert_eq!(
+            bytes,
+            keryx_test_support::wire::batch(&[
+                keryx_test_support::wire::reading("s-1", 1),
+                keryx_test_support::wire::reading("s-2", 2),
+            ])
+        );
     }
 
     /// A hand-built pool carrying the kinds no fixture declares: the `uint32` and `double` scalars

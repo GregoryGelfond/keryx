@@ -16,6 +16,7 @@
 
 use std::fmt::{self, Write as _};
 
+use prost_reflect::Value;
 use themelios_program::prelude::*;
 
 use crate::codec::engine::Datum;
@@ -199,12 +200,207 @@ fn unannotated(scalar: Scalar, at: &str) -> Diagnostic {
     )
 }
 
+/// Raise one answer-set [`Symbol`] to the prost-reflect [`Value`] its field carries — the exact
+/// inverse of [`lower`], under the field's `kind` and `treatment` — or refuse it at `at`, the
+/// field's path (spec §12.3). The reassembly walk applies it to each scalar an occupant carries (a
+/// singular value, a sequence element, a map value, a map key alike); enum values the walk raises
+/// itself, against the referent enum's mapping (§7.4).
+///
+/// | treatment | kind | symbol | value | refusal |
+/// |---|---|---|---|---|
+/// | `Native` | int32/sint32/sfixed32 | `Number(n)` | `I32(n)` | another shape → `TermTypeMismatch` |
+/// | `Native` | uint32/fixed32 | `Number(n)`, `n ≥ 0` | `U32(n)` | `n < 0` → `ValueOutOfRange`; another shape → `TermTypeMismatch` |
+/// | `DecimalString` | int64/sint64/sfixed64 | `String(s)`, `s` an `i64` | `I64` | non-`i64` decimal → `ValueOutOfRange`; another shape → `TermTypeMismatch` |
+/// | `DecimalString` | uint64/fixed64 | `String(s)`, `s` a `u64` | `U64` | non-`u64` decimal → `ValueOutOfRange`; another shape → `TermTypeMismatch` |
+/// | `Bool` | bool | `true` / `false` constant | `Bool` | another shape → `TermTypeMismatch` |
+/// | `Text` | string | `String(s)` | `String(s)` | another shape → `TermTypeMismatch` |
+/// | `HexString` | bytes | `String(hex)`, even-length lowercase hex | `Bytes` | odd/non-hex or another shape → `TermTypeMismatch` |
+/// | `NeedsAnnotation` | float/double | any | — | `UnannotatedFloat`, whatever the symbol |
+///
+/// `NeedsAnnotation` is **reachable, not `unreachable!`**: `gen` admits an unannotated `float`/
+/// `double` field (the refusal is codec-time, §6/§11), so an arbitrary answer set can name it — the
+/// outbound modality reaches what the inbound shred refused. A `Symbol` of the wrong shape for the
+/// kind is a `TermTypeMismatch` (§12.3), never a panic (§6): the answer set is the adversary's, so a
+/// mis-shaped term is refused as a value, never lowered as another kind. A refusal names the field's
+/// declared type and the term's *shape*, never the term's content — the answer set is the
+/// adversary's to flood a diagnostic with, as a payload's text is inbound.
+///
+/// # Errors
+///
+/// The refusals of the table, each one `Diagnostic` at `at` — one value, one field; the walk
+/// collects across fields.
+pub(crate) fn raise(
+    value: &Symbol,
+    kind: Scalar,
+    treatment: ScalarTreatment,
+    at: &str,
+) -> Result<Value, Diagnostic> {
+    match treatment {
+        ScalarTreatment::Native => raise_native(value, kind, at),
+        ScalarTreatment::DecimalString => raise_decimal(value, kind, at),
+        ScalarTreatment::Bool => raise_bool(value, at),
+        ScalarTreatment::Text => match value {
+            Symbol::String(text) => Ok(Value::String(text.clone())),
+            _ => Err(term_type_mismatch(kind, value, at)),
+        },
+        ScalarTreatment::HexString => raise_hex(value, kind, at),
+        ScalarTreatment::NeedsAnnotation => Err(unannotated(kind, at)),
+    }
+}
+
+/// A `Native` scalar: an integer symbol to `I32` (signed 32) or `U32` (uint32/fixed32) — the inverse
+/// of `lower`'s `Native` branch, which reads an `I32` or a `U32` datum. `Symbol::Number` is an `i32`
+/// (the engine's width, so a uint32 above `i32::MAX` was refused inbound at `lower`), so the only
+/// range refusal here is a negative value where the kind is unsigned.
+fn raise_native(value: &Symbol, kind: Scalar, at: &str) -> Result<Value, Diagnostic> {
+    let Symbol::Number(number) = value else {
+        return Err(term_type_mismatch(kind, value, at));
+    };
+    if matches!(kind, Scalar::Uint32 | Scalar::Fixed32) {
+        u32::try_from(*number)
+            .map(Value::U32)
+            .map_err(|_| negative_unsigned(kind, *number, at))
+    } else {
+        Ok(Value::I32(*number))
+    }
+}
+
+/// A `DecimalString` scalar: a decimal-string symbol parsed to `I64` (signed 64) or `U64`
+/// (uint64/fixed64) — the inverse of `lower`'s `decimal`, which spelled a 64-bit integer as its
+/// decimal text. The type's range *is* the parsed integer type's, so a decimal outside it (or not a
+/// decimal at all) does not parse and is `ValueOutOfRange`; a non-string symbol is a shape mismatch.
+fn raise_decimal(value: &Symbol, kind: Scalar, at: &str) -> Result<Value, Diagnostic> {
+    let Symbol::String(text) = value else {
+        return Err(term_type_mismatch(kind, value, at));
+    };
+    if matches!(kind, Scalar::Uint64 | Scalar::Fixed64) {
+        text.parse::<u64>()
+            .map(Value::U64)
+            .map_err(|_| decimal_out_of_range(kind, at))
+    } else {
+        text.parse::<i64>()
+            .map(Value::I64)
+            .map_err(|_| decimal_out_of_range(kind, at))
+    }
+}
+
+/// A `Bool` scalar: the `true` / `false` constant to `Value::Bool` — the inverse of `lower`'s
+/// `terms::constant`. A constant is a positive, zero-argument function; any other symbol (a number,
+/// a string, another constant, a strongly-negated `-true`) is a shape mismatch.
+fn raise_bool(value: &Symbol, at: &str) -> Result<Value, Diagnostic> {
+    if let Symbol::Function {
+        name,
+        arguments,
+        sign: Sign::Positive,
+    } = value
+        && arguments.is_empty()
+    {
+        match name.as_str() {
+            "true" => return Ok(Value::Bool(true)),
+            "false" => return Ok(Value::Bool(false)),
+            _ => {}
+        }
+    }
+    Err(term_type_mismatch(Scalar::Bool, value, at))
+}
+
+/// A `HexString` scalar: a lowercase even-length hex string to `Value::Bytes` — the inverse of
+/// `lower`'s `hex`. Any deviation (odd length, an uppercase or non-hex digit, a non-string symbol)
+/// is a shape mismatch: the exact inverse admits only what keryx emits.
+fn raise_hex(value: &Symbol, kind: Scalar, at: &str) -> Result<Value, Diagnostic> {
+    let Symbol::String(text) = value else {
+        return Err(term_type_mismatch(kind, value, at));
+    };
+    match unhex(text) {
+        Some(bytes) => Ok(Value::Bytes(bytes.into())),
+        None => Err(term_type_mismatch(kind, value, at)),
+    }
+}
+
+/// Decode a lowercase, even-length hex string to bytes (the inverse of [`hex`]), or `None` on an odd
+/// length or a non-lowercase-hex byte. Reads bytes, not chars: a multibyte character is not a hex
+/// digit, so it is rejected by the digit check.
+fn unhex(text: &str) -> Option<Vec<u8>> {
+    let bytes = text.as_bytes();
+    if !bytes.len().is_multiple_of(2) {
+        return None;
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 2);
+    for pair in bytes.chunks_exact(2) {
+        out.push((hex_digit(pair[0])? << 4) | hex_digit(pair[1])?);
+    }
+    Some(out)
+}
+
+/// One lowercase hex digit's value, or `None` — `[0-9a-f]` alone, as [`hex`] writes.
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        _ => None,
+    }
+}
+
+/// The term-shape word a `TermTypeMismatch` names — the symbol's kind, never its content.
+fn symbol_shape(value: &Symbol) -> &'static str {
+    match value {
+        Symbol::Number(_) => "a number",
+        Symbol::String(_) => "a string",
+        Symbol::Function { arguments, .. } if arguments.is_empty() => "a constant",
+        Symbol::Function { .. } => "a compound term",
+        Symbol::Tuple(_) => "a tuple",
+        Symbol::Infimum | Symbol::Supremum => "a term-order bound",
+    }
+}
+
+/// `TermTypeMismatch`: a term whose shape does not lower to the field's declared type (§12.3). Names
+/// the type and the term's shape — never its content (the answer set is the adversary's).
+fn term_type_mismatch(kind: Scalar, value: &Symbol, at: &str) -> Diagnostic {
+    refuse(
+        DiagnosticKind::TermTypeMismatch,
+        at,
+        format!(
+            "the answer set carries {} where the field's type `{}` is declared; the term does not lower to that type (§12.3)",
+            symbol_shape(value),
+            kind.as_str()
+        ),
+    )
+}
+
+/// `ValueOutOfRange`: a negative native integer where the kind is unsigned — refused, never wrapped
+/// (the threat model's integrity property). The value is a bounded `i32`, so it is named.
+fn negative_unsigned(kind: Scalar, value: i32, at: &str) -> Diagnostic {
+    refuse(
+        DiagnosticKind::ValueOutOfRange,
+        at,
+        format!(
+            "the {} value {value} is negative, but {} is unsigned; the answer set is refused rather than wrapped",
+            kind.as_str(),
+            kind.as_str()
+        ),
+    )
+}
+
+/// `ValueOutOfRange`: a decimal string that is not a value the kind's integer range carries —
+/// refused, never truncated. The string is not echoed (the answer set is the adversary's).
+fn decimal_out_of_range(kind: Scalar, at: &str) -> Diagnostic {
+    refuse(
+        DiagnosticKind::ValueOutOfRange,
+        at,
+        format!(
+            "the decimal string is not a valid {} value (a decimal integer within the type's range); refused rather than truncated",
+            kind.as_str()
+        ),
+    )
+}
+
 #[cfg(test)]
 mod tests {
+    use prost_reflect::Value;
     use themelios_program::prelude::*;
     use themelios_program::render::render;
 
-    use super::lower;
+    use super::{lower, raise};
     use crate::codec::engine::Datum;
     use crate::descriptor::model::Scalar;
     use crate::diagnostics::{Diagnostic, DiagnosticKind, Locus};
@@ -573,5 +769,180 @@ mod tests {
         // string: the discharge is checked, not wildcarded — loud, never a value lowered as
         // another kind and never a refusal that misnames a keryx bug as the payload's fault.
         let _ = lower(Scalar::Int32, ScalarTreatment::Native, &Datum::Str("x"), AT);
+    }
+
+    // --- the inverse policy: `raise`, a symbol to the value it was lowered from ---
+
+    fn raised(kind: Scalar, treatment: ScalarTreatment, symbol: &Symbol) -> Value {
+        raise(symbol, kind, treatment, AT).expect("admitted")
+    }
+
+    fn refused_raise(kind: Scalar, treatment: ScalarTreatment, symbol: &Symbol) -> Diagnostic {
+        raise(symbol, kind, treatment, AT).expect_err("refused")
+    }
+
+    /// A keryx-vocabulary constant symbol (a positive, zero-argument function), as `lower` emits a
+    /// bool.
+    fn constant(name: &str) -> Symbol {
+        Symbol::Function {
+            name: Name::new(name).expect("an identifier"),
+            arguments: Vec::new(),
+            sign: Sign::Positive,
+        }
+    }
+
+    #[test]
+    fn raise_lifts_each_admitted_symbol_to_the_value_lower_produced_it_from() {
+        use ScalarTreatment::{Bool, DecimalString, HexString, Native, Text};
+        // Signed and unsigned 32-bit natives, the 64-bit decimal strings, the booleans, a string,
+        // and hex bytes — the §6 table read backwards.
+        assert_eq!(
+            raised(Scalar::Int32, Native, &Symbol::Number(-7)),
+            Value::I32(-7)
+        );
+        assert_eq!(
+            raised(Scalar::Sfixed32, Native, &Symbol::Number(i32::MIN)),
+            Value::I32(i32::MIN)
+        );
+        assert_eq!(
+            raised(Scalar::Uint32, Native, &Symbol::Number(0)),
+            Value::U32(0)
+        );
+        assert_eq!(
+            raised(Scalar::Fixed32, Native, &Symbol::Number(i32::MAX)),
+            Value::U32(top())
+        );
+        assert_eq!(
+            raised(
+                Scalar::Int64,
+                DecimalString,
+                &Symbol::String("-9007199254740993".to_owned())
+            ),
+            Value::I64(-9_007_199_254_740_993)
+        );
+        assert_eq!(
+            raised(
+                Scalar::Uint64,
+                DecimalString,
+                &Symbol::String("18446744073709551615".to_owned())
+            ),
+            Value::U64(u64::MAX)
+        );
+        assert_eq!(
+            raised(Scalar::Bool, Bool, &constant("true")),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            raised(Scalar::Bool, Bool, &constant("false")),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            raised(
+                Scalar::String,
+                Text,
+                &Symbol::String("line \"two\" \\ é 字".to_owned())
+            ),
+            Value::String("line \"two\" \\ é 字".to_owned())
+        );
+        assert_eq!(
+            raised(
+                Scalar::Bytes,
+                HexString,
+                &Symbol::String("00deadbeef0f".to_owned())
+            ),
+            Value::Bytes(vec![0x00, 0xde, 0xad, 0xbe, 0xef, 0x0f].into())
+        );
+        assert_eq!(
+            raised(Scalar::Bytes, HexString, &Symbol::String(String::new())),
+            Value::Bytes(Vec::new().into())
+        );
+    }
+
+    #[test]
+    fn raise_refuses_a_mis_shaped_or_out_of_range_symbol_never_a_panic() {
+        use DiagnosticKind::{TermTypeMismatch, UnannotatedFloat, ValueOutOfRange};
+        use ScalarTreatment::{Bool, DecimalString, HexString, Native, NeedsAnnotation};
+        let table = [
+            // A negative native where the kind is unsigned — refused, never wrapped.
+            (Scalar::Uint32, Native, Symbol::Number(-1), ValueOutOfRange),
+            // A decimal beyond the type's range, and one that is not a decimal at all.
+            (
+                Scalar::Uint64,
+                DecimalString,
+                Symbol::String("99999999999999999999999".to_owned()),
+                ValueOutOfRange,
+            ),
+            (
+                Scalar::Int64,
+                DecimalString,
+                Symbol::String("not-a-number".to_owned()),
+                ValueOutOfRange,
+            ),
+            // A wrong shape for the kind — a string where an integer is declared, a non-bool
+            // constant, a number where a bool is declared.
+            (
+                Scalar::Int32,
+                Native,
+                Symbol::String("x".to_owned()),
+                TermTypeMismatch,
+            ),
+            (Scalar::Bool, Bool, constant("maybe"), TermTypeMismatch),
+            (Scalar::Bool, Bool, Symbol::Number(1), TermTypeMismatch),
+            // Odd-length and non-lowercase hex — the inverse admits only what `lower` emits.
+            (
+                Scalar::Bytes,
+                HexString,
+                Symbol::String("abc".to_owned()),
+                TermTypeMismatch,
+            ),
+            (
+                Scalar::Bytes,
+                HexString,
+                Symbol::String("DEAD".to_owned()),
+                TermTypeMismatch,
+            ),
+            // A float/double field is reachable outbound (F6) — a diagnostic, never a panic.
+            (
+                Scalar::Float,
+                NeedsAnnotation,
+                Symbol::Number(0),
+                UnannotatedFloat,
+            ),
+            (
+                Scalar::Double,
+                NeedsAnnotation,
+                Symbol::String("1.5".to_owned()),
+                UnannotatedFloat,
+            ),
+        ];
+        for (kind, treatment, symbol, expected) in table {
+            let diagnostic = refused_raise(kind, treatment, &symbol);
+            assert_eq!(diagnostic.kind(), expected, "{kind:?} {treatment:?}");
+            assert_eq!(diagnostic.locus(), &Locus::at(AT), "{kind:?} {treatment:?}");
+        }
+    }
+
+    #[test]
+    fn a_raise_refusal_names_the_type_and_shape_never_the_answer_set_s_content() {
+        // The answer set is the adversary's, so a refusal names the field's declared type and the
+        // term's shape — never the term's (possibly huge, hostile) content.
+        let marker = "never-echoed-secret";
+        let mismatch = refused_raise(
+            Scalar::Int32,
+            ScalarTreatment::Native,
+            &Symbol::String(marker.to_owned()),
+        );
+        let detail = mismatch.detail();
+        assert!(!detail.contains(marker), "{detail}");
+        assert!(
+            detail.contains("int32") && detail.contains("a string"),
+            "{detail}"
+        );
+        let range = refused_raise(
+            Scalar::Uint64,
+            ScalarTreatment::DecimalString,
+            &Symbol::String(format!("{marker}9999")),
+        );
+        assert!(!range.detail().contains(marker), "{}", range.detail());
     }
 }

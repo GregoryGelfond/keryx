@@ -83,7 +83,7 @@ pub(crate) struct SortRef {
 /// An enum of the mapping, by position: the `enumeration`th enum of the `unit`th unit. Minted only
 /// by [`Index::build`], over the mapping it indexes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct EnumRef {
+pub(crate) struct EnumRef {
     unit: usize,
     enumeration: usize,
 }
@@ -99,7 +99,7 @@ impl SortRef {
 
 impl EnumRef {
     /// The enum this reference names in `mapping`, as [`SortRef::in_mapping`].
-    fn in_mapping(self, mapping: &Mapping) -> &EnumMapping {
+    pub(crate) fn in_mapping(self, mapping: &Mapping) -> &EnumMapping {
         &mapping.units()[self.unit].enums()[self.enumeration]
     }
 }
@@ -215,13 +215,15 @@ impl Index {
             .ok_or_else(|| unknown_root_type(mapping, name))
     }
 
-    /// The sort a referent predicate names, if any.
-    fn sort_of(&self, predicate: &Name) -> Option<SortRef> {
+    /// The sort a referent predicate names, if any. Public within the crate: the reassembly walk
+    /// (`super::assemble`) reads it to tell an occupancy/sort atom from a field atom in the answer
+    /// set (spec §12.1) — the outbound use beside the inbound referent resolution.
+    pub(crate) fn sort_of(&self, predicate: &Name) -> Option<SortRef> {
         self.sorts_by_predicate.get(predicate).copied()
     }
 
-    /// The enum a referent predicate names, if any.
-    fn enum_of(&self, predicate: &Name) -> Option<EnumRef> {
+    /// The enum a referent predicate names, if any. Public within the crate, as [`Index::sort_of`].
+    pub(crate) fn enum_of(&self, predicate: &Name) -> Option<EnumRef> {
         self.enums_by_predicate.get(predicate).copied()
     }
 }
