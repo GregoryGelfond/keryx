@@ -210,50 +210,12 @@ fn field_collision(field: &FieldMapping) -> Diagnostics {
 /// *not* escaped — escaping those common prefixes wholesale would rename innocent fields like
 /// `has_permission` — so a schema whose own message/enum/field lowers onto one is diagnosed here
 /// rather than silently sharing the auxiliary's extension, which would corrupt the generated theory
-/// for the consuming tool's solver. The generated-auxiliary set mirrors `emit::emit_lp` exactly — a
-/// presence witness `has_<f>/1` for a total singular non-message field (`emit_lp::singular`), an
-/// index witness `has_<f>/2` for a sequence field (`emit_lp::sequence`), and a membership table
-/// `ok_<e>/1` per enum (`emit_lp::membership_table`) — each name taken through the same
-/// `names::witness`/`names::member`, so the check cannot drift from what is emitted. Per unit (a
+/// for the consuming tool's solver. The reserved set is [`generated_auxiliaries`]. Per unit (a
 /// package's `emit.lp`); a cross-package collision — a user predicate meeting another unit's
 /// auxiliary when both `.lp` files load together — is a narrower, load-dependent residual, not
 /// diagnosed here. `None` when the unit's user predicates are disjoint from its generated auxiliaries.
 fn first_generated_collision(unit: &Unit) -> Option<Diagnostic> {
-    // The (predicate, arity) each generated `has_`/`ok_` auxiliary occupies, mapped to a phrase
-    // naming the field or enum it belongs to. Owned keys: an auxiliary name is a fresh `Name`.
-    let mut auxiliaries: BTreeMap<(String, u32), String> = BTreeMap::new();
-    for sort in unit.sorts() {
-        for field in sort.fields() {
-            let arity = match field.form() {
-                EmitForm::Function | EmitForm::OneofArm { .. }
-                    if field.view().is_none() && field.presence() == Totality::Total =>
-                {
-                    1 // the presence witness `has_f(P)` (emit_lp::singular)
-                }
-                EmitForm::Sequence => 2, // the index witness `has_f(P, I)` (emit_lp::sequence)
-                _ => continue, // a message view, a partial singular, a map, or a set: no witness
-            };
-            auxiliaries.insert(
-                (names::witness(field.predicate()).as_str().to_owned(), arity),
-                format!(
-                    "the witness `emit.lp` generates for field `{}`",
-                    field.proto().as_str()
-                ),
-            );
-        }
-    }
-    for enumeration in unit.enums() {
-        auxiliaries.insert(
-            (
-                names::member(enumeration.predicate()).as_str().to_owned(),
-                1,
-            ),
-            format!(
-                "the membership table `emit.lp` generates for enum `{}`",
-                enumeration.proto().as_str()
-            ),
-        );
-    }
+    let auxiliaries = generated_auxiliaries(unit);
     // The unit's user predicates in deterministic order (P3): each sort, its fields, then each enum.
     // The first that occupies an auxiliary's (name, arity) is the offender.
     for sort in unit.sorts() {
@@ -289,6 +251,57 @@ fn first_generated_collision(unit: &Unit) -> Option<Diagnostic> {
         }
     }
     None
+}
+
+/// The `(predicate, arity)` each `has_<field>` witness and `ok_<enum>` membership table `emit.lp`
+/// mints for `unit`, mapped to a phrase naming the field or enum it belongs to. Two halves are
+/// protected differently, and only both together keep this set equal to the emitted one: the
+/// **names** cannot drift — this and `emit.lp` both take them through the same
+/// `names::witness`/`names::member`; the **form→arity classification** — *which* form at *which*
+/// arity mints an auxiliary — is hand-mirrored here against `emit_lp::singular` (a presence witness
+/// `has_<f>/1` for a total singular non-message field), `emit_lp::sequence` (an index witness
+/// `has_<f>/2` for a sequence field), and `emit_lp::membership_table` (a table `ok_<e>/1` per enum),
+/// and must be updated with them. That the two agree is not left to discipline: the test
+/// `the_reserved_auxiliary_set_equals_what_emit_lp_mints` asserts this set equals the `has_`/`ok_`
+/// heads `emit_strict` actually emits, so a desync fails a test rather than silently corrupting the
+/// theory — Increment 5's `(keryx.set)` and annotation-driven treatments move arities across exactly
+/// this surface.
+fn generated_auxiliaries(unit: &Unit) -> BTreeMap<(String, u32), String> {
+    // Owned keys: an auxiliary name is a fresh `Name`.
+    let mut auxiliaries: BTreeMap<(String, u32), String> = BTreeMap::new();
+    for sort in unit.sorts() {
+        for field in sort.fields() {
+            let arity = match field.form() {
+                EmitForm::Function | EmitForm::OneofArm { .. }
+                    if field.view().is_none() && field.presence() == Totality::Total =>
+                {
+                    1 // the presence witness `has_f(P)` (emit_lp::singular)
+                }
+                EmitForm::Sequence => 2, // the index witness `has_f(P, I)` (emit_lp::sequence)
+                _ => continue, // a message view, a partial singular, a map, or a set: no witness
+            };
+            auxiliaries.insert(
+                (names::witness(field.predicate()).as_str().to_owned(), arity),
+                format!(
+                    "the witness `emit.lp` generates for field `{}`",
+                    field.proto().as_str()
+                ),
+            );
+        }
+    }
+    for enumeration in unit.enums() {
+        auxiliaries.insert(
+            (
+                names::member(enumeration.predicate()).as_str().to_owned(),
+                1,
+            ),
+            format!(
+                "the membership table `emit.lp` generates for enum `{}`",
+                enumeration.proto().as_str()
+            ),
+        );
+    }
+    auxiliaries
 }
 
 /// The `GeneratedPredicateCollision` diagnostic (§6, §12.2), at the offending element's locus: its
@@ -659,5 +672,74 @@ mod tests {
             vec![],
         );
         assert!(map(&schema).is_ok());
+    }
+
+    #[test]
+    fn the_reserved_auxiliary_set_equals_what_emit_lp_mints() {
+        // The collision check is sound only if `generated_auxiliaries` reserves *exactly* the
+        // `(name, arity)` set `emit.lp` mints. The names are shared through `names::witness`/
+        // `names::member`; the form→arity classification is hand-mirrored against
+        // `emit_lp::{singular,sequence,membership_table}`. This test makes that mirror mechanical —
+        // for every fixture unit, the reserved set must equal the `has_`/`ok_` heads `emit_strict`
+        // actually emits, so a future desync (Increment 5 moves arities across this surface) fails
+        // here rather than silently under-reserving (theory corruption) or over-refusing.
+        use std::collections::BTreeSet;
+
+        use keryx_test_support as support;
+
+        use crate::descriptor::ingest;
+        use crate::emit;
+
+        // The `has_`/`ok_` rule/fact heads of an emitted theory, as (predicate, arity). A head is
+        // the text before `:-` (a rule) or the trailing `.` (a fact); `%!` docs, `#` directives, and
+        // integrity constraints (empty head before `:-`) contribute none, and `has_`/`ok_` in a body
+        // is after `:-`, unseen. The auxiliaries' heads are flat — `has_f(P)`, `has_f(P, I)`,
+        // `ok_e(c)` — so arity is the top-level argument count.
+        fn emitted_aux_heads(theory: &str) -> BTreeSet<(String, u32)> {
+            let mut heads = BTreeSet::new();
+            for line in theory.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('%') || line.starts_with('#') {
+                    continue;
+                }
+                let head = line.split(":-").next().unwrap_or("").trim();
+                let head = head.strip_suffix('.').unwrap_or(head).trim();
+                let Some(open) = head.find('(') else { continue };
+                let name = &head[..open];
+                if !(name.starts_with("has_") || name.starts_with("ok_")) {
+                    continue;
+                }
+                let close = head.rfind(')').expect("a head opening `(` also closes");
+                let args = head[open + 1..close].trim();
+                let arity = if args.is_empty() {
+                    0
+                } else {
+                    u32::try_from(args.split(',').count()).expect("a small arity")
+                };
+                heads.insert((name.to_owned(), arity));
+            }
+            heads
+        }
+
+        for fixture in [
+            "obligations.proto",
+            "reach.proto",
+            "proto2.proto",
+            "gmap.proto",
+        ] {
+            let schema = ingest(&support::compile_fixture(fixture)).expect("ingests");
+            let mapping = map(&schema).expect("maps");
+            for unit in mapping.units() {
+                let reserved: BTreeSet<(String, u32)> =
+                    super::generated_auxiliaries(unit).into_keys().collect();
+                let emitted = emitted_aux_heads(&emit::emit_strict(unit).expect("emits"));
+                assert_eq!(
+                    reserved,
+                    emitted,
+                    "reserved auxiliaries must equal emitted heads for {fixture} unit `{}`",
+                    unit.package().as_str()
+                );
+            }
+        }
     }
 }
