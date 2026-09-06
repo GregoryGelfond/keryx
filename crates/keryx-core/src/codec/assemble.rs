@@ -42,8 +42,9 @@ use crate::policy::names;
 
 /// The answer set's atoms, keyed for the walk: each slot's entries by `(field predicate, parent
 /// occupant)`, the `emit_<sort>(root)` markers to rebuild, the `violates(…)` atoms to report, and
-/// the diagnostics for field atoms whose parent occupant no atom declares (property 4's orphan
-/// refusal). Built once per reassemble over the whole answer set (`'a`), holding references into it.
+/// the diagnostics for field atoms that descend from a marker root but whose parent occupant no
+/// occupancy atom declares (property 4's orphan refusal, scoped to reachability — §12.1). Built once
+/// per reassemble over the whole answer set (`'a`), holding references into it.
 pub(crate) struct SlotIndex<'a> {
     slots: BTreeMap<(Name, Symbol), Vec<&'a Symbol>>,
     markers: Vec<(SortRef, &'a Symbol)>,
@@ -82,9 +83,14 @@ impl<'a> SlotIndex<'a> {
         let mut slots: BTreeMap<(Name, Symbol), Vec<&'a Symbol>> = BTreeMap::new();
         let mut markers = Vec::new();
         let mut violations = Vec::new();
-        // For the orphan check: every occupant an atom declares (an occupancy atom's occupant, a
-        // marker's root), and every field atom's parent, so a parent no atom declares is refused.
+        // For the orphan check (property 4, scoped to reachability — spec §12.1, arch §7): the
+        // occupants an atom declares (an occupancy atom's occupant, a marker's root), the marker
+        // roots that source reachability, and every field atom's parent. A field atom whose parent is
+        // undeclared yet descends from a marker root — a child positioned within an exported tree but
+        // missing its occupancy atom — is a refused orphan (real dropped data); one descending from
+        // no marker is the model's private business (§12.1), ignored, never refused.
         let mut declared: BTreeSet<&Symbol> = BTreeSet::new();
+        let mut marker_roots: BTreeSet<&'a Symbol> = BTreeSet::new();
         let mut field_parents: Vec<(&'a Symbol, &'a Symbol)> = Vec::new();
 
         for atom in answer_set {
@@ -100,6 +106,7 @@ impl<'a> SlotIndex<'a> {
                 if let [root] = arguments.as_slice() {
                     markers.push((reference, atom));
                     declared.insert(root);
+                    marker_roots.insert(root);
                 }
             } else if index.sort_of(name).is_some() {
                 // An occupancy atom `u(occupant)`: file the occupant under its (functor, parent).
@@ -135,7 +142,9 @@ impl<'a> SlotIndex<'a> {
 
         let orphans = field_parents
             .into_iter()
-            .filter(|(parent, _)| !declared.contains(parent))
+            .filter(|(parent, _)| {
+                !declared.contains(parent) && descends_from_marker(parent, &marker_roots)
+            })
             .map(|(_, atom)| orphan(atom))
             .collect();
 
@@ -160,7 +169,9 @@ impl<'a> SlotIndex<'a> {
         &self.violations
     }
 
-    /// The refusals for field atoms whose parent occupant no atom declares (property 4).
+    /// The refusals for field atoms that descend from a marker root yet whose parent occupant no
+    /// occupancy atom declares — a child within an exported tree missing its sort (property 4, scoped
+    /// to reachability; §12.1). An atom descending from no marker is private business, not here.
     pub(crate) fn orphans(&self) -> &[Diagnostic] {
         &self.orphans
     }
@@ -738,7 +749,30 @@ fn missing_total(field: &FieldMapping, occupant: &Symbol) -> Diagnostic {
     shape(field, occupant, "a total field is missing its value")
 }
 
-/// `ShapeViolation`: a field atom whose parent occupant no atom declares (property 4's orphan).
+/// Whether `occupant`'s parent spine — each term's first argument, followed inward — reaches a
+/// marker root, so the occupant is positioned within a tree some `emit_<sort>` marker exports (spec
+/// §12.1). A field atom on an occupant that descends from no marker is the model's private business,
+/// not an orphan: reachability, not mere presence, is what the orphan refusal is scoped to.
+fn descends_from_marker(occupant: &Symbol, marker_roots: &BTreeSet<&Symbol>) -> bool {
+    let mut term = occupant;
+    loop {
+        if marker_roots.contains(term) {
+            return true;
+        }
+        match term {
+            Symbol::Function { arguments, .. } => match arguments.first() {
+                Some(parent) => term = parent,
+                None => return false, // a constant that is not itself a marker root
+            },
+            _ => return false, // a number/string/tuple/inf/sup: no parent spine, no marker
+        }
+    }
+}
+
+/// `ShapeViolation`: a field atom whose parent occupant descends from a marker root but is declared
+/// by no occupancy atom — a child positioned within an exported tree with its sort undeclared
+/// (property 4's orphan, scoped to reachability; §12.1). An atom descending from no marker is the
+/// model's private business and never reaches here.
 fn orphan(atom: &Symbol) -> Diagnostic {
     let path = match atom {
         Symbol::Function { name, .. } => name.as_str().to_owned(),
@@ -747,7 +781,8 @@ fn orphan(atom: &Symbol) -> Diagnostic {
     Diagnostic::new(
         DiagnosticKind::ShapeViolation,
         Locus::at(path),
-        "a field atom's parent occupant is declared by no marker or occupancy atom".to_owned(),
+        "a field atom's parent occupant descends from a marker root but is declared by no occupancy atom"
+            .to_owned(),
     )
 }
 
@@ -883,16 +918,32 @@ mod tests {
     }
 
     #[test]
-    fn an_orphan_field_atom_is_flagged_by_the_slot_index() {
-        // A field atom whose parent occupant no marker or occupancy atom declares — refused, never
-        // silently dropped (property 4). Collected by the slot index for the reassemble to report.
+    fn a_reachable_child_missing_its_occupancy_is_an_orphan_but_a_private_atom_is_not() {
+        // The orphan refusal is scoped to reachability (property 4, spec §12.1). A field atom whose
+        // parent descends from no marker is the model's private business — ignored, never refused.
         let (mapping, _pool) = thermal();
         let index = Index::build(&mapping).expect("indexes");
-        let answer = vec![atom(
+        let private = vec![atom(
             "sensor",
             vec![constant("ghost"), Symbol::String("x".to_owned())],
         )];
-        let slots = SlotIndex::build(&mapping, &index, &answer);
+        assert!(
+            SlotIndex::build(&mapping, &index, &private)
+                .orphans()
+                .is_empty(),
+            "an atom over an occupant no marker reaches is private business, not an orphan"
+        );
+
+        // But a field atom on a child positioned within an exported tree — `readings(b0, 0)`, whose
+        // spine reaches the marker root `b0` — that carries no `reading(readings(b0,0))` occupancy
+        // atom is a refused orphan: real dropped data, its sort undeclared.
+        let b0 = constant("b0");
+        let element = atom("readings", vec![b0.clone(), Symbol::Number(0)]);
+        let reachable = vec![
+            atom("emit_reading_batch", vec![b0.clone()]),
+            atom("sensor", vec![element, Symbol::String("x".to_owned())]),
+        ];
+        let slots = SlotIndex::build(&mapping, &index, &reachable);
         assert_eq!(slots.orphans().len(), 1);
         assert_eq!(slots.orphans()[0].kind(), DiagnosticKind::ShapeViolation);
     }
