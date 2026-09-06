@@ -205,7 +205,7 @@ Generated obligations, each guarded by `reach/1` so working predicates stay unco
 - key functionality for maps;
 - oneof pairwise exclusivity;
 - enum membership; numeric range for `NATIVE_CHECKED`;
-- occupancy consistency (an occupant term's sort atom present iff any of its field atoms are).
+- occupancy consistency (an occupant term's sort atom is present if any of its field atoms are — the field-atom ⇒ sort-atom direction; the reverse is not enforced, so a message with no fields set keeps its sort atom via its parent's occupancy rather than being refused, correcting an "iff" that would refuse valid empty messages).
 
 Two modes, one flag apart, both generated:
 
@@ -271,7 +271,7 @@ Views are generated, never hand-edited; they are additive vocabulary (P4) and an
 
 #### 13.3 `<pkg>.emit.lp`
 
-The serializability theory (§12.2), parameterized strict/diagnostic by a `#const keryx_shape_mode` or by emitting two variants — implementation's choice, recorded in the manifest.
+The serializability theory (§12.2), generated as two variants rather than parameterized by a `#const`: `<pkg>.emit.lp` is the strict theory and `<pkg>.emit-diagnostic.lp` the diagnostic one — each a client of `core.lp`, opening with `#include "<pkg>.core.lp".` as `views.lp` does — so a project loads the one it means by name. `keryx gen --shape strict|diagnostic|both` selects which is written (`strict`, the production default, when unstated), and the manifest's header records the choice in its `shape` column (§13.4; Appendix B). (Realised by `keryx gen` as of Increment 4's theory generation, ahead of its reassembler (§12.3): the root markers and reachability closure of §12.1 and the obligations of §12.2 in both modes, golden-tested and grounder-checked — with one obligation not yet emitted: the totality of a `LEGACY_REQUIRED` field, which the mapping does not yet tell from EXPLICIT presence, so a proto2 `required` field's completeness is unenforced outbound at present — a committed follow-up, recorded in `docs/proto-support.md`.)
 
 #### 13.4 The manifest — `<pkg>.keryx-manifest`
 

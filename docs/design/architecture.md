@@ -1,6 +1,6 @@
 # keryx — Founding Architecture
 
-**Date:** 2026-08-31 (founding; revised through the inbound codec — its binary, text, and JSON payload forms)
+**Date:** 2026-08-31 (founding; revised through the inbound codec — its binary, text, and JSON payload forms — and the outbound codec's serializability theory)
 **Status:** The architecture of record for keryx; the keryx specification (`docs/specification.md`) is the design of record beneath it.
 **Design of record:** `docs/specification.md`; this architecture governs where the two differ (§2, the deltas-from-the-spec table).
 **Dependency:** themelios @ `86c7dfb` (public: `https://github.com/GregoryGelfond/themelios`) — program + analysis tiers built, validated, and consolidated for keryx.
@@ -244,8 +244,15 @@ built for the binary wire format, the protobuf text format, and the canonical JS
 `.json` payloads), the §6 scalar policy, the managed-stack walk under the uniform nesting
 ceiling, the textproto pre-parse depth guard and sized parse thread, the JSON decode on a sized
 thread beneath its deserializer's own nesting count, and the thermal example's `facts` half,
-golden in all three committed forms. Outbound reassembly (Increment 4) and the annotation semantics with
-`keryx diff` (Increment 5) follow, per the increment ledger (§10). Editions files (edition 2023+) are
+golden in all three committed forms. Of the outbound codec (Increment 4), the serializability
+theory is built: `keryx gen` writes `<pkg>.emit.lp` — the root markers and the reachability
+closure, the obligations in strict and diagnostic modes (`--shape strict|diagnostic|both`, the
+manifest's header recording the choice) — golden on the thermal example and grounder-checked by
+the committed clingo gate (§7), with one obligation deferred: a proto2 `required` field's
+totality, which the mapping does not yet distinguish from explicit presence
+(`docs/proto-support.md`). The reassembler and `keryx emit` — the answer-set → message half,
+with its round-trip instruments — follow and close the increment; the annotation semantics with
+`keryx diff` (Increment 5) after, per the increment ledger (§10). Editions files (edition 2023+) are
 refused up front with a specific `UnsupportedEdition` diagnostic until the descriptor engine
 gains editions support (`docs/proto-support.md`). (The specification's §31 uses
 M-milestones, offset by one — Increment 1 = M0, Increment 2 = M1 — and its M5 "Episodic" is

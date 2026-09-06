@@ -52,14 +52,17 @@ pub enum EmitForm {
 /// A field value's emitted treatment (spec §6, §4.1). A scalar's *default* §6
 /// classification, or a reference to the referent's emitted sort predicate. The scalar
 /// classification is what the inbound codec's scalar policy lowers a payload value under
-/// (`codec::scalar::lower`, Increment 3) and what `emit.lp` verifies outbound (Increment 4);
-/// nothing in the gen-stage emit reads it (the signature shows the proto type; the views
-/// concern message fields).
+/// (`codec::scalar::lower`), what `emit.lp` reads for the one obligation the theory states over
+/// a scalar — the unsigned range of a `uint32`/`fixed32` under the native treatment — and what
+/// the reassembler is to invert outbound (spec §12.3, Increment 4); the signature and the
+/// views do not read it (the signature shows the proto type; the views concern message
+/// fields).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValueMapping {
     /// A scalar — its proto `kind` (the §13.1 signature shows the proto type) and its §6
-    /// default `treatment` (consumed by the inbound codec's scalar policy, Increment 3, and by
-    /// `emit.lp` at Increment 4; not read by the gen-stage emit).
+    /// default `treatment` (consumed by the inbound codec's scalar policy, by `emit.lp`'s
+    /// unsigned-range obligation, and by the reassembler's inverse policy at Increment 4; not
+    /// read by the signature or the views).
     Scalar {
         /// The proto scalar kind (for the signature).
         kind: Scalar,
@@ -103,8 +106,9 @@ pub enum ScalarTreatment {
 /// `Total` for IMPLICIT (the atom always exists); `Partial` for EXPLICIT and
 /// `LEGACY_REQUIRED`. `emit.lp` emits a totality obligation for `Total` alone: the model does
 /// not tell `LEGACY_REQUIRED` from EXPLICIT, so proto2 `required` completeness is unenforced
-/// outbound — an omission faithful to the answer set, not a misrepresentation — until the
-/// distinction is carried here (a committed follow-up, not a boundary).
+/// outbound at Increment 4 — an omission faithful to the answer set, not a misrepresentation
+/// (`docs/proto-support.md`) — until the distinction is carried here (a committed follow-up,
+/// not a boundary).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Totality {
     /// IMPLICIT presence — total on its sort.

@@ -7,7 +7,9 @@ features — not of keryx logic. keryx supports every version its engine
 This ledger states the proto-version support keryx *delivers* as of the gen
 increment (Increment 2) — proto2 and proto3 golden-tested by the facts
 renderer, editions per the front-loaded capability verdict — not the state of
-any single commit along the way.
+any single commit along the way. The outbound direction adds one proto-version
+asymmetry, stated after the table: a proto2 `required` field's completeness is
+unenforced outbound at Increment 4.
 
 | version       | status as of the gen increment (Increment 2)                                                                                                                |
 |---------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -33,6 +35,23 @@ deliberate dependency bump) — at which point keryx's own presence/`enum_type` 
 feature-based rather than era-based, resolves editions with no redesign. Spec §31's (M1)
 capability test is the tripwire; when it flips to SUPPORTED, add the editions fixture and golden
 and update this row.
+
+**Outbound, a proto2 `required` field's completeness is unenforced at Increment 4.** The
+specification has the serializability theory oblige totality of every IMPLICIT and
+`LEGACY_REQUIRED` singular field (spec §5, §12.2). The mapping's totality (`Totality::{Total,
+Partial}`) does not distinguish `LEGACY_REQUIRED` — proto2 `required` — from EXPLICIT presence:
+both are partial functions, so `emit.lp` emits the totality obligation for IMPLICIT fields alone,
+and a proto2 `required` field gets functionality only, exactly as an `optional` one does. An
+answer set that omits a `required` field is therefore not refused — under the strict theory it
+is satisfiable, under the diagnostic theory nothing is derived — and the message reassembled
+from it omits the field: faithful to the answer set that omitted it, an under-representation and
+never a misrepresentation, so the threat model's integrity property holds; what is left unchecked
+is a schema-completeness constraint, at solve time and, the reassembler reading the same mapping,
+at reassembly alike. proto3 has no `required`, so its outbound support is whole; the asymmetry is
+proto2's alone. Committed future, not a boundary: full proto2 and proto3 outbound parity — the
+`Mapping` widened so `Totality` carries the distinction and the obligation is emitted and
+enforced — for interconnect preservation and inbound↔outbound symmetry, in a later increment;
+this note and the threat model's *Open* item close with it.
 
 ## Payload formats
 

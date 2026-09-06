@@ -122,8 +122,10 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 /// proto-declared type regardless of `kind`/target
 /// (`declared`). `<descriptor>` is the family's shape — `seq` (sequence), `map<key>` (map), or
 /// `set` (a `(keryx.set)` membership relation, reserved at present) — or, for a singular field or
-/// oneof arm, its `Totality` (§5), not the finer presence (the gen-stage fidelity the `Mapping`
-/// carries; `LEGACY_REQUIRED`'s distinct outbound obligation is a shape concern, Increment 4).
+/// oneof arm, its `Totality` (§5), not the finer presence — the fidelity the `Mapping` carries,
+/// `LEGACY_REQUIRED` folded into `partial`, so a proto2 `required` field's distinct outbound
+/// totality obligation is neither recorded here nor yet emitted by `emit.lp`
+/// (`policy::model::Totality`, a committed follow-up).
 /// A map's `<key>` is the *declared* key type (§13.4): the codec lowers a key under its §6
 /// default treatment (an `int64` key travels as a decimal string, §7.2), but the manifest records
 /// the declaration, so `map<int64>` names the declared key, never the emitted term's shape.
@@ -225,8 +227,9 @@ fn declared(value: &ValueMapping) -> String {
 }
 
 /// The manifest's totality word (spec §13.4, §5): `total` for `Totality::Total`, `partial`
-/// for `Totality::Partial` — the fidelity the `Mapping` carries; `LEGACY_REQUIRED`'s distinct
-/// outbound totality obligation is a shape concern (Increment 4), not recorded here.
+/// for `Totality::Partial` — the fidelity the `Mapping` carries, `LEGACY_REQUIRED` folded into
+/// `partial`; its distinct outbound totality obligation is neither recorded here nor yet
+/// emitted by `emit.lp` (`policy::model::Totality`, a committed follow-up).
 fn totality_word(totality: Totality) -> &'static str {
     match totality {
         Totality::Total => "total",
