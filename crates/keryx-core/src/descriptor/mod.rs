@@ -760,7 +760,7 @@ mod tests {
     use prost::Message as _;
     use prost_types::{
         DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
-        MessageOptions,
+        MessageOptions, OneofDescriptorProto,
     };
 
     use super::{
@@ -879,6 +879,38 @@ mod tests {
                 "package {package:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_non_identifier_oneof_name_is_refused_at_the_door() {
+        // The oneof name is the one descriptor-derived string that reaches `emit.lp` unlowered — as
+        // the `violates("<sort>.<oneof>", …)` head string (`emit::emit_lp::exclusivity`) and the
+        // exclusivity/field `%!` doc — so the generated output's freedom from a quote, newline, or
+        // other control character in it rests on the door refusing any non-identifier oneof name
+        // (`pre_validate` → `check_ident` → `model::is_proto_ident`), on every ingest path.
+        // protoc/protox never emit such a name; a directly-supplied set can, so the refusal is pinned.
+        let set = encode(vec![FileDescriptorProto {
+            name: Some("m.proto".to_owned()),
+            package: Some("m".to_owned()),
+            syntax: Some("proto3".to_owned()),
+            message_type: vec![DescriptorProto {
+                name: Some("M".to_owned()),
+                oneof_decl: vec![OneofDescriptorProto {
+                    name: Some("bad name!".to_owned()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }]);
+        let diagnostics = ingest(&set).expect_err("a non-identifier oneof name is refused");
+        let diagnostic = diagnostics.iter().next().unwrap();
+        assert_eq!(diagnostic.kind(), DiagnosticKind::MalformedDescriptor);
+        assert!(
+            diagnostic.detail().contains("oneof"),
+            "the detail names the oneof: {:?}",
+            diagnostic.detail()
+        );
     }
 
     #[test]

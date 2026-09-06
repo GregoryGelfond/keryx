@@ -482,7 +482,10 @@ fn unsigned(kind: Scalar, treatment: ScalarTreatment) -> bool {
 /// name on this sort, the one identity the mapping carries for it — `:- reach(P), <sort>(P),
 /// armᵢ present, armⱼ present.`, an arm's presence its field atom `arm(P, _)` or, for a
 /// message-typed arm, its slot's occupancy atom `u(arm(P))`. The diagnostic head names the
-/// oneof's own path, `<sort path>.<oneof>` — protobuf's full name for it.
+/// oneof's own path, `<sort path>.<oneof>` — protobuf's full name for it. The oneof name enters
+/// that head string (and the `%!` doc via [`signature::arms`]) verbatim; it is a validated proto
+/// identifier — the descriptor door refuses any other (`descriptor::pre_validate`) — so it carries
+/// no quote, newline, or control character that could break the quoted string or the doc line.
 fn exclusivity(sort: &SortMapping) -> Vec<Obligation> {
     let p = build::var("P");
     let arms: Vec<(&str, &FieldMapping)> = sort

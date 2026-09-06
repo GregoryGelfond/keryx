@@ -238,6 +238,11 @@ fn shape(
     Ok(match shape {
         FieldShape::Singular { value, .. } => {
             let mapped = singular_value(value, sort_of)?;
+            // The oneof name rides into `EmitForm::OneofArm` — and thence `emit.lp` — as the
+            // descriptor's own string, not lowered to a predicate. It is safe to carry verbatim
+            // because the descriptor door already refused any non-identifier oneof name
+            // (`descriptor::pre_validate` → `check_ident` → `is_proto_ident`), so it holds no quote,
+            // newline, or control character that could break a quoted `.lp` string or a `%!` doc.
             let form = match oneof {
                 Some(name) => EmitForm::OneofArm {
                     oneof: name.to_owned(),
