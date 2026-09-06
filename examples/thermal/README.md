@@ -180,5 +180,5 @@ Increment 4; this example is the piece that is real today.
   `alerts/3`.
   Set semantics — order- and multiplicity-insensitive membership — arrive with annotation
   reading at Increment 5, at which point `alerts` becomes a membership relation.
-- **No `shape.lp` yet.** The serializability guard that constrains an answer set to a
+- **No `emit.lp` yet.** The serializability guard that constrains an answer set to a
   reassemblable shape (spec §13.3) is generated with the outbound codec at Increment 4.

@@ -107,7 +107,7 @@ Consequences worth stating because they carry the design:
 - Presence is read per-field from the resolved editions feature `field_presence` (`IMPLICIT`, `EXPLICIT`, `LEGACY_REQUIRED`). Legacy files are handled uniformly: modern protobuf models proto2/proto3 as fixed feature bundles, so keryx never branches on syntax era.
 - **IMPLICIT** (classic proto3 scalars): the field always has a value; the atom is always emitted with the default materialized; the function is total on its sort. The correspondence is exact: proto3 cannot distinguish the zero value from unset, and CWA cannot distinguish false from unstated — the encoding tells no lies the wire doesn't already tell.
 - **EXPLICIT** (`optional`, all message-typed fields, oneof arms, proto2 optional): atom emitted iff set; the function is partial; `not f(P, _)` means *unset*, and the standard default idiom applies. Where the schema declares a default (editions restores proto2-style `default = …`; `(keryx.default)` covers the rest, Appendix A), the generator emits the totalized view `f_or_default/…` in `views.lp` (§13.2) so model authors never hand-write the two-rule default pattern.
-- **LEGACY_REQUIRED**: treated as EXPLICIT for translation; the shape module adds an outbound totality obligation.
+- **LEGACY_REQUIRED**: treated as EXPLICIT for translation; `emit.lp` adds an outbound totality obligation.
 - **Zero-as-absent.** Protobuf convention often uses the zero value (`0`, `""`, `false`, `FOO_UNSPECIFIED`) as a pseudo-null on IMPLICIT fields. The wire cannot distinguish this intent; the author can. The annotation `(keryx.zero) = ABSENT` converts the convention into honest partiality: the zero value emits no atom, and the field is treated as EXPLICIT-partial in the signature. Default is `(keryx.zero) = VALUE` (presence principle verbatim). For `bool` under `ABSENT`, the binary form collapses to the unary presence predicate: `active(P)` iff true — the idiomatic KR encoding, available as the opt-in.
 
 ### 6. Scalar mapping
@@ -125,7 +125,7 @@ Term shapes are type-directed (P5). Range violations are structured translation-
 | `bytes` | lowercase-hex string constant | `(keryx.value) = true` → content-hash constant (§9); base64 rejected as canonical form (case/padding ambiguity) |
 | enum | symbolic constant (§7.4) | open-enum policy in §7.4 |
 
-`NATIVE_CHECKED` semantics everywhere: the translator verifies the value fits clingo's integer range at decode time (inbound) and the shape/reassembler verify at emit time (outbound); violations are structured errors naming the field path.
+`NATIVE_CHECKED` semantics everywhere: the translator verifies the value fits clingo's integer range at decode time (inbound) and `emit.lp` and the reassembler verify at emit time (outbound); violations are structured errors naming the field path.
 
 ### 7. Composite constructs
 
@@ -145,7 +145,7 @@ The best-behaved construct in the language: an unordered, key-unique association
 
 #### 7.3 `oneof`
 
-Arms are EXPLICIT-presence fields on the parent sort — ordinary partial functions, one per arm — plus the generated exclusivity axiom (pairwise `:- armᵢ(P,_), armⱼ(P,_).` in the shape module). Inbound this is a theorem; outbound an obligation. In the typed target, a oneof lowers to a variant type instead (§24). Which-arm interrogation in raw clingo is by arm-atom presence; no discriminator atom is generated (it would violate P4's spirit by duplicating derivable information — a `views.lp` discriminator view may be added later if practice demands, recorded as an open question).
+Arms are EXPLICIT-presence fields on the parent sort — ordinary partial functions, one per arm — plus the generated exclusivity axiom (pairwise `:- armᵢ(P,_), armⱼ(P,_).` in `emit.lp`). Inbound this is a theorem; outbound an obligation. In the typed target, a oneof lowers to a variant type instead (§24). Which-arm interrogation in raw clingo is by arm-atom presence; no discriminator atom is generated (it would violate P4's spirit by duplicating derivable information — a `views.lp` discriminator view may be added later if practice demands, recorded as an open question).
 
 #### 7.4 Enums
 
@@ -196,7 +196,7 @@ reach(X) :- emit_plan(X).
 reach(A) :- reach(X), plan(X), assignments(X, A).   % one rule per message-typed field
 ```
 
-#### 12.2 The serializability theory (`shape.lp`)
+#### 12.2 The serializability theory (`emit.lp`)
 
 Generated obligations, each guarded by `reach/1` so working predicates stay unconstrained:
 
@@ -269,7 +269,7 @@ Doc comments from the `.proto` (`SourceCodeInfo`, §20) ride along verbatim abov
 
 Views are generated, never hand-edited; they are additive vocabulary (P4) and any project may exclude the file and lint against its use.
 
-#### 13.3 `<pkg>.shape.lp`
+#### 13.3 `<pkg>.emit.lp`
 
 The serializability theory (§12.2), parameterized strict/diagnostic by a `#const keryx_shape_mode` or by emitting two variants — implementation's choice, recorded in the manifest.
 
@@ -379,7 +379,7 @@ Background, condensed to what the implementation needs:
 .proto ─(protox | protoc | buf)→ FileDescriptorSet
    → [stage 0] schema model → descriptor facts
    → [stage 1] mapping policy (ASP over descriptor facts) → mapping model
-   → [stage 2] emit: core/views/shape modules, manifest, scaffolds, envelope types
+   → [stage 2] emit: core/views/emit modules, manifest, scaffolds, envelope types
                 codec tables (manifest-driven generic codec)
 ```
 
@@ -495,7 +495,7 @@ message AlertSet { repeated Alert alerts = 1 [(keryx.set) = true]; }
 ```
 $ keryx gen thermal.proto -o gen/
   gen/thermal.v1.core.lp   gen/thermal.v1.views.lp
-  gen/thermal.v1.shape.lp  gen/thermal.v1.keryx-manifest
+  gen/thermal.v1.emit.lp   gen/thermal.v1.keryx-manifest
 ```
 
 Core signature (comments in the clingo target):
@@ -527,7 +527,7 @@ temp_c(al(R),T)  :- alert(al(R)), temp_c(R,T).
 alert_set(out).  alerts(out,A) :- alert(A).  emit_alert_set(out).
 ```
 
-Shape module (excerpt) guarding outbound obligations behind reachability:
+Emit module (excerpt) guarding outbound obligations behind reachability:
 
 ```prolog
 reach(X) :- emit_alert_set(X).
@@ -664,7 +664,7 @@ Ordered for local development; each milestone leaves the workspace green and dem
 - **M0 — Ingestion + facts.** `keryx-core::descriptor` over `prost-reflect` (dynamic-layer rule enforced by construction); de-sugaring; schema model; hand-written stage 0; golden tests on fixture descriptor sets (maps, proto3-optional, oneofs, recursion, custom options via a vendored `keryx/options.proto`; editions carry a refusal test, not a golden — deferred per M1). Deliverable: internal schema-facts dump command.
 - **M1 — gen.** Stage-1 policy `.lp` + evaluator (aspis via driver); stage-2 emission of `core/views/manifest` for the clingo target through the internal emission backend; embedded protox front door (`keryx gen foo.proto`) with the **editions verification gate**: while the descriptor engine has no editions support, `gen` refuses editions files — both the `.proto` and descriptor-set routes — with a specific diagnostic and says so. `keryx explain` (mapping verdicts). Self-application cross-check (§21.2).
 - **M2 — Inbound + one-shot solve.** Codec inbound (binary/JSON/textproto → `Sym` atoms → `.lp`); `keryx facts`; `keryx solve` one-shot with text-include fact path (temporary, flagged); envelope with SAT/UNSAT/stats.
-- **M3 — Outbound.** `shape.lp` generation (strict + diagnostic); reachable-subgraph reassembler; canonical serialization; `--emit`; envelope models; structured shape diagnostics at field paths.
+- **M3 — Outbound.** `emit.lp` generation (strict + diagnostic); reachable-subgraph reassembler; canonical serialization; `--emit`; envelope models; structured shape diagnostics at field paths.
 - **M4 — Annotations + overlays.** Full Appendix A vocabulary; TOML overlays with precedence + typo errors; scalar policies enforced end-to-end (float mandatory-annotation error with fix-it; NATIVE_CHECKED ranges; open-enum policy; zero-as-absent incl. unary bool); `keryx diff` migration notes + bridge views.
 - **M5 — Episodic.** Driver episodic API on aspis backend (externals, assumptions, release); the P10 fact path replaces M2's text include everywhere; brave/cautious envelope ops; unsat-core episode blame; minimal CLI exposure (scripted episode files for fixtures).
 - **M6 — Ring.** `keryx scaffold`; fixture harness with ASP contracts; `keryx check` lint *if* the parsing provider (themelios or successor decision) is available — otherwise explicitly deferred, not faked.
