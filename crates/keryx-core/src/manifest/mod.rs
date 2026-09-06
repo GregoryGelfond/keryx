@@ -11,6 +11,7 @@
 use std::fmt::Write as _;
 
 use crate::descriptor::model::{Openness, Scalar};
+use crate::emit::Shape;
 use crate::policy::model::{
     Element, EmitForm, EnumMapping, EnumValueMapping, FieldMapping, SortMapping, Totality, Unit,
     ValueMapping,
@@ -18,20 +19,24 @@ use crate::policy::model::{
 
 /// The manifest text for one generation unit — a package (spec §13.4, `<pkg>.keryx-manifest`).
 /// `schema_hash` is the caller's content hash of the descriptor set (e.g. `sha256:…`); keryx
-/// does not hash bytes it was handed a `Mapping` for. Every other string that reaches the
-/// output is a themelios `Name`/`FqName`, newline-free by construction; `schema_hash` is the
-/// one caller-supplied opaque string with no such guarantee, so it is a precondition that it
-/// must not itself contain a newline — the manifest's line-oriented format assumes it
-/// doesn't, and a caller that passed one would silently split the header across lines. A
-/// pure, deterministic function of the unit and hash (P3).
+/// does not hash bytes it was handed a `Mapping` for. `shape` is the variant set of the
+/// serializability theory generated beside the manifest (spec §13.3 — strict, diagnostic, or
+/// both), recorded in the header's `shape` column so the manifest names the whole generated
+/// set. Every other string that reaches the output is a themelios `Name`/`FqName`,
+/// newline-free by construction; `schema_hash` is the one caller-supplied opaque string with
+/// no such guarantee, so it is a precondition that it must not itself contain a newline — the
+/// manifest's line-oriented format assumes it doesn't, and a caller that passed one would
+/// silently split the header across lines. A pure, deterministic function of the unit, hash,
+/// and shape (P3).
 #[must_use]
-pub fn write(unit: &Unit, schema_hash: &str) -> String {
+pub fn write(unit: &Unit, schema_hash: &str, shape: Shape) -> String {
     let mut out = String::new();
     out.push_str("keryx-manifest v0\n");
     let _ = writeln!(
         out,
-        "schema-hash {schema_hash}  package {}  target clingo  profile -  shape -  keryx {}",
+        "schema-hash {schema_hash}  package {}  target clingo  profile -  shape {}  keryx {}",
         unit.package().as_str(),
+        shape.as_str(),
         env!("CARGO_PKG_VERSION"),
     );
     out.push_str(&records(unit));
@@ -253,6 +258,7 @@ mod tests {
 
     use super::{decision_note, declared, field_line, totality_word, write};
     use crate::descriptor::model::{FqName, Openness, Package, Scalar};
+    use crate::emit::Shape;
     use crate::policy::model::{
         EmitForm, EnumMapping, EnumValueMapping, FieldMapping, ScalarTreatment, SortMapping,
         Totality, Unit, ValueMapping,
@@ -318,11 +324,33 @@ mod tests {
             enums: vec![],
         };
 
-        let text = write(&unit, "sha256:PLACEHOLDER");
+        let text = write(&unit, "sha256:PLACEHOLDER", Shape::Strict);
         assert!(text.starts_with("keryx-manifest v0\n"));
         assert!(text.contains(
-            "schema-hash sha256:PLACEHOLDER  package keryx.t  target clingo  profile -  shape -  keryx "
+            "schema-hash sha256:PLACEHOLDER  package keryx.t  target clingo  profile -  shape strict  keryx "
         ));
+    }
+
+    #[test]
+    fn write_records_the_shape_mode() {
+        // The header's `shape` column records which variant(s) of the serializability theory
+        // were generated beside the manifest (spec §13.3, §13.4; Appendix B's `shape both`).
+        let unit = Unit {
+            package: Package::parse("keryx.t").expect("valid package"),
+            sorts: vec![],
+            enums: vec![],
+        };
+        for (shape, word) in [
+            (Shape::Strict, "strict"),
+            (Shape::Diagnostic, "diagnostic"),
+            (Shape::Both, "both"),
+        ] {
+            let text = write(&unit, "-", shape);
+            assert!(
+                text.contains(&format!("  shape {word}  keryx ")),
+                "{word}: {text}"
+            );
+        }
     }
 
     #[test]
@@ -355,7 +383,7 @@ mod tests {
             enums: vec![],
         };
 
-        let text = write(&unit, "sha256:PLACEHOLDER");
+        let text = write(&unit, "sha256:PLACEHOLDER", Shape::Strict);
         assert!(text.contains("keryx.t.Reading  sort  reading/1\n"));
         assert!(text.contains("keryx.t.Reading.sensor #1 fn  sensor/2  string  total\n"));
     }
@@ -383,7 +411,7 @@ mod tests {
             enums: vec![enumeration],
         };
 
-        let text = write(&unit, "sha256:PLACEHOLDER");
+        let text = write(&unit, "sha256:PLACEHOLDER", Shape::Strict);
         assert!(text.contains("keryx.t.Level  enum  level/1  (open)\n"));
         assert!(text.contains("LEVEL_LOW  #1  value  low\n"));
     }
@@ -422,7 +450,7 @@ mod tests {
             enums: vec![],
         };
 
-        let text = write(&unit, "sha256:PLACEHOLDER");
+        let text = write(&unit, "sha256:PLACEHOLDER", Shape::Strict);
         // A message-typed arm is also a message field: named by its occupant term `arm/1`, with
         // its view `arm/2` noted — and the `kind` stays `oneof`, the property under test.
         assert!(
@@ -480,7 +508,7 @@ mod tests {
             enums: vec![enumeration],
         };
 
-        let text = write(&unit, "sha256:PLACEHOLDER");
+        let text = write(&unit, "sha256:PLACEHOLDER", Shape::Strict);
         assert!(text.contains("keryx.t.Tree  sort  tree/1  (recursive)\n"));
         assert!(text.contains("keryx.t.Grade  enum  grade/1  (closed)\n"));
     }
@@ -503,7 +531,7 @@ mod tests {
             sorts: vec![sort],
             enums: vec![],
         };
-        let text = write(&unit, "sha256:PLACEHOLDER");
+        let text = write(&unit, "sha256:PLACEHOLDER", Shape::Strict);
         assert!(text.contains(
             "keryx.t.dispatch.Reach  sort  dispatch__reach_/1 [qualified dispatch] [escaped]\n"
         ));

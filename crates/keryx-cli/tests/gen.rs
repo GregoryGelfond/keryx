@@ -1,9 +1,11 @@
 //! `keryx gen` end to end (spec §25; architecture §6): a schema in — `.proto` source or a
-//! serialized `.binpb` descriptor set — the per-package `core.lp`/`views.lp`/`.keryx-manifest`
-//! written to `-o DIR`, stdout quiet, diagnostics on stderr, and the §6 exit taxonomy. A
-//! source that cannot compile is a `Schema`(4) error carrying a `.binpb` fix-it hint; a bad
-//! `-o` is an `Input`(3) write error; a package-less source is rejected. No protox type is in
-//! reach here — `gen` composes the library (the fixtures are compiled in `support`).
+//! serialized `.binpb` descriptor set — the per-package `core.lp`/`views.lp`/`emit.lp`/
+//! `.keryx-manifest` written to `-o DIR` (the `emit.lp` variant(s) chosen by `--shape`, the
+//! manifest recording the choice; spec §13.3, §13.4), stdout quiet, diagnostics on stderr, and
+//! the §6 exit taxonomy. A source that cannot compile is a `Schema`(4) error carrying a `.binpb`
+//! fix-it hint; a bad `-o` is an `Input`(3) write error; a package-less source is rejected. No
+//! protox type is in reach here — `gen` composes the library (the fixtures are compiled in
+//! `support`).
 
 use keryx_test_support as support;
 
@@ -23,25 +25,37 @@ fn tmp(name: &str) -> PathBuf {
     Path::new(env!("CARGO_TARGET_TMPDIR")).join(name)
 }
 
-#[test]
-fn writes_the_three_files_per_package() {
-    let out = out_dir("gen_proto3");
+/// Run `keryx gen proto3.proto` into `out` with `extra` arguments, asserting the run succeeds
+/// with stdout clean — the product is the files.
+fn gen_proto3(out: &Path, extra: &[&str]) {
     let status = Command::new(env!("CARGO_BIN_EXE_keryx"))
         .arg("gen")
         .arg("proto3.proto")
         .args(["-I".as_ref(), fixtures().as_os_str()])
         .args(["-I".as_ref(), vendored().as_os_str()])
         .args(["-o".as_ref(), out.as_os_str()])
+        .args(extra)
         .output()
         .unwrap();
-    assert!(status.status.success(), "gen exits 0 on a good source");
+    assert!(
+        status.status.success(),
+        "gen exits 0 on a good source: {}",
+        String::from_utf8_lossy(&status.stderr)
+    );
     assert!(
         status.stdout.is_empty(),
         "stdout stays clean; the product is the files"
     );
+}
+
+#[test]
+fn writes_the_file_set_per_package() {
+    let out = out_dir("gen_proto3");
+    gen_proto3(&out, &[]);
 
     let core = std::fs::read_to_string(out.join("keryx.p3.core.lp")).expect("core.lp written");
     let views = std::fs::read_to_string(out.join("keryx.p3.views.lp")).expect("views.lp written");
+    let emit = std::fs::read_to_string(out.join("keryx.p3.emit.lp")).expect("emit.lp written");
     let manifest =
         std::fs::read_to_string(out.join("keryx.p3.keryx-manifest")).expect("manifest written");
 
@@ -59,9 +73,89 @@ fn writes_the_three_files_per_package() {
         views.contains("detail(P, A) :- detail(A), A = detail(P)."),
         "views carries the singular-message view"
     );
+    // The §13.3 serializability theory, strict by default (§12.2's production default): the
+    // root marker's closure rule and an obligation written as an integrity constraint, and no
+    // diagnostic variant beside it.
+    assert!(
+        emit.contains("reach(X) :- emit_reading(X)."),
+        "emit.lp carries the closure"
+    );
+    assert!(
+        emit.contains(":- reach(P), reading(P), sensor(P, V1), sensor(P, V2), V1 != V2."),
+        "emit.lp is the strict theory: {emit}"
+    );
+    assert!(
+        !out.join("keryx.p3.emit-diagnostic.lp").exists(),
+        "no diagnostic variant unless asked"
+    );
     assert!(
         manifest.starts_with("keryx-manifest v0\n"),
         "the manifest v0 header"
+    );
+    // The manifest records which variant stands beside it (§13.3, §13.4).
+    assert!(
+        manifest.contains("  shape strict  "),
+        "the manifest names the shape mode: {manifest}"
+    );
+}
+
+#[test]
+fn writes_both_emit_modules_on_request() {
+    // `--shape both` (§13.3): the strict theory as `emit.lp`, the diagnostic one as
+    // `emit-diagnostic.lp` — the same obligations, one written as an integrity constraint, the
+    // other deriving `violates(path, occupant)` (§12.2) — and the manifest records `both`.
+    let out = out_dir("gen_shape_both");
+    gen_proto3(&out, &["--shape", "both"]);
+
+    let strict = std::fs::read_to_string(out.join("keryx.p3.emit.lp")).expect("emit.lp written");
+    let diagnostic = std::fs::read_to_string(out.join("keryx.p3.emit-diagnostic.lp"))
+        .expect("emit-diagnostic.lp written");
+    let manifest =
+        std::fs::read_to_string(out.join("keryx.p3.keryx-manifest")).expect("manifest written");
+
+    assert!(
+        strict.contains(":- reach(P), reading(P), sensor(P, V1), sensor(P, V2), V1 != V2."),
+        "strict writes the constraint: {strict}"
+    );
+    assert!(
+        !strict.contains("violates("),
+        "strict derives no violation: {strict}"
+    );
+    assert!(
+        diagnostic.contains(
+            "violates(\"keryx.p3.Reading.sensor\", P) :- reach(P), reading(P), sensor(P, V1), sensor(P, V2), V1 != V2."
+        ),
+        "diagnostic derives the violation at the field path: {diagnostic}"
+    );
+    assert!(
+        manifest.contains("  shape both  "),
+        "the manifest names both: {manifest}"
+    );
+}
+
+#[test]
+fn writes_the_diagnostic_module_alone_on_request() {
+    // `--shape diagnostic` (§12.2's development default): the diagnostic variant alone, named
+    // for what it is, and no strict `emit.lp` beside it; the manifest records `diagnostic`.
+    let out = out_dir("gen_shape_diagnostic");
+    gen_proto3(&out, &["--shape", "diagnostic"]);
+
+    let diagnostic = std::fs::read_to_string(out.join("keryx.p3.emit-diagnostic.lp"))
+        .expect("emit-diagnostic.lp written");
+    let manifest =
+        std::fs::read_to_string(out.join("keryx.p3.keryx-manifest")).expect("manifest written");
+
+    assert!(
+        diagnostic.contains("violates(\"keryx.p3.Reading.sensor\", P)"),
+        "the diagnostic theory: {diagnostic}"
+    );
+    assert!(
+        !out.join("keryx.p3.emit.lp").exists(),
+        "no strict variant unless asked"
+    );
+    assert!(
+        manifest.contains("  shape diagnostic  "),
+        "the manifest names diagnostic: {manifest}"
     );
 }
 

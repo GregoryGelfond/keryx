@@ -9,13 +9,14 @@
 use keryx_test_support as support;
 
 use keryx_core::descriptor::ingest;
+use keryx_core::emit::Shape;
 use keryx_core::{manifest, policy};
 
 fn body(fixture: &str) -> String {
     let schema = ingest(&support::compile_fixture(fixture)).expect("ingests");
     let mapping = policy::map(&schema).expect("maps");
     let unit = mapping.units().first().expect("one unit");
-    let text = manifest::write(unit, "sha256:PLACEHOLDER");
+    let text = manifest::write(unit, "sha256:PLACEHOLDER", Shape::Strict);
     // Drop the version-bearing header line; the golden pins the vocabulary body (P3), which
     // is what the evolution contract is about — the header's keryx version is not stable.
     text.lines()

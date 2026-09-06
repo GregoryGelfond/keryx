@@ -44,3 +44,15 @@ jobs:
       # The floor follows themelios's method (measure line coverage, round down to
       # a multiple of five, minus five), raised only deliberately and never lowered.
       - run: cargo llvm-cov --workspace --locked --fail-under-lines 85
+  ground:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+      # The grounding gate drives the runner's clingo over the generated theory — test
+      # infrastructure; keryx itself links and spawns no solver. Ubuntu ships the clingo
+      # binary in its `gringo` package.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gringo
+      - run: scripts/ground.sh

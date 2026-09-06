@@ -1,5 +1,5 @@
 keryx-manifest v0
-schema-hash -  package thermal.v1  target clingo  profile -  shape -  keryx 0.1.0
+schema-hash -  package thermal.v1  target clingo  profile -  shape strict  keryx 0.1.0
 thermal.v1.Alert  sort  alert/1
 thermal.v1.Alert.sensor #1 fn  sensor/2  string  total
 thermal.v1.Alert.temp_c #2 fn  temp_c/2  int32  total

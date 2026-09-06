@@ -16,11 +16,12 @@ pub mod render;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use keryx_core::codec::{Codec, PayloadFormat, Root};
 use keryx_core::descriptor::{Schema, compile, ingest};
 use keryx_core::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
-use keryx_core::policy::Mapping;
+use keryx_core::emit::Shape;
+use keryx_core::policy::{Mapping, Unit};
 use keryx_core::{emit, manifest, policy, schema_facts};
 
 use crate::exit::Exit;
@@ -39,7 +40,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Generate ASP vocabulary (`core.lp`, `views.lp`, manifest) from a schema.
+    /// Generate ASP vocabulary (`core.lp`, `views.lp`, `emit.lp`, manifest) from a schema.
     Gen(GenArgs),
     /// Explain the mapping — what each schema element becomes, and why (§21.3).
     Explain(ExplainArgs),
@@ -60,6 +61,33 @@ struct GenArgs {
     /// Output directory for the generated files.
     #[arg(short, long, default_value = ".")]
     out: PathBuf,
+    /// Which serializability theory to write beside `core.lp`/`views.lp`: `strict`
+    /// (`<pkg>.emit.lp`), `diagnostic` (`<pkg>.emit-diagnostic.lp`), or `both`.
+    #[arg(long, value_enum, default_value_t = ShapeArg::Strict)]
+    shape: ShapeArg,
+}
+
+/// The `--shape` values (spec §13.3, §12.2) — the command-line face of [`Shape`], so clap's
+/// value names and their help are keryx's own.
+#[derive(Clone, Copy, ValueEnum)]
+enum ShapeArg {
+    /// The strict theory: an unserializable answer set is UNSAT (the production default).
+    Strict,
+    /// The diagnostic theory: the model survives and `violates(path, occupant)` names the
+    /// violation for the reassembler to report.
+    Diagnostic,
+    /// Both theories, each under its own name.
+    Both,
+}
+
+impl From<ShapeArg> for Shape {
+    fn from(shape: ShapeArg) -> Self {
+        match shape {
+            ShapeArg::Strict => Shape::Strict,
+            ShapeArg::Diagnostic => Shape::Diagnostic,
+            ShapeArg::Both => Shape::Both,
+        }
+    }
 }
 
 #[derive(clap::Args)]
@@ -111,9 +139,10 @@ fn dispatch(cli: Cli) -> Exit {
     }
 }
 
-/// Load, map, and write `<out>/<pkg>.core.lp`, `.views.lp`, and `.keryx-manifest` per package
-/// (spec §13, §28). stdout stays clean; written paths are reported to stderr. The schema hash
-/// is not computed at present (`-`); content hashing lands with `keryx diff` (Increment 5).
+/// Load, map, and write `<out>/<pkg>.core.lp`, `.views.lp`, the `.emit.lp` variant(s)
+/// `--shape` names, and `.keryx-manifest` per package (spec §13, §28). stdout stays clean;
+/// written paths are reported to stderr. The schema hash is not computed at present (`-`);
+/// content hashing lands with `keryx diff` (Increment 5).
 fn generate(args: &GenArgs, format: Format) -> Exit {
     let schema = match load_schema(&args.protos, &args.includes, format) {
         Ok(schema) => schema,
@@ -124,20 +153,11 @@ fn generate(args: &GenArgs, format: Format) -> Exit {
         Err(diagnostics) => return report(format, Exit::Schema, &diagnostics),
     };
     for unit in mapping.units() {
-        let core = match emit::core(unit) {
-            Ok(text) => text,
+        let files = match render_unit(unit, args.shape.into()) {
+            Ok(files) => files,
             Err(diagnostics) => return report(format, Exit::Internal, &diagnostics),
         };
-        let views = match emit::views(unit) {
-            Ok(text) => text,
-            Err(diagnostics) => return report(format, Exit::Internal, &diagnostics),
-        };
-        let manifest = manifest::write(unit, "-");
-        for (suffix, text) in [
-            ("core.lp", &core),
-            ("views.lp", &views),
-            ("keryx-manifest", &manifest),
-        ] {
+        for (suffix, text) in &files {
             // `unit.package()` is a validated `Package` (a dotted identifier — no `/`, `..`, or NUL),
             // so it names one file directly under `-o`, not a path that could traverse out of it (the
             // threat model's descriptor-door package boundary; the door represents that shape).
@@ -157,6 +177,39 @@ fn generate(args: &GenArgs, format: Format) -> Exit {
         }
     }
     Exit::Success
+}
+
+/// A renderer of one generation unit's module text (spec §13).
+type Renderer = fn(&Unit) -> Result<String, Diagnostics>;
+
+/// Render one generation unit's file set (spec §13) — `core.lp`, `views.lp`, the `emit.lp`
+/// variant(s) `shape` names, and the manifest recording that choice — each paired with the
+/// suffix it is written under, in writing order. Every file renders before any is written, so
+/// a render failure (a keryx bug, `Internal`) leaves no partial set beside a diagnosis (§6).
+fn render_unit(unit: &Unit, shape: Shape) -> Result<Vec<(&'static str, String)>, Diagnostics> {
+    let mut files = vec![
+        ("core.lp", emit::core(unit)?),
+        ("views.lp", emit::views(unit)?),
+    ];
+    for (suffix, render) in emit_variants(shape) {
+        files.push((suffix, render(unit)?));
+    }
+    files.push(("keryx-manifest", manifest::write(unit, "-", shape)));
+    Ok(files)
+}
+
+/// The serializability-theory variant(s) `shape` names (spec §13.3), each as the suffix it is
+/// written under and the renderer producing it: the strict theory as `emit.lp`, the diagnostic
+/// one as `emit-diagnostic.lp` — named for what it is, so a project loads the one it means —
+/// and both when both are asked for.
+fn emit_variants(shape: Shape) -> Vec<(&'static str, Renderer)> {
+    let strict = ("emit.lp", emit::emit_strict as Renderer);
+    let diagnostic = ("emit-diagnostic.lp", emit::emit_diagnostic as Renderer);
+    match shape {
+        Shape::Strict => vec![strict],
+        Shape::Diagnostic => vec![diagnostic],
+        Shape::Both => vec![strict, diagnostic],
+    }
 }
 
 /// Render the mapping verdicts to stdout (spec §21.3): per package, what each element became

@@ -21,6 +21,36 @@ pub use emit_lp::{emit_diagnostic, emit_strict};
 pub use views::views;
 
 use themelios_program::prelude::*;
+
+/// Which variant(s) of the serializability theory a generation writes (spec §13.3). The two
+/// modes of §12.2 are emitted as two files rather than switched by a `#const`, so a project
+/// loads the one it means — the strict theory, under which an unserializable answer set is
+/// UNSAT (the production default), or the diagnostic one, under which the model survives and
+/// `violates(path, occupant)` names what the reassembler reports — and the manifest records
+/// which stand beside it (§13.4), so the manifest reads as the record of the whole generated
+/// set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape {
+    /// The strict theory alone ([`emit_strict`]).
+    Strict,
+    /// The diagnostic theory alone ([`emit_diagnostic`]).
+    Diagnostic,
+    /// Both, each under its own name.
+    Both,
+}
+
+impl Shape {
+    /// The manifest's word for the choice (spec §13.4; Appendix B's `shape both`): `strict`,
+    /// `diagnostic`, or `both`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Shape::Strict => "strict",
+            Shape::Diagnostic => "diagnostic",
+            Shape::Both => "both",
+        }
+    }
+}
 use themelios_program::render::render_documented;
 
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};

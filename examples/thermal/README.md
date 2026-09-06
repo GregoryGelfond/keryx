@@ -56,10 +56,10 @@ keryx facts --root ReadingBatch=batch.txtpb thermal.proto -I .   # the same seve
 keryx facts --root ReadingBatch=batch.json thermal.proto -I .    # and again
 ```
 
-`gen` writes one file set per package (spec §13). For `thermal.v1` that is the three files in
-[`gen/`](gen/): `thermal.v1.core.lp`, `thermal.v1.views.lp`, and `thermal.v1.keryx-manifest`.
-`facts` prints to stdout — the product, ready for `| clingo` — so the fourth file there,
-`thermal.v1.facts.lp`, is that output captured.
+`gen` writes one file set per package (spec §13). For `thermal.v1` that is the four files in
+[`gen/`](gen/): `thermal.v1.core.lp`, `thermal.v1.views.lp`, `thermal.v1.emit.lp`, and
+`thermal.v1.keryx-manifest`. `facts` prints to stdout — the product, ready for `| clingo` — so
+the fifth file there, `thermal.v1.facts.lp`, is that output captured.
 
 ## What it generates
 
@@ -112,6 +112,36 @@ readings(P, I, E) :- reading(E), E = readings(P, I).
 `readings` and `alerts` each get a **sequence** view (their elements are messages —
 `Reading`, `Alert`). The scalar fields `sensor` and `temp_c` need no view. A project that wants
 only the functional canon can exclude this file (spec §13.2); `core.lp` stands on its own.
+
+### `thermal.v1.emit.lp` — the serializability theory (spec §13.3)
+
+Outbound, the invariants the wire guaranteed inbound become obligations an answer set must
+meet before it can be a message. A client of `core.lp` like `views.lp`, the module declares a
+root marker per message sort, closes `reach/1` over the message-typed slots beneath every
+asserted marker, and guards each obligation by `reach` and by its sort:
+
+```prolog
+#include "thermal.v1.core.lp".
+%!readings : reading_batch × index -> reading  (sequence)
+reach(A) :- reach(X), reading(A), reading_batch(X), A = readings(X, I).
+%!emit_reading_batch : reading_batch  (root)
+reach(X) :- emit_reading_batch(X).
+%!functionality of sensor : reading -> string  (total)
+:- reach(P), reading(P), sensor(P, V1), sensor(P, V2), V1 != V2.
+%!contiguity of readings : reading_batch × index -> reading  (sequence)
+:- has_readings(P, I), reach(P), reading_batch(P), I > 0, not has_readings(P, (I - 1)).
+```
+
+A model asserts `emit_reading_batch(r0)` to export the tree under `r0`; every reading it
+reaches then owes one `sensor` and one `temp_c`, and the sequence owes indices dense from 0.
+Nothing unreached is constrained, so a model's working predicates stay free, and the guard
+carries the sort — `sensor` is shared with `alert`, and each sort's obligations are its own.
+This is the **strict** theory, `gen`'s default: an obligation is an integrity constraint, so an
+answer set that would not serialize is simply not an answer set — UNSAT, never garbage bytes.
+`keryx gen --shape diagnostic` writes `thermal.v1.emit-diagnostic.lp` instead, where each
+obligation derives `violates(path, occupant)` and the model survives for the reassembler to
+report the field path; `--shape both` writes both. The manifest's header records the choice
+(`shape strict`).
 
 ### `thermal.v1.keryx-manifest` — the evolution contract (spec §13.4)
 
@@ -180,5 +210,8 @@ Increment 4; this example is the piece that is real today.
   `alerts/3`.
   Set semantics — order- and multiplicity-insensitive membership — arrive with annotation
   reading at Increment 5, at which point `alerts` becomes a membership relation.
-- **No `emit.lp` yet.** The serializability guard that constrains an answer set to a
-  reassemblable shape (spec §13.3) is generated with the outbound codec at Increment 4.
+- **`emit.lp` is generated; reassembly is not yet.** The theory above is what `gen` writes
+  today, and the repository's grounding gate runs it under clingo — the facts of `batch.binpb`,
+  exported under `emit_reading_batch(r0)`, satisfy it, and a second `sensor` on a reading
+  refutes it. The reassembler that turns an answer set satisfying it back into a message —
+  step 4 above — arrives with the outbound codec at Increment 4.

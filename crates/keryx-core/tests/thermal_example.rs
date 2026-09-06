@@ -9,6 +9,7 @@ use keryx_test_support::wire::{batch, reading};
 
 use keryx_core::codec::{Codec, PayloadFormat, Root};
 use keryx_core::descriptor::compile;
+use keryx_core::emit::Shape;
 use keryx_core::{emit, manifest, policy};
 
 /// The example's directory (`examples/thermal`).
@@ -45,8 +46,14 @@ fn thermal_gen_matches_the_committed_example() {
         emit::views(unit).expect("views"),
         golden("thermal.v1.views.lp")
     );
+    // The strict theory — what `keryx gen` writes by default (§13.3) — and the manifest that
+    // records that choice (§13.4).
     assert_eq!(
-        manifest::write(unit, "-"),
+        emit::emit_strict(unit).expect("emit"),
+        golden("thermal.v1.emit.lp")
+    );
+    assert_eq!(
+        manifest::write(unit, "-", Shape::Strict),
         golden("thermal.v1.keryx-manifest")
     );
 }
