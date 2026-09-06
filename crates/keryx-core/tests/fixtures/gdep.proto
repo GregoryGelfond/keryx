@@ -1,0 +1,9 @@
+syntax = "proto3";
+package keryx.gdep;
+
+// The referent of `keryx.gmap.Holder.thing` — in its own package, so its fields (and thus its
+// occupancy) live in this unit, out of the holder's `emit.lp`. The two packages' `.lp` files load
+// together, so the holder theory grounds against this unit's `core.lp`.
+message Thing {
+  uint32 code = 1;
+}

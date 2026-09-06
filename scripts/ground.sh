@@ -16,6 +16,11 @@
 #                occupant before the equality deconstructs it — and the grounder confirms each.
 #   obligations  crates/keryx-core/tests/fixtures/obligations.proto — every scalar-valued
 #                obligation on one sort.
+#   crossmap     crates/keryx-core/tests/fixtures/gmap.proto (+ gdep.proto) — a map<uint32,
+#                message> whose key range reads the occupant's sort atom, not a field atom, and a
+#                cross-package message field whose child sort lives in the other package's unit (so
+#                this unit emits the reach step and root occupancy for it but no slot occupancy).
+#                Grounded together with the dependency package's core.lp, the way the files load.
 #
 # For each schema the gate asserts: the strict and the diagnostic theory ground clean (no
 # error, no undefined-atom notice); a serializable answer set is SAT under the strict theory;
@@ -53,6 +58,20 @@ fi
 ground() {
   local file=$1 notices
   notices=$(clingo --text --warn=all "$file" 2>&1 > /dev/null) \
+    || fail "$(basename "$file") does not ground:
+$notices"
+  [ -z "$notices" ] || fail "$(basename "$file") grounds with notices:
+$notices"
+  echo "ground: $(basename "$file") grounds clean"
+}
+
+# ground_with FILE EXTRA... — as `ground`, but FILE grounds alongside EXTRA (a dependency package's
+# core.lp), so a cross-package sort atom resolves rather than being reported undefined — the way the
+# two packages' files load together. Grounded alone, that atom is undefined by design.
+ground_with() {
+  local file=$1 notices
+  shift
+  notices=$(clingo --text --warn=all "$file" "$@" 2>&1 > /dev/null) \
     || fail "$(basename "$file") does not ground:
 $notices"
   [ -z "$notices" ] || fail "$(basename "$file") grounds with notices:
@@ -116,4 +135,32 @@ check obligations "$fixtures/obligations.proto" "$fixtures" keryx.obligations \
   "$fixtures/obligations.answer.lp" \
   'sensor(g0, "s-2").' \
   'violates("keryx.obligations.Gauge.sensor",g0)'
+
+# crossmap — grounded with the dependency package's core.lp (see the header): the holder theory's
+# map<uint32,message> key range and its cross-package reach step and root occupancy all ground
+# clean; a valid holder is SAT; a negative map key is UNSAT under strict and, under diagnostic,
+# SAT with the key-range violation derived at the field's path.
+crossmap=$work/crossmap
+mkdir -p "$crossmap"
+"$KERYX" gen "$fixtures/gmap.proto" -I "$fixtures" -o "$crossmap" --shape both 2> "$crossmap/gen.log" \
+  || fail "keryx gen gmap.proto failed:
+$(cat "$crossmap/gen.log")"
+gmap_strict=$crossmap/keryx.gmap.emit.lp
+gmap_diagnostic=$crossmap/keryx.gmap.emit-diagnostic.lp
+gdep_core=$crossmap/keryx.gdep.core.lp
+ground_with "$gmap_strict" "$gdep_core"
+ground_with "$gmap_diagnostic" "$gdep_core"
+printf '%s\n' 'emit_holder(h0).' 'holder(h0).' 'inner(by_id(h0, 0)).' 'n(by_id(h0, 0), 5).' \
+  > "$crossmap/answer.lp"
+printf '%s\n' 'inner(by_id(h0, -1)).' 'n(by_id(h0, -1), 7).' > "$crossmap/badkey.lp"
+solve sat "$gmap_strict" "$gdep_core" "$crossmap/answer.lp"
+solve unsat "$gmap_strict" "$gdep_core" "$crossmap/answer.lp" "$crossmap/badkey.lp"
+solve sat "$gmap_diagnostic" "$gdep_core" "$crossmap/answer.lp" "$crossmap/badkey.lp"
+case "$model" in
+  *'violates("keryx.gmap.Holder.by_id",h0)'*) ;;
+  *) fail "the diagnostic theory did not derive the key-range violation:
+$model" ;;
+esac
+echo "ground: crossmap — SAT; UNSAT on a negative map key; key-range violation derived"
+
 echo "ground: every theory grounds clean and solves as expected"

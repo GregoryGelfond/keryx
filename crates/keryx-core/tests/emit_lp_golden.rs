@@ -15,6 +15,19 @@ fn unit_of(fixture: &str) -> policy::Unit {
     mapping.units().first().expect("one unit").clone()
 }
 
+/// The unit of `fixture`'s named `package` — for a multi-package fixture, where `unit_of`'s
+/// first-unit choice is not the one under test.
+fn unit_of_package(fixture: &str, package: &str) -> policy::Unit {
+    let schema = ingest(&support::compile_fixture(fixture)).expect("ingests");
+    let mapping = policy::map(&schema).expect("maps");
+    mapping
+        .units()
+        .iter()
+        .find(|unit| unit.package().as_str() == package)
+        .expect("the named package's unit")
+        .clone()
+}
+
 macro_rules! golden {
     ($name:ident, $fixture:literal, $emit:path, $golden:literal) => {
         #[test]
@@ -93,3 +106,29 @@ golden!(
     emit::emit_diagnostic,
     "golden/reach.emit-diagnostic.lp"
 );
+
+// A holder with a `map<uint32, message>` and a message field into another package — two `emit.lp`
+// shapes the single-package fixtures do not reach. The map's key range is read through the
+// occupant's sort atom `inner(by_id(P, K))`, not a field atom, since the value is a message; and
+// the cross-package field `thing` gets the reach step and the root instance of occupancy but *no*
+// `slot_occupancy` obligation over the child's fields — the child sort lives in the other package's
+// unit, so occupancy there is that unit's (the cross-unit early return). `scripts/ground.sh`
+// grounds this theory together with the dependency package's `core.lp`, so the cross-package sort
+// atom resolves — the way the two packages' files load together. The `keryx.gmap` unit is not the
+// first (its package sorts after `keryx.gdep`), so it is selected by name.
+#[test]
+fn crossmap_strict() {
+    let unit = unit_of_package("gmap.proto", "keryx.gmap");
+    assert_eq!(
+        emit::emit_strict(&unit).expect("emits"),
+        include_str!("golden/gmap.emit.lp")
+    );
+}
+#[test]
+fn crossmap_diagnostic() {
+    let unit = unit_of_package("gmap.proto", "keryx.gmap");
+    assert_eq!(
+        emit::emit_diagnostic(&unit).expect("emits"),
+        include_str!("golden/gmap.emit-diagnostic.lp")
+    );
+}

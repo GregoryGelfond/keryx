@@ -1,0 +1,19 @@
+syntax = "proto3";
+package keryx.gmap;
+
+import "gdep.proto";
+
+// A holder exercising two `emit.lp` shapes untested by the single-package fixtures: a map from an
+// unsigned key to a *message* value — whose key range is read through the occupant's sort atom
+// `inner(by_id(P, K))`, not a field atom — and a message field into another package, whose
+// occupancy is that package's, so this unit emits no occupancy obligation for the slot (the
+// `slot_occupancy` cross-unit early return).
+message Holder {
+  map<uint32, Inner> by_id = 1;  // map<uint32, message>: the key range read via the occupant
+  keryx.gdep.Thing thing = 2;    // cross-package message field: slot occupancy is gdep's
+}
+
+// The map's value sort — its own package, so `by_id`'s key range and occupancy resolve here.
+message Inner {
+  uint32 n = 1;
+}
