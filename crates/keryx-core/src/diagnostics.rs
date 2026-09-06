@@ -251,6 +251,38 @@ pub enum DiagnosticKind {
     /// `emit.lp`); a cross-package collision — a user predicate meeting another unit's auxiliary when
     /// both files load together — is a narrower, load-dependent residual not diagnosed here.
     GeneratedPredicateCollision,
+    /// A term in the answer set does not lower to the type its field declares (spec §12.3): a
+    /// `Symbol` of the wrong shape for the field's kind — a string where an `int32` is declared, a
+    /// bool constant other than `true`/`false`, an odd-length or non-hex `bytes` spelling — met by
+    /// the reassembler's inverse §6 lowering (`codec::scalar::raise`). A structured translation error
+    /// at the offending field's path (§26), never a panic (§6). Distinct from a value that lowers but
+    /// breaks an obligation (`ShapeViolation`) and from a number outside its kind (`ValueOutOfRange`).
+    /// The outbound reassembler's, Increment 4.
+    TermTypeMismatch,
+    /// The answer set breaks a serializability obligation `emit.lp` states, or carries a
+    /// `violates(path, occupant)` atom: a duplicate value for a singular field, a non-dense sequence
+    /// index, a oneof with two arms present, a missing implicit-presence field, or a field atom over a
+    /// slot whose occupant carries no sort atom (an orphan field — refused, never silently dropped,
+    /// the threat model's integrity property). Named at the offending field's path (the oneof's, or
+    /// the sort's where the obligation is the root's). The answer set is not one the theory admits as
+    /// serializable, so the message it would reassemble to is refused rather than built from a broken
+    /// shape. The reassembly walk's, Increment 4.
+    ShapeViolation,
+    /// An occupant chain in the answer set nests message-typed occupants deeper than keryx's
+    /// reconstruction ceiling — 99 levels (`codec::walk::NESTING_CEILING`, the inbound payload ceiling
+    /// itself), refused by the reassembly walk's depth counter *before* any message is built or
+    /// encoded, so the engine's unbounded serializers never recurse on it (the threat model's property
+    /// 3, branch (b)). A door-admission policy, not a limit of the translation (§8). Named at the
+    /// whole-answer-set locus, stating the depth and the ceiling and nothing of the answer set. The
+    /// reassembler's, Increment 4.
+    ReassembledTooDeep,
+    /// `.lp` text a caller gave the outbound door (`keryx emit` reading a fixture or a solver's
+    /// written model) did not raise to the answer set's facts: a themelios parse diagnostic, or a
+    /// statement that is not a fact. The whole-input locus (no finer path); themelios's own message is
+    /// composed into the detail, held to the diagnostics rendering bound like every other. Distinct
+    /// from an answer set that raises but breaks a shape (`ShapeViolation`). The `.lp` read's,
+    /// Increment 4.
+    UnreadableAnswerSet,
 }
 
 impl DiagnosticKind {
@@ -281,6 +313,10 @@ impl DiagnosticKind {
             DiagnosticKind::UnknownRootType => "unknown_root_type",
             DiagnosticKind::PayloadTooDeep => "payload_too_deep",
             DiagnosticKind::GeneratedPredicateCollision => "generated_predicate_collision",
+            DiagnosticKind::TermTypeMismatch => "term_type_mismatch",
+            DiagnosticKind::ShapeViolation => "shape_violation",
+            DiagnosticKind::ReassembledTooDeep => "reassembled_too_deep",
+            DiagnosticKind::UnreadableAnswerSet => "unreadable_answer_set",
         }
     }
 }
@@ -639,8 +675,26 @@ mod tests {
             DiagnosticKind::GeneratedPredicateCollision.as_str(),
             "generated_predicate_collision"
         );
-        // A new kind must be added above: this exhaustive match (no wildcard,
-        // allowed in-crate despite #[non_exhaustive]) fails to compile otherwise.
+        assert_eq!(
+            DiagnosticKind::TermTypeMismatch.as_str(),
+            "term_type_mismatch"
+        );
+        assert_eq!(DiagnosticKind::ShapeViolation.as_str(), "shape_violation");
+        assert_eq!(
+            DiagnosticKind::ReassembledTooDeep.as_str(),
+            "reassembled_too_deep"
+        );
+        assert_eq!(
+            DiagnosticKind::UnreadableAnswerSet.as_str(),
+            "unreadable_answer_set"
+        );
+    }
+
+    #[test]
+    fn a_new_kind_must_be_given_a_wire_name() {
+        // The compile-time guard paired with `kind_wire_names_are_stable`: this exhaustive match (no
+        // wildcard, allowed in-crate despite #[non_exhaustive]) fails to compile when a variant is
+        // added, so a new kind cannot ship without its wire name pinned by that test.
         match DiagnosticKind::UnreadableDescriptorSet {
             DiagnosticKind::UnreadableDescriptorSet
             | DiagnosticKind::UnsupportedEdition
@@ -664,7 +718,11 @@ mod tests {
             | DiagnosticKind::UnannotatedFloat
             | DiagnosticKind::UnknownRootType
             | DiagnosticKind::PayloadTooDeep
-            | DiagnosticKind::GeneratedPredicateCollision => {}
+            | DiagnosticKind::GeneratedPredicateCollision
+            | DiagnosticKind::TermTypeMismatch
+            | DiagnosticKind::ShapeViolation
+            | DiagnosticKind::ReassembledTooDeep
+            | DiagnosticKind::UnreadableAnswerSet => {}
         }
     }
 

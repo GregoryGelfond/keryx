@@ -1,7 +1,7 @@
 //! Stable, class-distinguishing process exit codes (architecture §6) — the single home of the
 //! integers, and the top-level panic containment that maps an escaped panic to one. Variants
-//! are added as commands need them (the values fixed); the later `Admission`/`Shape`
-//! classes land with their increments.
+//! are added as commands need them (the values fixed); the later `Admission` class lands with its
+//! increment.
 
 use std::io::Write as _;
 use std::process::{ExitCode, Termination};
@@ -22,11 +22,19 @@ pub enum Exit {
     Input = 3,
     /// A schema error — the `.proto`/descriptor set did not compile, ingest, or map.
     Schema = 4,
+    /// A shape error — the answer set the outbound reassembler was given is not one `emit.lp`'s
+    /// theory admits as serializable, or a term in it does not lower to its field's type: a
+    /// `ShapeViolation`, a `TermTypeMismatch`, a `ReassembledTooDeep`, or an `UnreadableAnswerSet`.
+    /// The response half's own error class — the outbound counterpart of `Translation` — distinct
+    /// from a schema that does not build (`Schema`) and a payload that does not decode
+    /// (`Translation`). The caller routes the reassembler's refusals here (a contained fault still
+    /// dominates, via `classify`). The integer is tunable and named here alone.
+    Shape = 6,
     /// A dependency fault — an unforeseen fault in foreign code (the descriptor engine, the source
     /// compiler) contained on a foreign-input path (the threat model's dependency boundary). Neither
     /// a keryx bug (`Internal`) nor a user's schema error (`Schema`): the input provoked an engine
-    /// fault keryx caught and returned as a value. `5`/`6` are reserved for the `Admission`/`Shape`
-    /// classes their increments land; the integer is tunable and named here alone.
+    /// fault keryx caught and returned as a value. `5` is reserved for the `Admission` class its
+    /// increment lands; the integer is tunable and named here alone.
     Dependency = 7,
     /// A translation error — the payload could not be translated to facts: it did not decode as
     /// the root type, or carried a value the §6 policy refuses (out of range, an interior NUL,
@@ -50,6 +58,7 @@ impl Exit {
             Exit::Usage => "usage",
             Exit::Input => "input",
             Exit::Schema => "schema",
+            Exit::Shape => "shape",
             Exit::Dependency => "dependency",
             Exit::Translation => "translation",
         }
@@ -271,6 +280,26 @@ mod tests {
             "x",
         ));
         assert_eq!(Exit::classify(Exit::Translation, &fault), Exit::Dependency);
+    }
+
+    #[test]
+    fn the_shape_class_is_its_own_code_and_slug() {
+        // The outbound reassembler's error class: code 6, slug "shape". A reassembler refusal keeps
+        // it, and a contained fault beneath it still dominates (via `classify`).
+        assert_eq!(Exit::Shape as u8, 6);
+        assert_eq!(Exit::Shape.slug(), "shape");
+        let refusal = Diagnostics::one(Diagnostic::new(
+            DiagnosticKind::ShapeViolation,
+            Locus::whole(),
+            "x",
+        ));
+        assert_eq!(Exit::classify(Exit::Shape, &refusal), Exit::Shape);
+        let fault = Diagnostics::one(Diagnostic::new(
+            DiagnosticKind::DependencyFault,
+            Locus::whole(),
+            "x",
+        ));
+        assert_eq!(Exit::classify(Exit::Shape, &fault), Exit::Dependency);
     }
 
     #[test]
