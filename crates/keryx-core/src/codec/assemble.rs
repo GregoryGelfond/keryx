@@ -321,8 +321,11 @@ impl Assembler<'_, '_> {
             EmitForm::Sequence => self.plan_sequence(work, field, entries, fields, stack),
             EmitForm::Map { .. } => self.plan_map(work, field, entries, fields, stack),
             // A set (§7.1) is not produced by the mapping until its annotation lands (Increment 5),
-            // so no answer set the walk dispatches from carries the form; nothing to plan.
-            EmitForm::Set => {}
+            // so no answer set the walk dispatches from carries the form: planning one is a keryx
+            // error in the mapping, discharged loud as `walk::run` discharges the same inbound.
+            EmitForm::Set => unreachable!(
+                "the mapping produces no `Set` form before Increment 5; planning one is a keryx error"
+            ),
         }
     }
 
@@ -341,22 +344,20 @@ impl Assembler<'_, '_> {
         let [entry] = entries else {
             if entries.is_empty() {
                 if field.presence() == Totality::Total {
-                    self.diagnostics.push(missing_total(field, &work.occupant));
+                    self.diagnostics.push(missing_total(field));
                 }
             } else {
-                self.diagnostics
-                    .push(duplicate_singular(field, &work.occupant));
+                self.diagnostics.push(duplicate_singular(field));
             }
             return;
         };
         match field.value() {
             ValueMapping::Message(referent) => {
-                if let Some(child) = self.plan_child(work, field, referent, entry, stack) {
-                    fields.push(Planned::Message {
-                        number: field.number(),
-                        child,
-                    });
-                }
+                let child = self.plan_child(work, referent, entry, stack);
+                fields.push(Planned::Message {
+                    number: field.number(),
+                    child,
+                });
             }
             _ => {
                 if let Some(value) = self.value(field, entry) {
@@ -385,11 +386,8 @@ impl Assembler<'_, '_> {
             if let Some(Symbol::Number(index)) = place(entry) {
                 indexed.push((*index, entry));
             } else {
-                self.diagnostics.push(shape(
-                    field,
-                    &work.occupant,
-                    "a sequence element has no integer index",
-                ));
+                self.diagnostics
+                    .push(shape(field, "a sequence element has no integer index"));
                 return;
             }
         }
@@ -397,20 +395,15 @@ impl Assembler<'_, '_> {
         for (position, (index, _)) in indexed.iter().enumerate() {
             let expected = i32::try_from(position).ok();
             if Some(*index) != expected {
-                self.diagnostics.push(shape(
-                    field,
-                    &work.occupant,
-                    "a sequence is not dense from index 0",
-                ));
+                self.diagnostics
+                    .push(shape(field, "a sequence is not dense from index 0"));
                 return;
             }
         }
         if let ValueMapping::Message(referent) = field.value() {
             let mut children = Vec::with_capacity(indexed.len());
             for (_, entry) in &indexed {
-                if let Some(child) = self.plan_child(work, field, referent, entry, stack) {
-                    children.push(child);
-                }
+                children.push(self.plan_child(work, referent, entry, stack));
             }
             fields.push(Planned::Messages {
                 number: field.number(),
@@ -442,7 +435,7 @@ impl Assembler<'_, '_> {
         stack: &mut Vec<Discover>,
     ) {
         let EmitForm::Map { key, key_treatment } = field.form() else {
-            return; // `plan_field` routes only a map field here
+            unreachable!("plan_field routes only a map field to plan_map")
         };
         let (key, key_treatment) = (*key, *key_treatment);
         let mut seen: BTreeSet<MapKey> = BTreeSet::new();
@@ -452,7 +445,7 @@ impl Assembler<'_, '_> {
         for entry in entries {
             let Some(key_symbol) = place(entry) else {
                 self.diagnostics
-                    .push(shape(field, &work.occupant, "a map entry has no key"));
+                    .push(shape(field, "a map entry has no key"));
                 return;
             };
             let key_value = match scalar::raise(
@@ -468,25 +461,18 @@ impl Assembler<'_, '_> {
                 }
             };
             let Some(map_key) = key_value.into_map_key() else {
-                self.diagnostics.push(shape(
-                    field,
-                    &work.occupant,
-                    "a map key is not a scalar key type",
-                ));
+                self.diagnostics
+                    .push(shape(field, "a map key is not a scalar key type"));
                 continue;
             };
             if !seen.insert(map_key.clone()) {
-                self.diagnostics.push(shape(
-                    field,
-                    &work.occupant,
-                    "a map has two entries for one key",
-                ));
+                self.diagnostics
+                    .push(shape(field, "a map has two entries for one key"));
                 continue;
             }
             if is_message {
-                if let ValueMapping::Message(referent) = field.value()
-                    && let Some(child) = self.plan_child(work, field, referent, entry, stack)
-                {
+                if let ValueMapping::Message(referent) = field.value() {
+                    let child = self.plan_child(work, referent, entry, stack);
                     message_entries.push((map_key, child));
                 }
             } else if let Some(value) = self.value(field, entry) {
@@ -507,43 +493,34 @@ impl Assembler<'_, '_> {
     }
 
     /// Push a message slot's child occupant for discovery (the occupant term `f(P[, I | K])`), and
-    /// return it for the parent's plan. The referent sort is resolved from the mapping (`Index`
-    /// built it before any walk), so a message field always names a sort.
+    /// return it for the parent's plan. The referent sort is resolved from the mapping (`Index` built
+    /// it before any walk), so a message field always names a sort — a miss is a keryx error,
+    /// discharged loud (as `walk::run` discharges the same inbound), never carried into the build.
     fn plan_child(
         &mut self,
         work: &Discover,
-        field: &FieldMapping,
         referent: &Name,
         occupant: &Symbol,
         stack: &mut Vec<Discover>,
-    ) -> Option<Symbol> {
-        let Some(sort) = self.index.sort_of(referent) else {
-            // Every message referent of the mapping is a sort of its index (`Index::build`); a miss
-            // is a keryx error, checked not assumed, and refused rather than carried into the build.
-            self.diagnostics.push(shape(
-                field,
-                &work.occupant,
-                "a message field's referent names no sort",
-            ));
-            return None;
-        };
+    ) -> Symbol {
+        let sort = self
+            .index
+            .sort_of(referent)
+            .expect("every message referent of the mapping is a sort of its index");
         stack.push(Discover {
-            occupant: (*occupant).clone(),
+            occupant: occupant.clone(),
             sort,
             depth: work.depth + 1,
         });
-        Some((*occupant).clone())
+        occupant.clone()
     }
 
     /// Raise one scalar or enum entry to its value (the inverse §6 policy), or collect its refusal.
     /// The value is the entry atom's last argument — `f(P, V)`, `f(P, I, V)`, `f(P, K, V)`.
     fn value(&mut self, field: &FieldMapping, entry: &Symbol) -> Option<Value> {
         let Some(symbol) = last_argument(entry) else {
-            self.diagnostics.push(shape(
-                field,
-                &Symbol::Supremum,
-                "a field atom carries no value",
-            ));
+            self.diagnostics
+                .push(shape(field, "a field atom carries no value"));
             return None;
         };
         let at = field.proto().as_str();
@@ -552,16 +529,11 @@ impl Assembler<'_, '_> {
                 scalar::raise(symbol, *kind, *treatment, at)
             }
             ValueMapping::Enum(referent) => self.enum_number(field, referent, symbol),
-            // A message value has no scalar entry — the singular/sequence/map planners route it to
-            // `plan_child` before here.
-            ValueMapping::Message(_) => {
-                self.diagnostics.push(shape(
-                    field,
-                    &Symbol::Supremum,
-                    "a message field has a scalar entry",
-                ));
-                return None;
-            }
+            // A message value is routed to `plan_child` by the singular/sequence/map planners before
+            // here; reaching the scalar path is a keryx error, discharged loud as `walk` does inbound.
+            ValueMapping::Message(_) => unreachable!(
+                "a message field is routed to plan_child before value; a scalar path here is a keryx error"
+            ),
         };
         match lowered {
             Ok(value) => Some(value),
@@ -674,20 +646,33 @@ fn set_planned(
             &at(number),
         ),
         Planned::Message { number, child } => {
-            let value = built.remove(&child).unwrap_or(Value::Bool(false));
+            let value = built
+                .remove(&child)
+                .expect("every planned child is built before its parent");
             building.set(number, value, &at(number))
         }
         Planned::Messages { number, children } => {
             let values = children
                 .into_iter()
-                .map(|child| built.remove(&child).unwrap_or(Value::Bool(false)))
+                .map(|child| {
+                    built
+                        .remove(&child)
+                        .expect("every planned child is built before its parent")
+                })
                 .collect();
             building.set(number, Value::List(values), &at(number))
         }
         Planned::MessageMap { number, entries } => {
             let map = entries
                 .into_iter()
-                .map(|(key, child)| (key, built.remove(&child).unwrap_or(Value::Bool(false))))
+                .map(|(key, child)| {
+                    (
+                        key,
+                        built
+                            .remove(&child)
+                            .expect("every planned child is built before its parent"),
+                    )
+                })
                 .collect();
             building.set(number, Value::Map(map), &at(number))
         }
@@ -731,7 +716,7 @@ fn field_path(sort: &SortMapping, number: i32) -> String {
 }
 
 /// `ShapeViolation` at a field's path.
-fn shape(field: &FieldMapping, _occupant: &Symbol, detail: &str) -> Diagnostic {
+fn shape(field: &FieldMapping, detail: &str) -> Diagnostic {
     Diagnostic::new(
         DiagnosticKind::ShapeViolation,
         Locus::at(field.proto().as_str()),
@@ -740,13 +725,13 @@ fn shape(field: &FieldMapping, _occupant: &Symbol, detail: &str) -> Diagnostic {
 }
 
 /// `ShapeViolation`: a singular field with two values.
-fn duplicate_singular(field: &FieldMapping, occupant: &Symbol) -> Diagnostic {
-    shape(field, occupant, "a singular field has two values")
+fn duplicate_singular(field: &FieldMapping) -> Diagnostic {
+    shape(field, "a singular field has two values")
 }
 
 /// `ShapeViolation`: a total (implicit-presence) field with no value.
-fn missing_total(field: &FieldMapping, occupant: &Symbol) -> Diagnostic {
-    shape(field, occupant, "a total field is missing its value")
+fn missing_total(field: &FieldMapping) -> Diagnostic {
+    shape(field, "a total field is missing its value")
 }
 
 /// Whether `occupant`'s parent spine — each term's first argument, followed inward — reaches a

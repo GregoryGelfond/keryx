@@ -232,9 +232,10 @@ impl Codec {
         markers.sort_by_key(|(_, first)| *first);
         let mut messages = Vec::new();
         for (sort, marker) in markers {
-            let Some(root) = assemble::marker_root(marker) else {
-                continue; // a marker with no root argument keys nothing; skip (never pushed by the index)
-            };
+            // The slot index pushes only single-argument markers (`[root]`), so every marker names a
+            // root; a marker without one is a keryx error, discharged loud, never silently skipped.
+            let root = assemble::marker_root(marker)
+                .expect("the slot index pushes only single-argument markers");
             match assemble::assemble(&self.mapping, &self.index, &self.pool, &slots, root, sort) {
                 Ok(bytes) => messages.push(Emitted {
                     type_name: sort.in_mapping(&self.mapping).proto().as_str().to_owned(),
