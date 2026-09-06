@@ -238,6 +238,19 @@ pub enum DiagnosticKind {
     /// the walk's counter lands with the binary format, the per-format guards and instruments with
     /// theirs.
     PayloadTooDeep,
+    /// A schema element's emitted predicate collides — same name and arity — with a `has_<field>`
+    /// witness or `ok_<enum>` membership table that `emit.lp` generates (§12.2). Unlike the reserved
+    /// names (`reach`, `violates`, `emit_*`, `ep`), which a base name is escape-suffixed off
+    /// (`policy::names::escape_reserved`), the `has_`/`ok_` prefixes are deliberately *not* reserved
+    /// — escaping those common prefixes wholesale would rename innocent fields like `has_permission`
+    /// — so a schema whose own message/enum/field lowers to `has_<x>`/`ok_<x>` at the auxiliary's
+    /// arity is refused here rather than silently sharing the auxiliary's extension, which would
+    /// corrupt the generated serializability theory for the consuming tool's solver (a false SAT or
+    /// UNSAT). A schema-input error, reachable on a schema whose declared names take that shape;
+    /// named at the offending element's locus. Detected within a generation unit (a package's
+    /// `emit.lp`); a cross-package collision — a user predicate meeting another unit's auxiliary when
+    /// both files load together — is a narrower, load-dependent residual not diagnosed here.
+    GeneratedPredicateCollision,
 }
 
 impl DiagnosticKind {
@@ -267,6 +280,7 @@ impl DiagnosticKind {
             DiagnosticKind::UnannotatedFloat => "unannotated_float",
             DiagnosticKind::UnknownRootType => "unknown_root_type",
             DiagnosticKind::PayloadTooDeep => "payload_too_deep",
+            DiagnosticKind::GeneratedPredicateCollision => "generated_predicate_collision",
         }
     }
 }
@@ -621,6 +635,10 @@ mod tests {
             "unknown_root_type"
         );
         assert_eq!(DiagnosticKind::PayloadTooDeep.as_str(), "payload_too_deep");
+        assert_eq!(
+            DiagnosticKind::GeneratedPredicateCollision.as_str(),
+            "generated_predicate_collision"
+        );
         // A new kind must be added above: this exhaustive match (no wildcard,
         // allowed in-crate despite #[non_exhaustive]) fails to compile otherwise.
         match DiagnosticKind::UnreadableDescriptorSet {
@@ -645,7 +663,8 @@ mod tests {
             | DiagnosticKind::UnknownEnumValue
             | DiagnosticKind::UnannotatedFloat
             | DiagnosticKind::UnknownRootType
-            | DiagnosticKind::PayloadTooDeep => {}
+            | DiagnosticKind::PayloadTooDeep
+            | DiagnosticKind::GeneratedPredicateCollision => {}
         }
     }
 

@@ -37,12 +37,21 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 /// # Errors
 ///
 /// [`Diagnostics`] when a subject file declares no `package` (`PackagelessFile`); when a schema name
-/// cannot map to an ASP symbol (`UnmappableName`, whose cases that kind's doc enumerates); or when two
-/// values of one enum lower to a single constant (`AmbiguousConstant`, §7.4).
+/// cannot map to an ASP symbol (`UnmappableName`, whose cases that kind's doc enumerates); when two
+/// values of one enum lower to a single constant (`AmbiguousConstant`, §7.4); or when a schema
+/// element's predicate collides with a generated `has_`/`ok_` auxiliary
+/// (`GeneratedPredicateCollision`, §12.2).
 pub fn map(schema: &Schema) -> Result<Mapping, Diagnostics> {
     reject_packageless(schema)?;
     let sorts = qualify::resolve(&names::sort_table(schema)?)?; // path -> resolved name + decisions
-    assemble(schema, &sorts)
+    let mapping = assemble(schema, &sorts)?;
+    // The generated theory reserves the `has_<field>`/`ok_<enum>` auxiliary predicates (§12.2);
+    // unlike the marker/`reach`/`violates`/`ep` names, their prefixes are not escaped, so a schema
+    // element that lowers onto one is refused rather than silently sharing its extension.
+    if let Some(collision) = mapping.units().iter().find_map(first_generated_collision) {
+        return Err(Diagnostics::from(collision));
+    }
+    Ok(mapping)
 }
 
 /// Refuse a package-less subject file before any mapping (spec §13, §6): keryx generates one file
@@ -192,6 +201,109 @@ fn field_collision(field: &FieldMapping) -> Diagnostics {
             field.arity()
         ),
     ))
+}
+
+/// The first schema element of `unit` whose emitted predicate collides — same name and arity —
+/// with a `has_<field>` witness or `ok_<enum>` membership table that `emit.lp` generates
+/// (spec §12.2, §6). The marker `emit_<sort>`, `reach`, `violates`, and `ep` are collision-proof by
+/// the reserved-word escape (`names::escape_reserved`); the `has_`/`ok_` prefixes are deliberately
+/// *not* escaped — escaping those common prefixes wholesale would rename innocent fields like
+/// `has_permission` — so a schema whose own message/enum/field lowers onto one is diagnosed here
+/// rather than silently sharing the auxiliary's extension, which would corrupt the generated theory
+/// for the consuming tool's solver. The generated-auxiliary set mirrors `emit::emit_lp` exactly — a
+/// presence witness `has_<f>/1` for a total singular non-message field (`emit_lp::singular`), an
+/// index witness `has_<f>/2` for a sequence field (`emit_lp::sequence`), and a membership table
+/// `ok_<e>/1` per enum (`emit_lp::membership_table`) — each name taken through the same
+/// `names::witness`/`names::member`, so the check cannot drift from what is emitted. Per unit (a
+/// package's `emit.lp`); a cross-package collision — a user predicate meeting another unit's
+/// auxiliary when both `.lp` files load together — is a narrower, load-dependent residual, not
+/// diagnosed here. `None` when the unit's user predicates are disjoint from its generated auxiliaries.
+fn first_generated_collision(unit: &Unit) -> Option<Diagnostic> {
+    // The (predicate, arity) each generated `has_`/`ok_` auxiliary occupies, mapped to a phrase
+    // naming the field or enum it belongs to. Owned keys: an auxiliary name is a fresh `Name`.
+    let mut auxiliaries: BTreeMap<(String, u32), String> = BTreeMap::new();
+    for sort in unit.sorts() {
+        for field in sort.fields() {
+            let arity = match field.form() {
+                EmitForm::Function | EmitForm::OneofArm { .. }
+                    if field.view().is_none() && field.presence() == Totality::Total =>
+                {
+                    1 // the presence witness `has_f(P)` (emit_lp::singular)
+                }
+                EmitForm::Sequence => 2, // the index witness `has_f(P, I)` (emit_lp::sequence)
+                _ => continue, // a message view, a partial singular, a map, or a set: no witness
+            };
+            auxiliaries.insert(
+                (names::witness(field.predicate()).as_str().to_owned(), arity),
+                format!(
+                    "the witness `emit.lp` generates for field `{}`",
+                    field.proto().as_str()
+                ),
+            );
+        }
+    }
+    for enumeration in unit.enums() {
+        auxiliaries.insert(
+            (
+                names::member(enumeration.predicate()).as_str().to_owned(),
+                1,
+            ),
+            format!(
+                "the membership table `emit.lp` generates for enum `{}`",
+                enumeration.proto().as_str()
+            ),
+        );
+    }
+    // The unit's user predicates in deterministic order (P3): each sort, its fields, then each enum.
+    // The first that occupies an auxiliary's (name, arity) is the offender.
+    for sort in unit.sorts() {
+        if let Some(origin) = auxiliaries.get(&(sort.predicate().as_str().to_owned(), 1)) {
+            return Some(generated_collision(
+                sort.proto(),
+                sort.predicate(),
+                1,
+                origin,
+            ));
+        }
+        for field in sort.fields() {
+            if let Some(origin) =
+                auxiliaries.get(&(field.predicate().as_str().to_owned(), field.arity()))
+            {
+                return Some(generated_collision(
+                    field.proto(),
+                    field.predicate(),
+                    field.arity(),
+                    origin,
+                ));
+            }
+        }
+    }
+    for enumeration in unit.enums() {
+        if let Some(origin) = auxiliaries.get(&(enumeration.predicate().as_str().to_owned(), 1)) {
+            return Some(generated_collision(
+                enumeration.proto(),
+                enumeration.predicate(),
+                1,
+                origin,
+            ));
+        }
+    }
+    None
+}
+
+/// The `GeneratedPredicateCollision` diagnostic (§6, §12.2), at the offending element's locus: its
+/// predicate collides with `origin` (a phrase naming the auxiliary's field or enum). Names the fix —
+/// rename the element — since keryx does not escape the `has_`/`ok_` auxiliary prefixes.
+fn generated_collision(proto: &FqName, predicate: &Name, arity: u32, origin: &str) -> Diagnostic {
+    Diagnostic::new(
+        DiagnosticKind::GeneratedPredicateCollision,
+        Locus::at(proto.as_str()),
+        format!(
+            "this element lowers to the predicate `{}/{arity}`, which collides with {origin}; rename \
+             it (keryx does not escape the generated `has_`/`ok_` auxiliary prefixes)",
+            predicate.as_str(),
+        ),
+    )
 }
 
 /// One enum's `EnumMapping`: its **qualified** sort predicate (from `sort_of`, so a
@@ -385,5 +497,167 @@ mod tests {
         let diagnostic = error.iter().next().expect("one diagnostic");
         assert_eq!(diagnostic.kind(), DiagnosticKind::UnmappableName);
         assert_eq!(diagnostic.locus().path(), Some("m.Absent"));
+    }
+
+    // --- generated-auxiliary collision (`GeneratedPredicateCollision`, §12.2) ---
+    //
+    // A schema element whose predicate lowers onto a `has_<field>`/`ok_<enum>` auxiliary `emit.lp`
+    // generates is refused (the marker/`reach`/`violates`/`ep` names are escaped; these prefixes
+    // deliberately are not). Unreachable through a compile of a schema that does not itself declare
+    // such names; a directly-supplied descriptor set can carry them, so `map` diagnoses.
+
+    use crate::descriptor::model::{Enum, EnumValue, Openness};
+
+    fn m_schema(messages: Vec<Message>, enums: Vec<Enum>) -> Schema {
+        Schema {
+            files: vec![File {
+                name: "m.proto".to_owned(),
+                package: Package::parse("m").expect("valid package"),
+            }],
+            messages,
+            enums,
+        }
+    }
+
+    fn message(name: &str, fields: Vec<Field>) -> Message {
+        Message {
+            path: FqName::new(format!("m.{name}")),
+            file: "m.proto".to_owned(),
+            outer: None,
+            fields,
+            oneofs: Vec::new(),
+            options: Vec::new(),
+            doc: None,
+            recursive: false,
+        }
+    }
+
+    fn singular_field(owner: &str, number: i32, name: &str, presence: Presence) -> Field {
+        Field {
+            number,
+            name: name.to_owned(),
+            path: FqName::new(format!("m.{owner}.{name}")),
+            shape: FieldShape::Singular {
+                value: ValueType::Scalar(Scalar::String),
+                presence,
+            },
+            options: Vec::new(),
+            doc: None,
+        }
+    }
+
+    fn sequence_field(owner: &str, number: i32, name: &str) -> Field {
+        Field {
+            number,
+            name: name.to_owned(),
+            path: FqName::new(format!("m.{owner}.{name}")),
+            shape: FieldShape::Repeated {
+                value: ValueType::Scalar(Scalar::String),
+            },
+            options: Vec::new(),
+            doc: None,
+        }
+    }
+
+    fn level_enum(name: &str) -> Enum {
+        let screaming = name.to_ascii_uppercase();
+        Enum {
+            path: FqName::new(format!("m.{name}")),
+            file: "m.proto".to_owned(),
+            outer: None,
+            openness: Openness::Closed,
+            values: vec![EnumValue {
+                name: format!("{screaming}_LOW"),
+                number: 0,
+                path: FqName::new(format!("m.{name}.{screaming}_LOW")),
+                options: Vec::new(),
+                doc: None,
+            }],
+            options: Vec::new(),
+            doc: None,
+        }
+    }
+
+    fn is_generated_collision(schema: &Schema) -> bool {
+        map(schema).is_err_and(|error| {
+            error
+                .iter()
+                .any(|diagnostic| diagnostic.kind() == DiagnosticKind::GeneratedPredicateCollision)
+        })
+    }
+
+    #[test]
+    fn a_sort_colliding_with_a_presence_witness_is_diagnosed() {
+        // Message `HasSensor` -> `has_sensor/1`; a total singular field `sensor` -> its presence
+        // witness `has_sensor/1`. Same unit, same arity: refused.
+        let schema = m_schema(
+            vec![
+                message("HasSensor", vec![]),
+                message(
+                    "Reading",
+                    vec![singular_field("Reading", 1, "sensor", Presence::Implicit)],
+                ),
+            ],
+            vec![],
+        );
+        assert!(is_generated_collision(&schema));
+    }
+
+    #[test]
+    fn a_singular_field_colliding_with_an_index_witness_is_diagnosed() {
+        // A singular field `has_notes` -> `has_notes/2`; a sequence field `notes` -> its index
+        // witness `has_notes/2`. Same unit, same arity: refused.
+        let schema = m_schema(
+            vec![message(
+                "Note",
+                vec![
+                    sequence_field("Note", 1, "notes"),
+                    singular_field("Note", 2, "has_notes", Presence::Implicit),
+                ],
+            )],
+            vec![],
+        );
+        assert!(is_generated_collision(&schema));
+    }
+
+    #[test]
+    fn a_sort_colliding_with_a_membership_table_is_diagnosed() {
+        // Message `OkLevel` -> `ok_level/1`; enum `Level` -> its membership table `ok_level/1`.
+        let schema = m_schema(vec![message("OkLevel", vec![])], vec![level_enum("Level")]);
+        assert!(is_generated_collision(&schema));
+    }
+
+    #[test]
+    fn a_predicate_at_a_different_arity_than_the_witness_is_not_a_collision() {
+        // A singular field `has_sensor` -> `has_sensor/2`; the total singular field `sensor` -> a
+        // presence witness `has_sensor/1`. Arities differ, so no collision: the mapping succeeds.
+        let schema = m_schema(
+            vec![message(
+                "Reading",
+                vec![
+                    singular_field("Reading", 1, "sensor", Presence::Implicit),
+                    singular_field("Reading", 2, "has_sensor", Presence::Implicit),
+                ],
+            )],
+            vec![],
+        );
+        assert!(map(&schema).is_ok());
+    }
+
+    #[test]
+    fn a_sort_beside_a_partial_field_generating_no_witness_is_not_a_collision() {
+        // A partial singular field `sensor` generates no presence witness (only a total one does),
+        // so `has_sensor/1` is unclaimed and message `HasSensor` -> `has_sensor/1` does not collide.
+        let schema = m_schema(
+            vec![
+                message("HasSensor", vec![]),
+                message(
+                    "Reading",
+                    vec![singular_field("Reading", 1, "sensor", Presence::Explicit)],
+                ),
+            ],
+            vec![],
+        );
+        assert!(map(&schema).is_ok());
     }
 }

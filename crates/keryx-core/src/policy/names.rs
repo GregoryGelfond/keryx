@@ -115,8 +115,10 @@ pub(crate) fn violates() -> Name {
 /// (§6) held by the law below. The prefix is not reserved-escaped: §4.2 reserves `reach`,
 /// `violates`, `emit_*`, and `ep`, and the witness is written at its own arity — `/1` for the
 /// presence witness, `/2` for the index witness — so a schema-derived name meets it only as a
-/// sort `has_<field>/1` or a singular field `has_<field>/2` beside a sequence `<field>`, which
-/// would then share the witness's extension.
+/// sort `has_<field>/1` or a singular field `has_<field>/2` beside a sequence `<field>`. Escaping
+/// the `has_` prefix wholesale would rename innocent fields (`has_permission`), so that residual
+/// collision is instead refused at mapping time (`policy::first_generated_collision`,
+/// `GeneratedPredicateCollision`) rather than silently sharing the witness's extension.
 pub(crate) fn witness(field: &Name) -> Name {
     Name::new(format!("{WITNESS_PREFIX}{}", field.as_str()))
         .expect("the witness prefix over an identifier is an identifier")
@@ -125,7 +127,9 @@ pub(crate) fn witness(field: &Name) -> Name {
 /// An enum sort's membership table `ok_<enum>` (spec §12.2, §7.4): the prefix over the enum's
 /// validated sort predicate — an identifier again, by [`marker`]'s argument, a discharged
 /// `expect` (§6) held by the law below. Not reserved-escaped, as [`witness`]'s prefix is not:
-/// the table is `/1`, so a schema-derived name meets it only as a sort `ok_<enum>/1`.
+/// the table is `/1`, so a schema-derived name meets it only as a sort `ok_<enum>/1` — a residual
+/// collision refused at mapping time (`policy::first_generated_collision`,
+/// `GeneratedPredicateCollision`), not silently shared.
 pub(crate) fn member(enumeration: &Name) -> Name {
     Name::new(format!("{MEMBER_PREFIX}{}", enumeration.as_str()))
         .expect("the membership-table prefix over an identifier is an identifier")
