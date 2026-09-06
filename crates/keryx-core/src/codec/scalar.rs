@@ -256,12 +256,26 @@ fn raise_native(value: &Symbol, kind: Scalar, at: &str) -> Result<Value, Diagnos
     let Symbol::Number(number) = value else {
         return Err(term_type_mismatch(kind, value, at));
     };
-    if matches!(kind, Scalar::Uint32 | Scalar::Fixed32) {
-        u32::try_from(*number)
+    // Exhaustive over `Scalar` (no wildcard), as `lower`'s guard is: a kind added later, or one
+    // `scalar_treatment` newly pairs with `Native`, fails to compile here rather than lowering
+    // silently as `I32`.
+    match kind {
+        Scalar::Uint32 | Scalar::Fixed32 => u32::try_from(*number)
             .map(Value::U32)
-            .map_err(|_| negative_unsigned(kind, *number, at))
-    } else {
-        Ok(Value::I32(*number))
+            .map_err(|_| negative_unsigned(kind, *number, at)),
+        Scalar::Int32 | Scalar::Sint32 | Scalar::Sfixed32 => Ok(Value::I32(*number)),
+        Scalar::Int64
+        | Scalar::Uint64
+        | Scalar::Sint64
+        | Scalar::Fixed64
+        | Scalar::Sfixed64
+        | Scalar::Bool
+        | Scalar::Float
+        | Scalar::Double
+        | Scalar::String
+        | Scalar::Bytes => unreachable!(
+            "`scalar_treatment` pairs `Native` only with a 32-bit integer kind; a wider pairing is a keryx error"
+        ),
     }
 }
 
@@ -273,14 +287,29 @@ fn raise_decimal(value: &Symbol, kind: Scalar, at: &str) -> Result<Value, Diagno
     let Symbol::String(text) = value else {
         return Err(term_type_mismatch(kind, value, at));
     };
-    if matches!(kind, Scalar::Uint64 | Scalar::Fixed64) {
-        text.parse::<u64>()
+    // Exhaustive over `Scalar` (no wildcard), as `lower`'s guard is: a kind newly paired with
+    // `DecimalString` fails to compile here rather than parsing silently as `i64`.
+    match kind {
+        Scalar::Uint64 | Scalar::Fixed64 => text
+            .parse::<u64>()
             .map(Value::U64)
-            .map_err(|_| decimal_out_of_range(kind, at))
-    } else {
-        text.parse::<i64>()
+            .map_err(|_| decimal_out_of_range(kind, at)),
+        Scalar::Int64 | Scalar::Sint64 | Scalar::Sfixed64 => text
+            .parse::<i64>()
             .map(Value::I64)
-            .map_err(|_| decimal_out_of_range(kind, at))
+            .map_err(|_| decimal_out_of_range(kind, at)),
+        Scalar::Int32
+        | Scalar::Uint32
+        | Scalar::Sint32
+        | Scalar::Fixed32
+        | Scalar::Sfixed32
+        | Scalar::Bool
+        | Scalar::Float
+        | Scalar::Double
+        | Scalar::String
+        | Scalar::Bytes => unreachable!(
+            "`scalar_treatment` pairs `DecimalString` only with a 64-bit integer kind; a wider pairing is a keryx error"
+        ),
     }
 }
 
