@@ -33,7 +33,7 @@ use prost_reflect::{
     DynamicMessage, FieldDescriptor, Kind, MapKey, MessageDescriptor, ReflectMessage as _, Value,
 };
 
-use super::guard;
+use super::{canonical, guard};
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use crate::fault::{Dependency, contain};
 
@@ -415,6 +415,7 @@ impl Building {
 /// known to fault the encode, the mismatch axis being foreclosed at the setter).
 pub(crate) fn encode_binary(building: Building) -> Result<Vec<u8>, Diagnostics> {
     let message = building.message;
+    let descriptor = message.descriptor();
     let operation = "encoding a payload";
     thread::scope(|scope| {
         // The closure owns `message`; a fault drops it with the unwind, so nothing keryx observes
@@ -425,9 +426,16 @@ pub(crate) fn encode_binary(building: Building) -> Result<Vec<u8>, Diagnostics> 
             .name("keryx-encode".to_owned())
             .stack_size(ENCODE_STACK)
             .spawn_scoped(scope, move || {
-                contain(Dependency::ProstReflect, operation, || {
+                let bytes = contain(Dependency::ProstReflect, operation, || {
                     message.encode_to_vec()
-                })
+                })?;
+                // Order every map field's entries by key (property 5, determinism): the engine holds
+                // a map as a `HashMap` and encodes it in iteration order, which is not a function of
+                // its contents, so keryx canonicalises its own well-formed output here — on the same
+                // sized thread the encode ran on, its native recursion bounded by the same ceiling.
+                // This is keryx's own total code, outside the containment frame: a bug in it is a
+                // keryx bug, never a dependency fault.
+                Ok(canonical::canonicalize_map_order(&bytes, &descriptor))
             })
             // A thread the host cannot spawn is the host out of a resource, not the message's doing
             // (by here it is built and bounded) — the consuming service's to contain under resource

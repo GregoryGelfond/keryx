@@ -11,6 +11,7 @@
 //! resolves to stays inside.
 
 pub(crate) mod assemble;
+pub(crate) mod canonical;
 pub(crate) mod engine;
 pub(crate) mod guard;
 pub(crate) mod scalar;
