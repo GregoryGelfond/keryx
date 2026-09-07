@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use keryx_core::codec::Codec;
+use keryx_core::codec::{Codec, PayloadFormat};
 use themelios_program::{Name, Sign, Symbol};
 
 /// The thermal example's codec (spec §28), through the source door.
@@ -48,7 +48,7 @@ fn reading(root: &str, sensor: &str, temp_c: i32) -> Vec<Symbol> {
 fn an_answer_set_reassembles_one_message_carrying_its_type_root_and_bytes() {
     let codec = thermal_codec();
     let out = codec
-        .reassemble(&reading("r0", "s-1", 21))
+        .reassemble(&reading("r0", "s-1", 21), PayloadFormat::Binary)
         .expect("the answer set reassembles");
     assert_eq!(out.messages().len(), 1);
     let message = &out.messages()[0];
@@ -68,7 +68,9 @@ fn two_roots_of_one_type_are_distinct_and_marker_ordered() {
     let codec = thermal_codec();
     let mut answer = reading("r1", "b", 2);
     answer.extend(reading("r0", "a", 1));
-    let out = codec.reassemble(&answer).expect("both roots reassemble");
+    let out = codec
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect("both roots reassemble");
     assert_eq!(out.messages().len(), 2);
     assert_eq!(out.messages()[0].root(), &constant("r0"));
     assert_eq!(out.messages()[1].root(), &constant("r1"));
@@ -94,7 +96,7 @@ fn a_broken_answer_set_is_every_diagnosis_never_a_partial_reassembly() {
         vec![constant("r1"), Symbol::String("dup".to_owned())],
     ));
     let error = codec
-        .reassemble(&answer)
+        .reassemble(&answer, PayloadFormat::Binary)
         .expect_err("a duplicate singular fails the whole reassembly");
     assert!(
         error

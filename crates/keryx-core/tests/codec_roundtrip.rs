@@ -54,7 +54,9 @@ fn a_payload_shredded_and_reassembled_is_the_payload_again() {
     let mut answer = facts.symbols().to_vec();
     answer.push(marker("emit_reading_batch", "r0"));
 
-    let out = codec.reassemble(&answer).expect("the facts reassemble");
+    let out = codec
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect("the facts reassemble");
     assert_eq!(out.messages().len(), 1);
     assert_eq!(out.messages()[0].type_name(), "thermal.v1.ReadingBatch");
     assert_eq!(out.messages()[0].bytes(), payload);
@@ -81,10 +83,45 @@ fn a_reassembled_message_emits_the_canonical_form_omitting_a_zero_implicit_field
     let mut answer = facts.symbols().to_vec();
     answer.push(marker("emit_reading", "r0"));
 
-    let out = codec.reassemble(&answer).expect("the facts reassemble");
+    let out = codec
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect("the facts reassemble");
     assert_eq!(out.messages().len(), 1);
     // The canonical form: the sensor field alone (field 1), the zero `temp_c` omitted.
     let mut canonical = Vec::new();
     wire::delimited(1, b"only-sensor", &mut canonical);
     assert_eq!(out.messages()[0].bytes(), canonical);
+}
+
+#[test]
+fn the_reassembled_batch_round_trips_in_all_three_formats() {
+    // The thermal `ReadingBatch` reassembles to each output form, and each shreds back to the same
+    // facts — the binary, textproto, and JSON encoders are faithful inverses of the shred (three-way
+    // round-trip parity, property 4/§26).
+    let codec = thermal_codec();
+    let payload = wire::batch(&[wire::reading("s-1", 1), wire::reading("s-2", 2)]);
+    let root = Root::named(Name::new("r0").expect("an identifier"));
+    let facts = codec
+        .shred("ReadingBatch", &payload, PayloadFormat::Binary, &root)
+        .expect("the batch shreds");
+    let mut answer = facts.symbols().to_vec();
+    answer.push(marker("emit_reading_batch", "r0"));
+    for format in [
+        PayloadFormat::Binary,
+        PayloadFormat::Textproto,
+        PayloadFormat::Json,
+    ] {
+        let out = codec
+            .reassemble(&answer, format)
+            .expect("the facts reassemble");
+        assert_eq!(out.messages().len(), 1);
+        let again = codec
+            .shred("ReadingBatch", out.messages()[0].bytes(), format, &root)
+            .expect("the reassembled bytes shred");
+        assert_eq!(
+            facts.symbols(),
+            again.symbols(),
+            "the batch round-trips in {format:?}"
+        );
+    }
 }

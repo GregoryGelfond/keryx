@@ -4,7 +4,7 @@
 //! — so a sub-standard caller thread, on which the engine's unbounded serializer would overflow,
 //! does not. Over `recursion.proto`'s `Tree { string label = 1; repeated Tree children = 2; }`.
 
-use keryx_core::codec::Codec;
+use keryx_core::codec::{Codec, PayloadFormat};
 use keryx_core::diagnostics::DiagnosticKind;
 use keryx_test_support as support;
 use themelios_program::{Name, Sign, Symbol};
@@ -54,7 +54,7 @@ fn a_chain_past_the_ceiling_is_reassembled_too_deep() {
     // message is built.
     let codec = rec_codec();
     let error = codec
-        .reassemble(&tree_chain(100))
+        .reassemble(&tree_chain(100), PayloadFormat::Binary)
         .expect_err("a chain past the ceiling is refused");
     assert!(
         error
@@ -77,7 +77,7 @@ fn a_chain_at_the_ceiling_encodes_on_keryx_s_thread_not_the_caller_s() {
         std::thread::Builder::new()
             .name("substandard-caller".to_owned())
             .stack_size(512 * 1024)
-            .spawn_scoped(scope, || codec.reassemble(&answer))
+            .spawn_scoped(scope, || codec.reassemble(&answer, PayloadFormat::Binary))
             .expect("the host can spawn the caller thread")
             .join()
             .expect("the caller thread does not overflow")
@@ -109,7 +109,7 @@ fn a_huge_sequence_index_is_refused_without_sizing_an_allocation() {
         atom("tree", vec![huge]),
     ];
     let error = codec
-        .reassemble(&answer)
+        .reassemble(&answer, PayloadFormat::Binary)
         .expect_err("a non-dense sequence is refused");
     assert!(
         error

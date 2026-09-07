@@ -12,6 +12,7 @@
 
 pub(crate) mod assemble;
 pub(crate) mod canonical;
+pub(crate) mod canonical_text;
 pub(crate) mod engine;
 pub(crate) mod guard;
 pub(crate) mod scalar;
@@ -200,12 +201,12 @@ impl Codec {
 
     /// Reassemble an answer set (spec §12.3) — the outbound door, the mirror of [`shred`]. Every
     /// `emit_<sort>(root)` marker names one message to rebuild; each is reconstructed from the
-    /// answer set's field and occupancy atoms and encoded to the binary wire form, and the results
-    /// are ordered by the marker atom's `Symbol::Ord` (predicate then root, so two roots of one type
-    /// stay distinguishable). Every message or every diagnosis, never a partial reassembly beside a
-    /// diagnosis (§6, property 4): an orphan field atom, a `violates` atom present, or any root's
-    /// refusal fails the whole call. Binary only in this increment; the other output forms and the
-    /// `.lp` read arrive with their tasks.
+    /// answer set's field and occupancy atoms and encoded to the wire form `format` names, and the
+    /// results are ordered by the marker atom's `Symbol::Ord` (predicate then root, so two roots of
+    /// one type stay distinguishable). Every message or every diagnosis, never a partial reassembly
+    /// beside a diagnosis (§6, property 4): an orphan field atom, a `violates` atom present, or any
+    /// root's refusal fails the whole call. All three output forms (binary, textproto, JSON) are
+    /// `format`'s; the `.lp` read of the answer set arrives with its task.
     ///
     /// # Errors
     ///
@@ -215,7 +216,11 @@ impl Codec {
     /// state); `DependencyFault` for a contained encode fault.
     ///
     /// [`shred`]: Codec::shred
-    pub fn reassemble(&self, answer_set: &[Symbol]) -> Result<Reassembled, Diagnostics> {
+    pub fn reassemble(
+        &self,
+        answer_set: &[Symbol],
+        format: PayloadFormat,
+    ) -> Result<Reassembled, Diagnostics> {
         let slots = assemble::SlotIndex::build(&self.mapping, &self.index, answer_set);
         // The answer-set-wide refusals: a field atom no occupant declares (property 4), and each
         // `violates(path, occupant)` the diagnostic theory derived (refused mode-free).
@@ -236,7 +241,15 @@ impl Codec {
             // root; a marker without one is a keryx error, discharged loud, never silently skipped.
             let root = assemble::marker_root(marker)
                 .expect("the slot index pushes only single-argument markers");
-            match assemble::assemble(&self.mapping, &self.index, &self.pool, &slots, root, sort) {
+            match assemble::assemble(
+                &self.mapping,
+                &self.index,
+                &self.pool,
+                &slots,
+                root,
+                sort,
+                format,
+            ) {
                 Ok(bytes) => messages.push(Emitted {
                     type_name: sort.in_mapping(&self.mapping).proto().as_str().to_owned(),
                     root: root.clone(),

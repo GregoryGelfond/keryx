@@ -10,7 +10,7 @@
 use std::path::Path;
 use std::sync::LazyLock;
 
-use keryx_core::codec::Codec;
+use keryx_core::codec::{Codec, PayloadFormat};
 use keryx_core::diagnostics::DiagnosticKind;
 use proptest::prelude::*;
 use themelios_program::{Name, Sign, Symbol};
@@ -86,7 +86,7 @@ proptest! {
     /// foreclosed by the validating setter).
     #[test]
     fn reassemble_returns_over_any_answer_set(answer in prop::collection::vec(arb_symbol(), 0..24)) {
-        match CODEC.reassemble(&answer) {
+        match CODEC.reassemble(&answer, PayloadFormat::Binary) {
             Ok(_) => {}
             Err(diagnostics) => {
                 for diagnostic in diagnostics.iter() {

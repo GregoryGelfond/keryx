@@ -29,6 +29,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use prost_reflect::{MapKey, Value};
 use themelios_program::prelude::*;
 
+use crate::codec::PayloadFormat;
 use crate::codec::engine::{self, Building};
 use crate::codec::scalar;
 use crate::codec::walk::{self, Index, SortRef};
@@ -204,6 +205,7 @@ pub(crate) fn assemble(
     slots: &SlotIndex<'_>,
     root: &Symbol,
     sort: SortRef,
+    format: PayloadFormat,
 ) -> Result<Vec<u8>, Diagnostics> {
     let mut walker = Assembler {
         mapping,
@@ -217,7 +219,7 @@ pub(crate) fn assemble(
     if let Some(diagnostics) = Diagnostics::collect(std::mem::take(&mut walker.diagnostics)) {
         return Err(diagnostics);
     }
-    walker.build(pool)
+    walker.build(pool, format)
 }
 
 /// One occupant to rebuild: the message `sort` instance under `occupant`, at `depth` below its root.
@@ -582,7 +584,7 @@ impl Assembler<'_, '_> {
     /// encode the root. Runs only when discovery found no diagnosis (property 4). Each occupant's
     /// built message is a `Value::Message` its parent's message field draws by term; the last plan
     /// (the root, first discovered) is encoded.
-    fn build(self, pool: &RetainedPool) -> Result<Vec<u8>, Diagnostics> {
+    fn build(self, pool: &RetainedPool, format: PayloadFormat) -> Result<Vec<u8>, Diagnostics> {
         let mapping = self.mapping;
         let mut built: BTreeMap<Symbol, Value> = BTreeMap::new();
         // Children before parents: discovery recorded each parent before its descendants, so the
@@ -601,7 +603,7 @@ impl Assembler<'_, '_> {
                 set_planned(&mut building, planned, &mut built, sort)?;
             }
             if plans.peek().is_none() {
-                return engine::encode_binary(building);
+                return engine::encode(building, format);
             }
             built.insert(plan.occupant, building.into_value());
         }
@@ -835,8 +837,16 @@ mod tests {
         let slots = SlotIndex::build(&mapping, &index, answer);
         let (sort, marker) = slots.markers()[0];
         let root = super::marker_root(marker).expect("a marker names a root");
-        assemble(&mapping, &index, &pool, &slots, root, sort)
-            .map_err(|d| d.iter().map(crate::diagnostics::Diagnostic::kind).collect())
+        assemble(
+            &mapping,
+            &index,
+            &pool,
+            &slots,
+            root,
+            sort,
+            crate::codec::PayloadFormat::Binary,
+        )
+        .map_err(|d| d.iter().map(crate::diagnostics::Diagnostic::kind).collect())
     }
 
     #[test]

@@ -44,7 +44,9 @@ fn assert_round_trips(codec: &Codec, root_type: &str, sort_marker: &str, payload
         .expect("the payload shreds");
     let mut answer = facts.symbols().to_vec();
     answer.push(atom(sort_marker, vec![constant("r0")]));
-    let out = codec.reassemble(&answer).expect("the facts reassemble");
+    let out = codec
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect("the facts reassemble");
     assert_eq!(out.messages().len(), 1, "one message per marker");
     let facts_again = codec
         .shred(
@@ -165,7 +167,7 @@ fn an_undeclared_enum_constant_is_refused() {
         .collect();
     answer.push(atom("emit_gauge", vec![constant("r0")]));
     let error = codec
-        .reassemble(&answer)
+        .reassemble(&answer, PayloadFormat::Binary)
         .expect_err("an undeclared enum constant is refused");
     assert!(
         error
@@ -186,7 +188,7 @@ fn a_non_constant_enum_value_is_a_term_type_mismatch() {
         .collect();
     answer.push(atom("emit_gauge", vec![constant("r0")]));
     let error = codec
-        .reassemble(&answer)
+        .reassemble(&answer, PayloadFormat::Binary)
         .expect_err("a non-constant enum value is refused");
     assert!(
         error
@@ -218,7 +220,7 @@ fn a_duplicate_map_key_is_a_shape_violation() {
     )); // a second entry for the key "k"
     answer.push(atom("emit_gauge", vec![constant("r0")]));
     let error = codec
-        .reassemble(&answer)
+        .reassemble(&answer, PayloadFormat::Binary)
         .expect_err("a duplicate map key is refused");
     assert!(
         error

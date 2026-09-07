@@ -33,7 +33,7 @@ use prost_reflect::{
     DynamicMessage, FieldDescriptor, Kind, MapKey, MessageDescriptor, ReflectMessage as _, Value,
 };
 
-use super::{canonical, guard};
+use super::{PayloadFormat, canonical, canonical_text, guard};
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use crate::fault::{Dependency, contain};
 
@@ -442,6 +442,65 @@ pub(crate) fn encode_binary(building: Building) -> Result<Vec<u8>, Diagnostics> 
             // would re-contain any unwind here as a `ProstReflect` fault — never fires for it; a bug
             // in it is a keryx bug to surface, not a dependency fault to mask.
             Ok(canonical::canonicalize_map_order(&bytes, &descriptor))
+        },
+    )
+}
+
+/// Encode a built message to the wire form `format` names — the outbound dispatch. Each runs the
+/// engine's serializer on a thread keryx sizes ([`ENCODE_STACK`]) with the containment frame inside
+/// it, as the binary encode does, and delivers its form's map-key determinism (property 5).
+pub(crate) fn encode(building: Building, format: PayloadFormat) -> Result<Vec<u8>, Diagnostics> {
+    match format {
+        PayloadFormat::Binary => encode_binary(building),
+        PayloadFormat::Textproto => encode_textproto(building),
+        PayloadFormat::Json => encode_json(building),
+    }
+}
+
+/// Encode to the protobuf text format (`.txtpb`) — `to_text_format`, then keryx's map re-ordering
+/// over its own output ([`canonical_text`]): the text writer emits maps in `HashMap` order and,
+/// unlike the JSON form, has no sorted intermediate to route through. UTF-8 bytes.
+pub(crate) fn encode_textproto(building: Building) -> Result<Vec<u8>, Diagnostics> {
+    let message = building.message;
+    let descriptor = message.descriptor();
+    let operation = "serializing a textproto message";
+    on_sized_thread(
+        "keryx-textproto-encode",
+        ENCODE_STACK,
+        Dependency::ProstReflect,
+        operation,
+        move || {
+            let text = contain(Dependency::ProstReflect, operation, || {
+                message.to_text_format()
+            })?;
+            // Order every map field's entries by key (property 5): total keryx code over its own
+            // well-formed text, so `on_sized_thread`'s join never re-contains it (as at
+            // `encode_binary`); a bug in it is a keryx bug to surface, not a dependency fault.
+            Ok(canonical_text::canonicalize_text(&text, &descriptor).into_bytes())
+        },
+    )
+}
+
+/// Encode to the canonical JSON mapping (`.json`) — routed through `serde_json`'s `Value`, whose
+/// object is a sorted `BTreeMap` (no `preserve_order`), so map keys serialize in a deterministic
+/// order (property 5), then to bytes.
+pub(crate) fn encode_json(building: Building) -> Result<Vec<u8>, Diagnostics> {
+    let message = building.message;
+    let operation = "serializing a JSON message";
+    on_sized_thread(
+        "keryx-json-encode",
+        ENCODE_STACK,
+        Dependency::SerdeJson,
+        operation,
+        move || {
+            contain(Dependency::SerdeJson, operation, || {
+                // A validated message serializes: no unannotated float reaches the reassembler at
+                // Increment 4, and its strings are UTF-8, so `to_value`/`to_vec` do not error — an
+                // error would be a keryx invariant reached, contained here as a fault.
+                let value = serde_json::to_value(&message)
+                    .expect("a validated message serializes to a JSON value");
+                serde_json::to_vec(&value).expect("a JSON value serializes to bytes")
+            })
         },
     )
 }

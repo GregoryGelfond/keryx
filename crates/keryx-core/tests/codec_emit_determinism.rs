@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use keryx_core::codec::Codec;
+use keryx_core::codec::{Codec, PayloadFormat};
 use themelios_program::{Name, Sign, Symbol};
 
 fn thermal_codec() -> Codec {
@@ -45,7 +45,7 @@ fn reading(root: &str, sensor: &str, temp_c: i32) -> Vec<Symbol> {
 /// A message's identity for comparison: type, root, bytes.
 fn shape(codec: &Codec, answer: &[Symbol]) -> Vec<(String, Symbol, Vec<u8>)> {
     codec
-        .reassemble(answer)
+        .reassemble(answer, PayloadFormat::Binary)
         .expect("reassembles")
         .messages()
         .iter()
