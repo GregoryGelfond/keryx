@@ -1,0 +1,14 @@
+syntax = "proto3";
+package inventory.v1;
+
+import "catalog.proto";
+
+// A warehouse: a map from bin label to its contents — the key is a first-class access-path
+// term — and a cross-package catalog reference whose identity survives the boundary.
+message Warehouse {
+  map<string, Bin> bins = 1;   // map<string, message>: the key read via the occupant (§7.2)
+  catalog.v1.Sku featured = 2; // cross-package message field (§4.1)
+}
+
+// What a bin holds.
+message Bin { uint32 quantity = 1; }

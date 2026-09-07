@@ -91,11 +91,12 @@ solve() {
   esac
 }
 
-# grounds_clean NAME PROTO INCLUDE PACKAGE [EXTRA...] — generate PACKAGE's strict and diagnostic
+# grounds_clean NAME PROTO INCLUDE PACKAGE [DEP...] — generate PACKAGE's strict and diagnostic
 # theories from PROTO and assert both ground clean. For a feature example (examples/<name>) whose
 # value is the inbound shred: the generated outbound theory is proven sound — safe, no undefined
-# atom — without an answer set to solve. EXTRA (a dependency package's core.lp) grounds alongside,
-# as `ground_with` does for the cross-package holder.
+# atom — without an answer set to solve. Each DEP (a dependency package generated beside PACKAGE)
+# grounds alongside as its core.lp, so a cross-package sort atom resolves, as `ground_with` does
+# for the cross-package holder.
 grounds_clean() {
   local name=$1 proto=$2 include=$3 package=$4
   shift 4
@@ -104,12 +105,14 @@ grounds_clean() {
   "$KERYX" gen "$proto" -I "$include" -o "$dir" --shape both 2> "$dir/gen.log" \
     || fail "keryx gen $proto failed:
 $(cat "$dir/gen.log")"
-  if [ "$#" -eq 0 ]; then
+  local deps=() dep
+  for dep in "$@"; do deps+=("$dir/$dep.core.lp"); done
+  if [ "${#deps[@]}" -eq 0 ]; then
     ground "$dir/$package.emit.lp"
     ground "$dir/$package.emit-diagnostic.lp"
   else
-    ground_with "$dir/$package.emit.lp" "$@"
-    ground_with "$dir/$package.emit-diagnostic.lp" "$@"
+    ground_with "$dir/$package.emit.lp" "${deps[@]}"
+    ground_with "$dir/$package.emit-diagnostic.lp" "${deps[@]}"
   fi
   echo "ground: $name — strict and diagnostic theories ground clean"
 }
@@ -190,5 +193,6 @@ echo "ground: crossmap — SAT; UNSAT on a negative map key; key-range violation
 # outbound theory grounds clean, not an answer-set solve.
 grounds_clean enum "$root/examples/enum/signals.proto" "$root/examples/enum" signals.v1
 grounds_clean oneof "$root/examples/oneof/dispatch.proto" "$root/examples/oneof" dispatch.v1
+grounds_clean map "$root/examples/map/inventory.proto" "$root/examples/map" inventory.v1 catalog.v1
 
 echo "ground: every theory grounds clean and solves as expected"

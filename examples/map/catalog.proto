@@ -1,0 +1,5 @@
+syntax = "proto3";
+package catalog.v1;
+
+// A catalogued item, referenced across the package boundary from inventory.v1.
+message Sku { uint32 code = 1; }

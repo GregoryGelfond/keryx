@@ -1,0 +1,6 @@
+# proto-file: inventory.proto
+# proto-message: inventory.v1.Warehouse
+
+bins { key: "a-1" value { quantity: 12 } }
+bins { key: "b-2" value { quantity: 7 } }
+featured { code: 4090 }

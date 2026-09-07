@@ -1,0 +1,7 @@
+keryx-manifest v0
+schema-hash -  package inventory.v1  target clingo  profile -  shape strict  keryx 0.1.0
+inventory.v1.Bin  sort  bin/1
+inventory.v1.Bin.quantity #1 fn  quantity/2  uint32  total
+inventory.v1.Warehouse  sort  warehouse/1
+inventory.v1.Warehouse.bins #1 fam  bins/2 -> bin  bin  map<string> ; view bins/3
+inventory.v1.Warehouse.featured #2 fn  featured/1 -> sku  sku  partial ; view featured/2

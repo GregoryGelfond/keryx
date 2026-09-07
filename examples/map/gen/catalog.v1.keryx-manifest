@@ -1,0 +1,4 @@
+keryx-manifest v0
+schema-hash -  package catalog.v1  target clingo  profile -  shape strict  keryx 0.1.0
+catalog.v1.Sku  sort  sku/1
+catalog.v1.Sku.code #1 fn  code/2  uint32  total
