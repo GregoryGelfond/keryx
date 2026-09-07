@@ -437,8 +437,10 @@ pub(crate) fn encode_binary(building: Building) -> Result<Vec<u8>, Diagnostics> 
             // Order every map field's entries by key (property 5, determinism): the engine holds a
             // map as a `HashMap` and encodes it in iteration order, which is not a function of its
             // contents, so keryx canonicalises its own well-formed output here — on this sized
-            // thread, its native recursion bounded by the same ceiling. keryx's own total code,
-            // outside the containment frame: a bug in it is a keryx bug, never a dependency fault.
+            // thread, its native recursion bounded by the same ceiling. It is total by construction
+            // (`canonical::canonicalize_map_order` never fails), so `on_sized_thread`'s join — which
+            // would re-contain any unwind here as a `ProstReflect` fault — never fires for it; a bug
+            // in it is a keryx bug to surface, not a dependency fault to mask.
             Ok(canonical::canonicalize_map_order(&bytes, &descriptor))
         },
     )

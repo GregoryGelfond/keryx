@@ -122,9 +122,8 @@ fn a_reading_round_trips_a_singular_message_field() {
     assert_round_trips(&codec, "Reading", "emit_reading", &payload);
 }
 
-/// Replace a `level(r0, _)` atom's value with a constant the enum does not declare; other atoms pass
-/// through unchanged.
-fn swap_level_constant(symbol: &Symbol) -> Symbol {
+/// Replace a `level(r0, _)` atom's value with `value`; other atoms pass through unchanged.
+fn swap_level_value(symbol: &Symbol, value: Symbol) -> Symbol {
     if let Symbol::Function {
         name,
         arguments,
@@ -135,17 +134,16 @@ fn swap_level_constant(symbol: &Symbol) -> Symbol {
     {
         return Symbol::Function {
             name: name.clone(),
-            arguments: vec![arguments[0].clone(), constant("not_a_declared_level")],
+            arguments: vec![arguments[0].clone(), value],
             sign: *sign,
         };
     }
     symbol.clone()
 }
 
-#[test]
-fn an_undeclared_enum_constant_is_refused() {
-    // A valid `Gauge`, its `level` value replaced by a constant the enum does not declare: the enum
-    // path refuses it (`UnknownEnumValue`), never mapping it to a constant it is not (spec §7.4).
+/// A valid `Gauge` (`sensor` + `level`), read to facts under `r0` — the base for mutating its
+/// `level` value into an enum refusal.
+fn gauge_with_level() -> (Codec, Vec<Symbol>) {
     let codec = fixture_codec("obligations.proto");
     let mut payload = Vec::new();
     delimited(1, b"g", &mut payload); // sensor
@@ -153,7 +151,18 @@ fn an_undeclared_enum_constant_is_refused() {
     let facts = codec
         .shred("Gauge", &payload, PayloadFormat::Binary, &root())
         .expect("the payload shreds");
-    let mut answer: Vec<Symbol> = facts.symbols().iter().map(swap_level_constant).collect();
+    (codec, facts.symbols().to_vec())
+}
+
+#[test]
+fn an_undeclared_enum_constant_is_refused() {
+    // A valid `Gauge`, its `level` value replaced by a constant the enum does not declare: the enum
+    // path refuses it (`UnknownEnumValue`), never mapping it to a constant it is not (spec §7.4).
+    let (codec, facts) = gauge_with_level();
+    let mut answer: Vec<Symbol> = facts
+        .iter()
+        .map(|s| swap_level_value(s, constant("not_a_declared_level")))
+        .collect();
     answer.push(atom("emit_gauge", vec![constant("r0")]));
     let error = codec
         .reassemble(&answer)
@@ -163,6 +172,27 @@ fn an_undeclared_enum_constant_is_refused() {
             .iter()
             .any(|d| d.kind() == DiagnosticKind::UnknownEnumValue),
         "the undeclared constant is an UnknownEnumValue"
+    );
+}
+
+#[test]
+fn a_non_constant_enum_value_is_a_term_type_mismatch() {
+    // A valid `Gauge`, its `level` value replaced by a number rather than a constant: `enum_number`'s
+    // other refusal — a term of the wrong shape for an enum is a `TermTypeMismatch`, never coerced.
+    let (codec, facts) = gauge_with_level();
+    let mut answer: Vec<Symbol> = facts
+        .iter()
+        .map(|s| swap_level_value(s, Symbol::Number(5)))
+        .collect();
+    answer.push(atom("emit_gauge", vec![constant("r0")]));
+    let error = codec
+        .reassemble(&answer)
+        .expect_err("a non-constant enum value is refused");
+    assert!(
+        error
+            .iter()
+            .any(|d| d.kind() == DiagnosticKind::TermTypeMismatch),
+        "a non-constant enum value is a TermTypeMismatch"
     );
 }
 
