@@ -92,6 +92,50 @@ pub(crate) fn decode_binary(
 /// as the parse descends, so a shallow payload pays a thread spawn and little else.
 const TEXTPROTO_PARSE_STACK: usize = 8 << 20;
 
+/// Run `work` — keryx's own step over a contained foreign call — on a thread keryx sizes (`stack`),
+/// returning its result or a contained `DependencyFault`. The one sized-thread-with-containment
+/// skeleton the payload door's two decodes and the outbound encode share ([`decode_textproto`],
+/// [`decode_json`], [`encode_binary`]): each supplies what runs on the thread, this supplies the
+/// thread and the fault seam around it.
+///
+/// **The thread, sized above the deepest admitted input.** The foreign engine call recurses natively
+/// per nested message and bounds nothing, and a stack overflow *aborts* the process rather than
+/// unwinding — no frame can catch one. So the door that admits an input at the reconstruction ceiling
+/// runs the engine on a thread keryx sizes to hold it, and the size is what *prevents* the overflow;
+/// the containment frame `work` places *inside* the thread catches what does unwind (an unforeseen
+/// engine panic), as the one `DependencyFault` seam. A panic that escaped that inner frame — none can
+/// — is re-raised here inside a fresh frame on the caller's thread, so it is contained identically,
+/// from the same seam; `resume_unwind` runs no panic hook, so the fault is reported once. The call is
+/// single-threaded for all that it runs on its own thread: the thread exists for its stack alone, the
+/// caller waits on it, and the result comes back owned — so an input's translation is the same
+/// function of the input however the door runs it (the threat model's determinism).
+///
+/// **A thread the host cannot spawn is the host's, not the input's.** By the time a door spawns here
+/// its input is validated and bounded, and the spawn asks the same of the host for every input alike
+/// — so a spawn failure is the host out of a resource (threads, or the address space to reserve the
+/// stack), never anything the input's content brings about. Repetition can exhaust the host — the
+/// threat model's adversary may repeat the call — and the model assigns that to the consuming
+/// service's resource limits, its side of the division of labor, as it assigns an abort or a hang;
+/// keryx's guarantees hold per call, so the failed spawn is a discharged host invariant.
+fn on_sized_thread<R: Send>(
+    name: &str,
+    stack: usize,
+    dependency: Dependency,
+    operation: &str,
+    work: impl FnOnce() -> Result<R, Diagnostics> + Send,
+) -> Result<R, Diagnostics> {
+    thread::scope(|scope| {
+        let handle = thread::Builder::new()
+            .name(name.to_owned())
+            .stack_size(stack)
+            .spawn_scoped(scope, work)
+            .expect("the host can spawn a keryx-sized thread");
+        handle
+            .join()
+            .unwrap_or_else(|unwind| contain(dependency, operation, || resume_unwind(unwind)))
+    })
+}
+
 /// Decode a textproto (`.txtpb`) payload as an instance of `desc` — the payload door's second
 /// engine crossing, the text format's — and return the tree, owned: the same [`Decoded`] view the
 /// binary decode yields, so the walk and the §6 policy read a text payload exactly as they read
@@ -113,23 +157,16 @@ const TEXTPROTO_PARSE_STACK: usize = 8 << 20;
 /// stack alone, the caller waits on it, and the tree comes back owned — so a text payload's facts
 /// are the same function of the payload a binary one's are (the threat model's determinism).
 ///
-/// **Two instances, not one helper.** This decode and the JSON decode ([`decode_json`]) share a
-/// skeleton — the foreign decode spawned onto a `thread::scope` thread keryx sizes above the
-/// deepest payload it admits, the containment frame *inside* that thread (a stack overflow aborts
-/// rather than unwinds, so no frame holds one and the thread's size is what prevents it, while the
-/// frame catches what does unwind), and an unwind that escaped the frame re-raised inside a fresh
-/// frame on the caller's thread, the one `DependencyFault` seam — and are kept as two parallel
-/// instances rather than lifted into a shared helper. The two differ before the thread: this
-/// decode validates UTF-8 and runs the pre-parse guard on the caller's thread, where the JSON
-/// decode has no guard, its deserializer bounding itself. They differ in the stack each is sized
-/// by — [`TEXTPROTO_PARSE_STACK`] for the guard's ceiling, [`JSON_DECODE_STACK`] for the
-/// deserializer's own, deeper admit — measured and owed separately, each under its own measure of
-/// record. And they differ in the dependency the frame names (`ProstReflect` here, `SerdeJson`
-/// there), in the engine call, and in the error type it returns. At two instances the parallel
-/// form keeps each of those differences legible at the site it belongs to, beside the doc that
-/// argues it, where a lift would carry them as arguments and split each door's reading between its
-/// site and the helper's. The lift into a single shared
-/// helper is available, and is deferred until a third sized-thread door earns it.
+/// **The one sized-thread skeleton, lifted.** The thread keryx sizes, its inside containment, the
+/// spawn-as-host-invariant, and the re-containment of an unwind that escaped the inner frame are
+/// [`on_sized_thread`], shared with the JSON decode ([`decode_json`]) and the outbound encode
+/// ([`encode_binary`]) — the third sized-thread door that earned the lift. What stays at each door is
+/// what the lift cannot carry without splitting a reading in two: for this door, the UTF-8 check and
+/// the pre-parse guard that precede the thread on the caller's thread (the JSON decode has neither,
+/// its deserializer bounding itself); the stack it is sized by ([`TEXTPROTO_PARSE_STACK`], for the
+/// guard's ceiling — [`JSON_DECODE_STACK`] and [`ENCODE_STACK`] size the others, each measured and
+/// owed separately); the dependency the frame names; the engine call; and the argument that
+/// containing *this* call is sound (the pool-handle reasoning at the closure below).
 ///
 /// # Errors
 ///
@@ -154,47 +191,24 @@ pub(crate) fn decode_textproto(
     // is sized for.
     guard::depth(text)?;
     let operation = "parsing a textproto payload";
-    let parsed = thread::scope(|scope| {
-        // The closure borrows only `desc` (a handle over the pool's shared state, cloned in) and
-        // `text`; a fault drops the half-built message with the unwind, so nothing keryx observes
-        // survives it. The parser reads the pool only through that handle — an `Any` value's type
-        // resolves against the root descriptor's own pool (prost-reflect 0.16.5
-        // `src/dynamic/text_format/parse/mod.rs:104-108`), never the engine's global one — so no
-        // process-global state can be left inconsistent, and keryx's own logic inside the frame
-        // is one infallible clone; the `AssertUnwindSafe` is sound. The frame's thread-local flag
-        // is set on the thread the parse runs on — the thread a panic hook consults it from.
-        let handle = thread::Builder::new()
-            .name("keryx-textproto".to_owned())
-            .stack_size(TEXTPROTO_PARSE_STACK)
-            .spawn_scoped(scope, || {
-                contain(Dependency::ProstReflect, operation, || {
-                    DynamicMessage::parse_text_format(desc.clone(), text)
-                })
-            })
-            // A thread the host cannot spawn is the host out of a resource — threads, or the
-            // address space to reserve the stack in — and nothing the payload's content brings
-            // about: by here the payload is validated, measured, and bounded, and the spawn asks
-            // the same of the host for every payload alike. Repetition can bring it about — the
-            // threat model's adversary may repeat the call, and calls admitted faster than their
-            // parse threads retire could run the host out of either — and the model assigns that
-            // to the consuming service: its side of the division of labor is isolation of the
-            // translation under resource limits, so a host exhausted by load is the operating
-            // system's to contain, as an abort or a hang is, where keryx's guarantees hold per
-            // call. Discharged as a host invariant, then, against the adversary the model names
-            // and not on payload-independence alone: a foreign-input path is one a payload's
-            // content reaches (§6), and an exhausted host is the service's to bound, not this
-            // door's to diagnose.
-            .expect("the host can spawn the textproto parse thread");
-        handle.join().unwrap_or_else(|unwind| {
-            // A panic that escaped the frame — none can, the frame catching every unwind inside it
-            // — is re-raised inside a frame here, on the caller's thread, so it is contained as it
-            // would have been: the same fault, from the one seam. `resume_unwind` runs no panic
-            // hook, so the fault is reported once.
+    let parsed = on_sized_thread(
+        "keryx-textproto",
+        TEXTPROTO_PARSE_STACK,
+        Dependency::ProstReflect,
+        operation,
+        || {
+            // The closure borrows only `desc` (a handle over the pool's shared state, cloned in) and
+            // `text`; a fault drops the half-built message with the unwind, so nothing keryx observes
+            // survives it. The parser reads the pool only through that handle — an `Any` value's type
+            // resolves against the root descriptor's own pool (prost-reflect 0.16.5
+            // `src/dynamic/text_format/parse/mod.rs:104-108`), never the engine's global one — so no
+            // process-global state can be left inconsistent, and keryx's own logic inside the frame
+            // is one infallible clone; the `AssertUnwindSafe` inside `contain` is sound.
             contain(Dependency::ProstReflect, operation, || {
-                resume_unwind(unwind)
+                DynamicMessage::parse_text_format(desc.clone(), text)
             })
-        })
-    })?;
+        },
+    )?;
     parsed
         .map(|root| Decoded { root })
         .map_err(|error| undecodable(desc, &error.to_string()))
@@ -266,11 +280,11 @@ const JSON_DECODE_STACK: usize = 8 << 20;
 /// payload's facts are the same function of the payload a binary one's are (the threat model's
 /// determinism).
 ///
-/// The text decode's parallel instance, deliberately, and not its shared helper: the skeleton the
-/// two share and the differences that keep them apart — what precedes the thread, the stack each
-/// is sized by, the dependency and the error type each names — are argued once, at
-/// [`decode_textproto`] (*Two instances, not one helper*), and the lift that would join them is
-/// named and deferred there.
+/// Runs on the shared sized-thread skeleton ([`on_sized_thread`], argued at [`decode_textproto`]):
+/// this door's parts that stay off it are that no guard precedes the thread — the deserializer bounds
+/// its own nesting — the stack it is sized by ([`JSON_DECODE_STACK`], the deserializer's deeper
+/// admit), the dependency the frame names (`SerdeJson`), and the argument that containing it is sound
+/// (the pool-handle reasoning at the closure below).
 ///
 /// # Errors
 ///
@@ -278,49 +292,34 @@ const JSON_DECODE_STACK: usize = 8 << 20;
 /// `DependencyFault` for a contained fault.
 pub(crate) fn decode_json(desc: &MessageDescriptor, bytes: &[u8]) -> Result<Decoded, Diagnostics> {
     let operation = "decoding a JSON payload";
-    let deserialized = thread::scope(|scope| {
-        // The closure borrows only `desc` (a handle over the pool's shared state, cloned in) and
-        // `bytes`; a fault drops the half-built message with the unwind, so nothing keryx observes
-        // survives it. The deserialization reads the pool only through that handle — an `Any`
-        // value's type resolves against the root descriptor's own pool (prost-reflect 0.16.5
-        // `src/dynamic/serde/de/mod.rs:24`, `desc.parent_pool()`), never the engine's global one
-        // — so no process-global state can be left inconsistent, and keryx's own logic inside the
-        // frame is one infallible clone and two `?`s; the `AssertUnwindSafe` is sound. The frame's
-        // thread-local flag is set on the thread the deserialization runs on — the thread a panic
-        // hook consults it from.
-        let handle = thread::Builder::new()
-            .name("keryx-json".to_owned())
-            .stack_size(JSON_DECODE_STACK)
-            .spawn_scoped(scope, || {
-                contain(
-                    Dependency::SerdeJson,
-                    operation,
-                    || -> Result<DynamicMessage, serde_json::Error> {
-                        // The deserializer as built: its recursion limit on, the engine's
-                        // `deny_unknown_fields` on. A payload is one value, so `end` refuses text
-                        // after it.
-                        let mut deserializer = serde_json::Deserializer::from_slice(bytes);
-                        let root = DynamicMessage::deserialize(desc.clone(), &mut deserializer)?;
-                        deserializer.end()?;
-                        Ok(root)
-                    },
-                )
-            })
-            // A thread the host cannot spawn is the host out of a resource — threads, or the
-            // address space to reserve the stack in — and nothing the payload's content brings
-            // about: the spawn reads none of it and asks the same of the host for every payload
-            // alike. Discharged as `decode_textproto` discharges the same spawn — a host invariant
-            // against the adversary the threat model names, whose repetition the consuming
-            // service's resource limits bound, not this door's diagnosis.
-            .expect("the host can spawn the JSON decode thread");
-        handle.join().unwrap_or_else(|unwind| {
-            // A panic that escaped the frame — none can, the frame catching every unwind inside it
-            // — is re-raised inside a frame here, on the caller's thread, so it is contained as it
-            // would have been: the same fault, from the one seam. `resume_unwind` runs no panic
-            // hook, so the fault is reported once.
-            contain(Dependency::SerdeJson, operation, || resume_unwind(unwind))
-        })
-    })?;
+    let deserialized = on_sized_thread(
+        "keryx-json",
+        JSON_DECODE_STACK,
+        Dependency::SerdeJson,
+        operation,
+        || {
+            // The closure borrows only `desc` (a handle over the pool's shared state, cloned in) and
+            // `bytes`; a fault drops the half-built message with the unwind, so nothing keryx observes
+            // survives it. The deserialization reads the pool only through that handle — an `Any`
+            // value's type resolves against the root descriptor's own pool (prost-reflect 0.16.5
+            // `src/dynamic/serde/de/mod.rs:24`, `desc.parent_pool()`), never the engine's global one
+            // — so no process-global state can be left inconsistent, and keryx's own logic inside the
+            // frame is one infallible clone and two `?`s; the `AssertUnwindSafe` inside `contain` is
+            // sound.
+            contain(
+                Dependency::SerdeJson,
+                operation,
+                || -> Result<DynamicMessage, serde_json::Error> {
+                    // The deserializer as built: its recursion limit on, the engine's
+                    // `deny_unknown_fields` on. A payload is one value, so `end` refuses text after it.
+                    let mut deserializer = serde_json::Deserializer::from_slice(bytes);
+                    let root = DynamicMessage::deserialize(desc.clone(), &mut deserializer)?;
+                    deserializer.end()?;
+                    Ok(root)
+                },
+            )
+        },
+    )?;
     deserialized
         .map(|root| Decoded { root })
         .map_err(|error| undecodable(desc, &error.to_string()))
@@ -400,8 +399,8 @@ impl Building {
 }
 
 /// Encode a built message to binary wire bytes (`.binpb`) — the outbound mirror of
-/// [`decode_binary`]. The encode runs on a thread keryx sizes ([`ENCODE_STACK`]) with the
-/// containment frame *inside* it, as the inbound sized decodes do: a message admitted at the
+/// [`decode_binary`]. The encode runs on the shared sized-thread skeleton ([`on_sized_thread`],
+/// [`ENCODE_STACK`]) with the containment frame *inside* it, as the inbound sized decodes do: a message admitted at the
 /// reconstruction ceiling recurses that deep natively in the engine's unbounded serializer, and a
 /// stack overflow aborts rather than unwinds, so the sized thread *prevents* it (for every message
 /// the walk admits) and the frame catches what does unwind — an unforeseen engine panic — as a
@@ -417,38 +416,26 @@ pub(crate) fn encode_binary(building: Building) -> Result<Vec<u8>, Diagnostics> 
     let message = building.message;
     let descriptor = message.descriptor();
     let operation = "encoding a payload";
-    thread::scope(|scope| {
-        // The closure owns `message`; a fault drops it with the unwind, so nothing keryx observes
-        // survives it. The encode reads no process-global state — it serializes the owned tree — so
-        // the `AssertUnwindSafe` inside `contain` is sound. The frame's thread-local flag is set on
-        // the thread the encode runs on, the thread a panic hook consults it from.
-        let handle = thread::Builder::new()
-            .name("keryx-encode".to_owned())
-            .stack_size(ENCODE_STACK)
-            .spawn_scoped(scope, move || {
-                let bytes = contain(Dependency::ProstReflect, operation, || {
-                    message.encode_to_vec()
-                })?;
-                // Order every map field's entries by key (property 5, determinism): the engine holds
-                // a map as a `HashMap` and encodes it in iteration order, which is not a function of
-                // its contents, so keryx canonicalises its own well-formed output here — on the same
-                // sized thread the encode ran on, its native recursion bounded by the same ceiling.
-                // This is keryx's own total code, outside the containment frame: a bug in it is a
-                // keryx bug, never a dependency fault.
-                Ok(canonical::canonicalize_map_order(&bytes, &descriptor))
-            })
-            // A thread the host cannot spawn is the host out of a resource, not the message's doing
-            // (by here it is built and bounded) — the consuming service's to contain under resource
-            // limits (the threat model's division of labor), as for the inbound parse thread.
-            .expect("the host can spawn the encode thread");
-        handle.join().unwrap_or_else(|unwind| {
-            // A panic that escaped the frame — none can — is re-raised inside a frame here, on the
-            // caller's thread, contained as the one seam would have. `resume_unwind` runs no hook.
-            contain(Dependency::ProstReflect, operation, || {
-                resume_unwind(unwind)
-            })
-        })
-    })
+    on_sized_thread(
+        "keryx-encode",
+        ENCODE_STACK,
+        Dependency::ProstReflect,
+        operation,
+        move || {
+            // The closure owns `message`; a fault drops it with the unwind, so nothing keryx observes
+            // survives it. The encode reads no process-global state — it serializes the owned tree —
+            // so the `AssertUnwindSafe` inside `contain` is sound.
+            let bytes = contain(Dependency::ProstReflect, operation, || {
+                message.encode_to_vec()
+            })?;
+            // Order every map field's entries by key (property 5, determinism): the engine holds a
+            // map as a `HashMap` and encodes it in iteration order, which is not a function of its
+            // contents, so keryx canonicalises its own well-formed output here — on this sized
+            // thread, its native recursion bounded by the same ceiling. keryx's own total code,
+            // outside the containment frame: a bug in it is a keryx bug, never a dependency fault.
+            Ok(canonical::canonicalize_map_order(&bytes, &descriptor))
+        },
+    )
 }
 
 /// `TermTypeMismatch` at `at`: the validating setter rejected a value keryx's inverse §6 lowering
