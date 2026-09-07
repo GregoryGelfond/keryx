@@ -1,0 +1,7 @@
+
+*
+cache!
+replicas exceeds max_per_node
+&
+web
+replicas must be at least 1

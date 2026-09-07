@@ -1,0 +1,18 @@
+syntax = "proto3";
+package deploy.v1;
+
+// The configuration to validate — the inbound message (proto → facts a model reasons over).
+message Deployment { repeated Service services = 1; }
+message Service {
+  string name = 1;
+  int32 replicas = 2;
+  int32 max_per_node = 3;
+}
+
+// The validation report the model computes and emits back — the outbound message
+// (answer set → proto). Keyed by service name.
+message Report { map<string, Finding> findings = 1; }
+message Finding {
+  string reason = 1;
+  int32 code = 2;
+}

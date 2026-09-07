@@ -196,4 +196,30 @@ grounds_clean oneof "$root/examples/oneof/dispatch.proto" "$root/examples/oneof"
 grounds_clean map "$root/examples/map/inventory.proto" "$root/examples/map" inventory.v1 catalog.v1
 grounds_clean proto2 "$root/examples/proto2/order.proto" "$root/examples/proto2" orders.v1
 
+# config — the computed example (examples/config): the generated theory grounds clean, and the
+# consuming tool's model.lp, over the shredded config, derives a Report that satisfies the theory.
+# clingo here is test infrastructure driving the PATH solver — keryx itself spawns none.
+config=$work/config
+mkdir -p "$config"
+"$KERYX" gen "$root/examples/config/deployment.proto" -I "$root/examples/config" -o "$config" --shape both \
+  2> "$config/gen.log" || fail "keryx gen deployment.proto failed:
+$(cat "$config/gen.log")"
+ground "$config/deploy.v1.emit.lp"
+ground "$config/deploy.v1.emit-diagnostic.lp"
+# The bad config: the model derives findings, and the Report satisfies the strict theory.
+solve sat "$config/deploy.v1.emit.lp" "$root/examples/config/facts.bad.lp" "$root/examples/config/model.lp"
+case "$model" in
+  *'finding(findings(v0,"web"))'*) ;;
+  *) fail "config: the model did not derive the web finding:
+$model" ;;
+esac
+# The valid config: the model derives an empty Report — no findings.
+solve sat "$config/deploy.v1.emit.lp" "$root/examples/config/facts.ok.lp" "$root/examples/config/model.lp"
+case "$model" in
+  *'finding(findings('*) fail "config: the valid config derived a finding:
+$model" ;;
+  *) ;;
+esac
+echo "ground: config — theory grounds clean; bad config derives findings; valid config derives none"
+
 echo "ground: every theory grounds clean and solves as expected"

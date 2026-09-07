@@ -1,0 +1,13 @@
+keryx-manifest v0
+schema-hash -  package deploy.v1  target clingo  profile -  shape strict  keryx 0.1.0
+deploy.v1.Deployment  sort  deployment/1
+deploy.v1.Deployment.services #1 fam  services/2 -> service  service  seq ; view services/3
+deploy.v1.Finding  sort  finding/1
+deploy.v1.Finding.reason #1 fn  reason/2  string  total
+deploy.v1.Finding.code #2 fn  code/2  int32  total
+deploy.v1.Report  sort  report/1
+deploy.v1.Report.findings #1 fam  findings/2 -> finding  finding  map<string> ; view findings/3
+deploy.v1.Service  sort  service/1
+deploy.v1.Service.name #1 fn  name/2  string  total
+deploy.v1.Service.replicas #2 fn  replicas/2  int32  total
+deploy.v1.Service.max_per_node #3 fn  max_per_node/2  int32  total

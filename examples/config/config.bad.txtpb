@@ -1,0 +1,6 @@
+# proto-file: deployment.proto
+# proto-message: deploy.v1.Deployment
+
+services { name: "web" replicas: 0 max_per_node: 3 }
+services { name: "cache" replicas: 5 max_per_node: 2 }
+services { name: "api" replicas: 3 max_per_node: 4 }
