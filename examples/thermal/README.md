@@ -1,10 +1,11 @@
-# The thermal example — `keryx gen` and `keryx facts`
+# The thermal example — `keryx gen`, `keryx facts`, and `keryx emit`
 
-A worked example of keryx's solver-free half (spec §28): a small Protocol Buffers schema
+A worked example of keryx's solver-free bridge (spec §28): a small Protocol Buffers schema
 of sensor readings and overheating alerts, the Answer Set Programming *vocabulary* keryx
-generates from it, and a batch of readings shredded to ground *facts* over that vocabulary.
-This is the front half of the bridge — schema to vocabulary, payload to facts — with no
-solver in the loop; the round trip through clingo is sketched at the end.
+generates from it, a batch of readings shredded to ground *facts* over that vocabulary, and
+an answer set reassembled back to the payload it came from. Both halves of the bridge — schema
+to vocabulary, payload to facts, and facts back to payload — with no solver in the loop; where
+the solver would sit is sketched at the end.
 
 ## The schema
 
@@ -183,20 +184,44 @@ is this batch in the protobuf text format, its `# proto-file:` / `# proto-messag
 the schema and the root type, and [`batch.json`](batch.json) is the batch in the protobuf JSON
 mapping; each shreds to this very file — so the file is golden-comparable like the three beside it.
 
+## Reassembling a payload — `keryx emit`
+
+The outbound half runs an answer set back to a payload. [`answer.lp`](answer.lp) is the seven
+facts above plus the one marker a model asserts to export a tree — `emit_reading_batch(r0)` —
+and `keryx emit` reassembles the message it names:
+
+```sh
+keryx emit --root ReadingBatch answer.lp thermal.proto -I . > batch.reassembled.binpb
+```
+
+The bytes are [`batch.reassembled.binpb`](batch.reassembled.binpb) — byte-for-byte
+[`batch.binpb`](batch.binpb) again. The round trip closes: the payload shreds to the seven
+facts, the marker exports them, and the reassembler rebuilds the very payload, canonical (a
+zero implicit scalar is omitted, as proto3 encodes it). `--out txtpb` and `--out json` write the
+same message in the other two forms; `--root ReadingBatch` names which message to write when the
+answer set could name several, since exactly one reaches stdout.
+
+A real clingo answer set carries emit.lp's derived atoms too — `reach/1`, the `has_` witnesses,
+and, under the diagnostic theory, `violates(path, occupant)`. The reassembler keys only on the
+sort, field, and marker atoms, reading `violates` where the diagnostic theory left it; a model's
+own working predicates and the theory's scaffolding pass through untouched.
+
 ## The solver-free path
 
-`gen` and `facts` are the front half of the bridge. The whole round trip is:
+`gen`, `facts`, and `emit` are the bridge itself. The whole round trip is:
 
 1. **`keryx gen`** — schema → the ASP vocabulary above (this example).
 2. **`keryx facts`** — a `ReadingBatch` payload → ground facts over that vocabulary (this
    example).
 3. **your clingo** — the facts plus your own model (constraints, derivations) → an answer set.
    keryx invokes no solver; the solver is yours.
-4. **reassemble** — an answer set → an outbound protobuf payload (Increment 4).
+4. **`keryx emit`** — an answer set → an outbound protobuf payload (this example — the
+   `ReadingBatch` round trip above).
 
-Everything keryx does here is a pure, deterministic function of the schema and the payload —
-no solver, no network, golden-comparable. The end-to-end transient solve is wired together at
-Increment 4; this example is the piece that is real today.
+Everything keryx does here is a pure, deterministic function of its input — no solver, no
+network, golden-comparable. keryx wires steps 1, 2, and 4; step 3 is your solver's, over the
+vocabulary keryx generates. Only the transient *solve* is external — keryx translates, never
+solves — and this example runs the whole of keryx's bridge around it.
 
 ## Scope at this stage
 
@@ -209,9 +234,12 @@ Increment 4; this example is the piece that is real today.
   as a **sequence**, exactly like `ReadingBatch.readings` — `alerts/2` with a sequence view
   `alerts/3`.
   Set semantics — order- and multiplicity-insensitive membership — arrive with annotation
-  reading at Increment 5, at which point `alerts` becomes a membership relation.
-- **`emit.lp` is generated; reassembly is not yet.** The theory above is what `gen` writes
-  today, and the repository's grounding gate runs it under clingo — the facts of `batch.binpb`,
-  exported under `emit_reading_batch(r0)`, satisfy it, and a second `sensor` on a reading
-  refutes it. The reassembler that turns an answer set satisfying it back into a message —
-  step 4 above — arrives with the outbound codec at Increment 4.
+  reading at Increment 5, at which point `alerts` becomes a membership relation. Until then the
+  alert half of the round trip stays open: a natural `overheating/1` model emits membership, not
+  the dense indices a sequence needs, so `emit` closes the `ReadingBatch` round trip here and the
+  `AlertSet` one when `(keryx.set)` gains meaning.
+- **`emit.lp` is generated and reassembly is real.** The theory above is what `gen` writes today,
+  and the repository's grounding gate runs it under clingo — the facts of `batch.binpb`, exported
+  under `emit_reading_batch(r0)`, satisfy it, and a second `sensor` on a reading refutes it.
+  `keryx emit` turns an answer set satisfying it back into a message — the `ReadingBatch` round
+  trip above closes byte-for-byte, in the binary form and, the same way, the text and JSON forms.

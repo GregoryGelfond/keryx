@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use keryx_test_support::wire::{batch, reading};
 
-use keryx_core::codec::{Codec, PayloadFormat, Root};
+use keryx_core::codec::{Codec, PayloadFormat, Root, raise_answer_set};
 use keryx_core::descriptor::compile;
 use keryx_core::emit::Shape;
 use keryx_core::{emit, manifest, policy};
@@ -87,5 +87,40 @@ fn thermal_facts_match_the_committed_example() {
     assert_eq!(
         facts.render().expect("the facts render"),
         golden("thermal.v1.facts.lp")
+    );
+}
+
+#[test]
+fn thermal_reassembles_the_committed_answer_set() {
+    // The outbound half of the round trip (spec §12.3, §28): the committed answer set — the shred's
+    // seven facts plus the `emit_reading_batch(r0)` marker a model asserts to export the tree —
+    // reads through the `.lp` door and reassembles to the committed golden, which is `batch.binpb`
+    // again, byte for byte. `answer.lp` → reassemble → the payload it was shredded from: the
+    // identity the round trip is defined on (`keryx emit … answer.lp`), solver-free.
+    let example = example();
+    let codec = Codec::from_source(
+        &[example.join("thermal.proto")],
+        &[example.clone(), vendored()],
+    )
+    .expect("thermal builds a codec");
+    let answer = std::fs::read_to_string(example.join("answer.lp")).expect("answer set present");
+    let symbols = raise_answer_set(&answer).expect("the answer set reads");
+    let reassembled = codec
+        .reassemble(&symbols, PayloadFormat::Binary)
+        .expect("the answer set reassembles");
+    let messages = reassembled.messages();
+    assert_eq!(messages.len(), 1, "one root marker, one message");
+    assert_eq!(messages[0].type_name(), "thermal.v1.ReadingBatch");
+
+    let golden = std::fs::read(example.join("batch.reassembled.binpb")).expect("golden present");
+    assert_eq!(
+        messages[0].bytes(),
+        golden,
+        "reassembly matches the committed golden"
+    );
+    let payload = std::fs::read(example.join("batch.binpb")).expect("payload present");
+    assert_eq!(
+        golden, payload,
+        "the round trip returns the original payload byte for byte"
     );
 }
