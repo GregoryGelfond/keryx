@@ -10,6 +10,7 @@
 //! crosses the surface: a caller names a root *type* by proto name, and the descriptor it
 //! resolves to stays inside.
 
+mod answer;
 pub(crate) mod assemble;
 pub(crate) mod canonical;
 pub(crate) mod canonical_text;
@@ -17,6 +18,8 @@ pub(crate) mod engine;
 pub(crate) mod guard;
 pub(crate) mod scalar;
 pub(crate) mod walk;
+
+pub use answer::raise_answer_set;
 
 use std::path::Path;
 

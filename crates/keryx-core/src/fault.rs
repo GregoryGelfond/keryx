@@ -51,6 +51,11 @@ pub(crate) enum Dependency {
     /// run beneath the deserializer inside the one frame, so a fault in either reads as this
     /// dependency's: the frame names the code keryx calls, and keryx calls the deserializer.
     SerdeJson,
+    /// themelios — the ASP program tier, at the outbound door's `.lp` answer-set read
+    /// (`codec::answer::raise_answer_set`, `parse` then `raise`). Branch (a): themelios's parser
+    /// bounds its own nesting and its raise is total, so no pre-parse guard of keryx's precedes it;
+    /// the crossing is contained here as defense-in-depth, with no known trigger.
+    Themelios,
 }
 
 impl Dependency {
@@ -61,6 +66,7 @@ impl Dependency {
             Dependency::ProstReflect => "prost-reflect",
             Dependency::Protox => "protox",
             Dependency::SerdeJson => "serde_json",
+            Dependency::Themelios => "themelios",
         }
     }
 }
