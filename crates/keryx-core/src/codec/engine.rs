@@ -359,11 +359,17 @@ const ENCODE_STACK: usize = 8 << 20;
 /// A message under construction — keryx's builder seam over prost-reflect, so the reassembly walk
 /// (`super::assemble`) sets fields in keryx's terms. It wraps a [`DynamicMessage`] and routes every
 /// field through the engine's **validating** setter ([`DynamicMessage::try_set_field_by_number`]),
-/// which admits exactly the `(Value, Kind)` pairings the encoders accept — so a value that does not
-/// fit the field's kind is refused here (a `TermTypeMismatch`), before any message is encoded,
-/// rather than reaching one of the engine's encode-time mismatch panics. keryx's own inverse §6
-/// lowering (`super::scalar::raise`) validates each value first, so a refusal at this seam is
-/// defense-in-depth over an axis already foreclosed — a keryx invariant, not a payload's fault.
+/// which admits a value only when `Value::is_valid_for_field` holds (prost-reflect 0.16.5
+/// `src/dynamic/mod.rs:639`) — the complement of the switch the encoders panic outside
+/// (`src/dynamic/message.rs`). That check is *deep*: a list's every element, a map's every key and
+/// value (recursively, `is_valid_for_field` for a message value), and a scalar, message, or enum at
+/// the top, each against its kind (`is_valid`, `:678`). So a value that does not fit is refused here
+/// as a `TermTypeMismatch`, before any message is encoded, at **each** of the encode's mismatch-panic
+/// sites alike — a scalar, a list element or a packed field, a map key, a map value, a nested
+/// message, an enum — never reaching the panic. keryx's own inverse §6 lowering
+/// (`super::scalar::raise`) validates each value first, so a refusal at this seam is defense-in-depth
+/// over an axis already foreclosed — a keryx invariant, not a payload's fault. The boundary test
+/// `the_setter_forecloses_a_mismatch_at_every_encode_site` drives a mismatch at each site.
 pub(crate) struct Building {
     message: DynamicMessage,
 }
@@ -692,10 +698,10 @@ mod tests {
     use keryx_test_support::wire::delimited;
     use prost::Message as _;
     use prost::encoding;
-    use prost_reflect::{MessageDescriptor, Value};
+    use prost_reflect::{MapKey, MessageDescriptor, Value};
     use prost_types::{
-        DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet,
-        MessageOptions,
+        DescriptorProto, EnumDescriptorProto, EnumValueDescriptorProto, FieldDescriptorProto,
+        FileDescriptorProto, FileDescriptorSet, MessageOptions,
     };
 
     use super::{
@@ -767,6 +773,150 @@ mod tests {
             .expect_err("a numeric value does not fit a string field");
         assert_eq!(error.kind(), DiagnosticKind::TermTypeMismatch);
         assert_eq!(error.locus().path(), Some("thermal.v1.Reading.sensor"));
+    }
+
+    /// A field of a hand-built message, with an optional referent (`type_name`).
+    fn shape_field(
+        name: &str,
+        number: i32,
+        r#type: i32,
+        label: i32,
+        type_name: Option<&str>,
+    ) -> FieldDescriptorProto {
+        FieldDescriptorProto {
+            name: Some(name.to_owned()),
+            number: Some(number),
+            label: Some(label),
+            r#type: Some(r#type),
+            type_name: type_name.map(str::to_owned),
+            ..Default::default()
+        }
+    }
+
+    /// A pool with `Shapes { int32 s=1; repeated int32 list=2; map<int32,int32> m=3; Inner msg=4;
+    /// map<int32,Inner> mmap=6; E e=7; }` — one field of every shape the engine's encode panics at.
+    fn shapes_pool() -> RetainedPool {
+        let map_entry = |name: &str, value_type: i32, value_name: Option<&str>| DescriptorProto {
+            name: Some(name.to_owned()),
+            field: vec![
+                shape_field("key", 1, 5, 1, None), // int32 key
+                shape_field("value", 2, value_type, 1, value_name),
+            ],
+            options: Some(MessageOptions {
+                map_entry: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let inner = DescriptorProto {
+            name: Some("Inner".to_owned()),
+            field: vec![shape_field("x", 1, 5, 1, None)],
+            ..Default::default()
+        };
+        let e = EnumDescriptorProto {
+            name: Some("E".to_owned()),
+            value: vec![
+                EnumValueDescriptorProto {
+                    name: Some("E_ZERO".to_owned()),
+                    number: Some(0),
+                    ..Default::default()
+                },
+                EnumValueDescriptorProto {
+                    name: Some("E_ONE".to_owned()),
+                    number: Some(1),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let set = FileDescriptorSet {
+            file: vec![FileDescriptorProto {
+                name: Some("shapes.proto".to_owned()),
+                package: Some("s".to_owned()),
+                syntax: Some("proto3".to_owned()),
+                message_type: vec![DescriptorProto {
+                    name: Some("Shapes".to_owned()),
+                    field: vec![
+                        shape_field("s", 1, 5, 1, None),                            // int32
+                        shape_field("list", 2, 5, 3, None), // repeated int32 (packed)
+                        shape_field("m", 3, 11, 3, Some(".s.Shapes.MEntry")), // map<int32,int32>
+                        shape_field("msg", 4, 11, 1, Some(".s.Shapes.Inner")), // singular message
+                        shape_field("mmap", 6, 11, 3, Some(".s.Shapes.MmapEntry")), // map<int32,Inner>
+                        shape_field("e", 7, 14, 1, Some(".s.Shapes.E")),            // enum
+                    ],
+                    nested_type: vec![
+                        inner,
+                        map_entry("MEntry", 5, None),
+                        map_entry("MmapEntry", 11, Some(".s.Shapes.Inner")),
+                    ],
+                    enum_type: vec![e],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        }
+        .encode_to_vec();
+        let (_, pool) = descriptor::ingest_retaining(&set).expect("the shapes set ingests");
+        pool
+    }
+
+    #[test]
+    fn the_setter_forecloses_a_mismatch_at_every_encode_site() {
+        // The engine panics at encode on a (Value, Kind) mismatch at each of its sites — a scalar, a
+        // list element (and a packed field), a map key, a map value, a nested message, an enum.
+        // `Building::set` routes every value through the validating setter (`try_set_field_by_number`
+        // → `Value::is_valid_for_field`, prost-reflect 0.16.5 `src/dynamic/mod.rs:639`), which checks
+        // the value's shape at every level — a list's each element, a map's each key and value
+        // (recursively for a message value) — so a mismatch at any site is a `TermTypeMismatch` here,
+        // before any encode, never a panic.
+        let pool = shapes_pool();
+        let desc = pool
+            .message_by_name("s.Shapes")
+            .expect("the pool declares Shapes");
+        let mismatch = |number: i32, value: Value| {
+            Building::new(&desc)
+                .set(number, value, "s.Shapes")
+                .expect_err("a mismatched value is refused before encode")
+                .kind()
+        };
+        let map_of = |entries: [(MapKey, Value); 1]| Value::Map(entries.into_iter().collect());
+        // A wrong-typed value at each site's shape is refused by the setter.
+        assert_eq!(
+            mismatch(1, Value::String("x".to_owned())),
+            DiagnosticKind::TermTypeMismatch
+        );
+        assert_eq!(
+            mismatch(2, Value::List(vec![Value::String("x".to_owned())])),
+            DiagnosticKind::TermTypeMismatch
+        );
+        assert_eq!(
+            mismatch(3, map_of([(MapKey::String("x".to_owned()), Value::I32(1))])),
+            DiagnosticKind::TermTypeMismatch
+        );
+        assert_eq!(
+            mismatch(3, map_of([(MapKey::I32(1), Value::String("x".to_owned()))])),
+            DiagnosticKind::TermTypeMismatch
+        );
+        assert_eq!(mismatch(4, Value::I32(7)), DiagnosticKind::TermTypeMismatch);
+        assert_eq!(
+            mismatch(6, map_of([(MapKey::I32(1), Value::I32(7))])),
+            DiagnosticKind::TermTypeMismatch
+        );
+        assert_eq!(
+            mismatch(7, Value::String("x".to_owned())),
+            DiagnosticKind::TermTypeMismatch
+        );
+
+        // The complement: a correctly-typed value at each site is admitted — the setter accepts
+        // exactly what the encoders accept, so it refuses mismatches, not valid values.
+        let mut ok = Building::new(&desc);
+        ok.set(1, Value::I32(5), "s.Shapes").expect("a scalar fits");
+        ok.set(2, Value::List(vec![Value::I32(0)]), "s.Shapes")
+            .expect("a list element fits");
+        ok.set(3, map_of([(MapKey::I32(1), Value::I32(2))]), "s.Shapes")
+            .expect("a map fits");
+        ok.set(7, Value::EnumNumber(1), "s.Shapes")
+            .expect("an enum number fits");
     }
 
     #[test]
