@@ -206,12 +206,20 @@ mkdir -p "$config"
 $(cat "$config/gen.log")"
 ground "$config/deploy.v1.emit.lp"
 ground "$config/deploy.v1.emit-diagnostic.lp"
-# The bad config: the model derives findings, and the Report satisfies the strict theory.
+# The bad config: the model derives exactly the finding set answer.bad.lp claims (web and cache,
+# no others), and the Report satisfies the strict theory.
 solve sat "$config/deploy.v1.emit.lp" "$root/examples/config/facts.bad.lp" "$root/examples/config/model.lp"
-case "$model" in
-  *'finding(findings(v0,"web"))'*) ;;
-  *) fail "config: the model did not derive the web finding:
+for want in 'finding(findings(v0,"web"))' 'finding(findings(v0,"cache"))'; do
+  case "$model" in
+    *"$want"*) ;;
+    *) fail "config: the bad config did not derive $want:
 $model" ;;
+  esac
+done
+case "$model" in
+  *'finding(findings(v0,"api"))'*) fail "config: the bad config derived a spurious api finding:
+$model" ;;
+  *) ;;
 esac
 # The valid config: the model derives an empty Report — no findings.
 solve sat "$config/deploy.v1.emit.lp" "$root/examples/config/facts.ok.lp" "$root/examples/config/model.lp"

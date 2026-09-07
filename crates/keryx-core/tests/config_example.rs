@@ -72,6 +72,29 @@ fn config_facts_match_the_committed_bad_config() {
 }
 
 #[test]
+fn config_facts_match_the_committed_ok_config() {
+    let example = example();
+    let payload = std::fs::read(example.join("config.ok.txtpb")).expect("payload present");
+    let codec = Codec::from_source(
+        &[example.join("deployment.proto")],
+        std::slice::from_ref(&example),
+    )
+    .expect("the config example builds a codec");
+    let facts = codec
+        .shred(
+            "deploy.v1.Deployment",
+            &payload,
+            PayloadFormat::Textproto,
+            &Root::fresh(0),
+        )
+        .expect("the valid config shreds");
+    assert_eq!(
+        facts.render().expect("the facts render"),
+        std::fs::read_to_string(example.join("facts.ok.lp")).expect("facts golden present")
+    );
+}
+
+#[test]
 fn config_reassembles_the_computed_report() {
     // The consuming tool's clingo turned the Deployment facts + model.lp into this Report; keryx
     // reassembles it — a *different* message than the Deployment that went in — byte for byte.
@@ -95,5 +118,23 @@ fn config_reassembles_the_computed_report() {
         messages[0].bytes(),
         golden,
         "reassembly matches the committed Report"
+    );
+
+    // The textproto and JSON renderings the README quotes verbatim, pinned the same way.
+    let txtpb = codec
+        .reassemble(&symbols, PayloadFormat::Textproto)
+        .expect("reassembles to textproto");
+    assert_eq!(
+        txtpb.messages()[0].bytes(),
+        std::fs::read(example.join("report.bad.txtpb")).expect("txtpb golden present"),
+        "textproto rendering matches the committed golden"
+    );
+    let json = codec
+        .reassemble(&symbols, PayloadFormat::Json)
+        .expect("reassembles to json");
+    assert_eq!(
+        json.messages()[0].bytes(),
+        std::fs::read(example.join("report.bad.json")).expect("json golden present"),
+        "json rendering matches the committed golden"
     );
 }

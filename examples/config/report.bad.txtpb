@@ -1,0 +1,1 @@
+findings:[{key:"cache",value{reason:"replicas exceeds max_per_node",code:2}},{key:"web",value{reason:"replicas must be at least 1",code:1}}]

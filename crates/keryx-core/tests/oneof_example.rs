@@ -47,8 +47,8 @@ fn oneof_gen_matches_the_committed_example() {
     );
 }
 
-#[test]
-fn oneof_facts_match_the_committed_example_and_only_the_present_arm_shreds() {
+/// The committed outbox payload shredded to its rendered facts.
+fn rendered_outbox() -> String {
     let example = example();
     let payload = std::fs::read(example.join("outbox.txtpb")).expect("payload present");
     let codec = Codec::from_source(
@@ -64,11 +64,19 @@ fn oneof_facts_match_the_committed_example_and_only_the_present_arm_shreds() {
             &Root::fresh(0),
         )
         .expect("the outbox shreds");
-    let rendered = facts.render().expect("the facts render");
-    assert_eq!(rendered, golden("dispatch.v1.facts.lp"));
+    facts.render().expect("the facts render")
+}
 
+#[test]
+fn oneof_facts_match_the_committed_example() {
+    assert_eq!(rendered_outbox(), golden("dispatch.v1.facts.lp"));
+}
+
+#[test]
+fn oneof_shreds_only_the_present_arm() {
     // Notice 0 set `email`, notice 1 set `sms`: only the present arm of each shreds — the absent
     // arm has no atom (not a null, not both).
+    let rendered = rendered_outbox();
     assert!(rendered.contains(r#"email(notices(r0, 0), "ops@example.com")"#));
     assert!(rendered.contains(r#"sms(notices(r0, 1), "+15551234")"#));
     assert!(!rendered.contains("email(notices(r0, 1)"));

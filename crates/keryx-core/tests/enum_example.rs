@@ -111,8 +111,9 @@ fn an_undeclared_enum_number_is_refused_at_the_path() {
     let diagnostic = diagnostics.iter().next().expect("one diagnostic");
     assert_eq!(diagnostic.kind(), DiagnosticKind::UnknownEnumValue);
     assert_eq!(diagnostic.locus().path(), Some("signals.v1.Light.phase"));
-    assert!(
-        diagnostic.detail().contains("99") && diagnostic.detail().contains("signals.v1.Phase"),
-        "the detail names the number and the enum: {diagnostic}"
+    assert_eq!(
+        diagnostic.detail(),
+        "the value 99 matches no declared value of the enum `signals.v1.Phase`; an unknown number of an open enum is a translation error by default (§7.4) — annotate the field `(keryx.unknown) = PRESERVE` to carry it as `unknown(99)`",
+        "the full diagnostic detail is pinned, so the README's verbatim quote cannot drift"
     );
 }

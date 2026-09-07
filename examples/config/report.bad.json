@@ -1,0 +1,1 @@
+{"findings":{"cache":{"code":2,"reason":"replicas exceeds max_per_node"},"web":{"code":1,"reason":"replicas must be at least 1"}}}
