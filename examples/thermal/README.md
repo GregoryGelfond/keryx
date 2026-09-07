@@ -7,6 +7,25 @@ an answer set reassembled back to the payload it came from. Both halves of the b
 to vocabulary, payload to facts, and facts back to payload — with no solver in the loop; where
 the solver would sit is sketched at the end.
 
+## Why this shape, not a hand-rolled shim
+
+A one-off converter can turn a message into atoms; the value is in *how*. Four choices
+this example makes that a hand-rolled proto→ASP shim typically does not:
+
+- **Canonical identity.** Each nested reading is the access-path term `readings(r0, i)`
+  — stable, meaningful, and joinable — not an opaque handle minted per run.
+- **Polymorphism-by-sort.** `sensor` and `temp_c` are declared once and serve both
+  `reading` and `alert`, their meaning fixed by the sort of the first argument (§4.2),
+  not mangled into per-message names.
+- **A declared vocabulary.** `core.lp` states each sort and field with `#defined` and a
+  readable `%!` signature, so a model is written *against* a vocabulary — not handed a
+  bare dump of facts that draws an "atom does not occur in any rule" warning.
+- **Checked serializability.** `emit.lp` makes an answer set that could not be a message
+  UNSAT (or, under the diagnostic theory, reportable), so the round trip cannot emit
+  garbage bytes.
+
+The rest of this walkthrough shows each of these in the generated files.
+
 ## The schema
 
 [`thermal.proto`](thermal.proto) — four messages in package `thermal.v1`:
@@ -185,6 +204,9 @@ the schema and the root type, and [`batch.json`](batch.json) is the batch in the
 mapping; each shreds to this very file — so the file is golden-comparable like the three beside it.
 
 ## Reassembling a payload — `keryx emit`
+
+*The asp→proto (outbound) direction is being finalized; this section will be extended as
+it lands.*
 
 The outbound half runs an answer set back to a payload. [`answer.lp`](answer.lp) is the seven
 facts above plus the one marker a model asserts to export a tree — `emit_reading_batch(r0)` —
