@@ -2,8 +2,9 @@
 
 A worked example of keryx's solver-free bridge (spec §28): a small Protocol Buffers schema
 of sensor readings and overheating alerts, the Answer Set Programming *vocabulary* keryx
-generates from it, a batch of readings shredded to ground *facts* over that vocabulary, and
-an answer set reassembled back to the payload it came from. Both halves of the bridge — schema
+generates from it, a batch of readings *shredded* to ground *facts* over that vocabulary (to
+**shred** is to break a structured message down into flat, per-field facts), and an answer set
+reassembled back to the payload it came from. Both halves of the bridge — schema
 to vocabulary, payload to facts, and facts back to payload — with no solver in the loop; where
 the solver would sit is sketched at the end.
 

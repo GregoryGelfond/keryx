@@ -2,7 +2,8 @@
 
 How keryx renders a Protocol Buffers **enum** into Answer Set Programming: a proto3 open
 enum, the sort and constants `keryx gen` mints from it, and a payload `keryx facts` shreds
-to atoms that name those constants. This is the proto→asp direction — the half a
+to atoms that name those constants — *shredding* is keryx's word for breaking a message
+down into flat, per-field ground facts. This is the proto→asp direction — the half a
 hand-rolled shim usually gets *almost* right.
 
 ## The schema
