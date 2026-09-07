@@ -1,0 +1,5 @@
+# proto-file: dispatch.proto
+# proto-message: dispatch.v1.Outbox
+
+notices { subject: "Deploy complete" email: "ops@example.com" }
+notices { subject: "Disk 90% full" sms: "+15551234" }

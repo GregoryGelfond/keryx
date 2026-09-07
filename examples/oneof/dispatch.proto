@@ -1,0 +1,14 @@
+syntax = "proto3";
+package dispatch.v1;
+
+// A notice routed to exactly one channel — a oneof (§7.3): only the present arm shreds.
+message Notice {
+  string subject = 1;
+  oneof channel {
+    string email = 2;
+    string sms = 3;
+  }
+}
+
+// A batch of notices to send — a sequence.
+message Outbox { repeated Notice notices = 1; }

@@ -189,5 +189,6 @@ echo "ground: crossmap — SAT; UNSAT on a negative map key; key-range violation
 # The feature examples (examples/<name>) — inbound-focused, so the gate is that the generated
 # outbound theory grounds clean, not an answer-set solve.
 grounds_clean enum "$root/examples/enum/signals.proto" "$root/examples/enum" signals.v1
+grounds_clean oneof "$root/examples/oneof/dispatch.proto" "$root/examples/oneof" dispatch.v1
 
 echo "ground: every theory grounds clean and solves as expected"
