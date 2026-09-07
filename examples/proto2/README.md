@@ -53,14 +53,15 @@ The field declarations in [`gen/orders.v1.core.lp`](gen/orders.v1.core.lp):
 - **`repeated` is a sequence** (`tags/3`) and **`optional` is partial** (`quantity/2`), exactly
   as in proto3.
 
-### A known limitation — `required` presence
+### `required` presence, and one deferred outbound obligation
 
-`id` is `required` in proto2, so its presence is guaranteed. keryx currently renders it as
-`partial` — the same as `optional` — because the mapping does not yet distinguish proto2
-`required` from `optional`. It **should** read `id : order -> string (total)`. This affects
-only the signature: the shredded facts are correct, since a `required` field is always on the
-wire. Tracked as [#1](https://github.com/GregoryGelfond/keryx/issues/1); the fix is to widen
-the mapping's totality so `required` carries `total`.
+`id` is `required` in proto2. keryx renders it as a **partial** function — and that is correct:
+spec §5 treats `required` as EXPLICIT presence (a partial signature) and enforces a required
+field's *completeness* with a separate **outbound** totality obligation in `emit.lp`. That
+obligation is the one piece not yet emitted (§13.3) — the mapping does not yet distinguish
+`required` from `optional`, so a required field's presence is unenforced when *emitting*. This
+inbound example is unaffected: a `required` field is always on the wire, so `id` is present for
+both orders above. Tracked as [#1](https://github.com/GregoryGelfond/keryx/issues/1).
 
 ## The facts
 
@@ -85,8 +86,8 @@ tags(orders(r0, 1), 0, "bulk").
 
 ## Scope at this stage
 
-This example demonstrates the inbound (proto→asp) direction. proto2 `required` totality is
-being finalized ([#1](https://github.com/GregoryGelfond/keryx/issues/1)), and — like every
-example here — the asp→proto (outbound) direction is being finalized; the generated `emit.lp`
+This example demonstrates the inbound (proto→asp) direction. The outbound totality obligation
+for proto2 `required` is being finalized ([#1](https://github.com/GregoryGelfond/keryx/issues/1)),
+and — like every example here — the asp→proto (outbound) direction is being finalized; the generated `emit.lp`
 already grounds clean under clingo (the repository's grounding gate proves it), and this
 example will gain a round trip as outbound lands.
