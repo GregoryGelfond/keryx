@@ -65,9 +65,9 @@ back into a `Batch` arrives with the first end-to-end path.
 
 Under construction. The compiler (`keryx gen`, `keryx explain`) and the inbound codec
 (`keryx facts`, binary, textproto, and JSON payloads) are built; outbound reassembly,
-annotations, and `.lp` admission follow. The worked [`examples/thermal`](examples/thermal/)
-walkthrough shows the built half — schema to vocabulary, payload to facts — and completes
-with the first end-to-end path. See
+annotations, and `.lp` admission follow. The worked [`examples/`](examples/) are a guided
+tour — six runnable examples covering schema to vocabulary and payloads to facts, with the
+thermal and config walkthroughs closing the round trip. See
 [`docs/design/architecture.md`](docs/design/architecture.md) for the build plan
 and [`docs/specification.md`](docs/specification.md) for the full design.
 
