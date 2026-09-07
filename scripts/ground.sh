@@ -91,6 +91,29 @@ solve() {
   esac
 }
 
+# grounds_clean NAME PROTO INCLUDE PACKAGE [EXTRA...] — generate PACKAGE's strict and diagnostic
+# theories from PROTO and assert both ground clean. For a feature example (examples/<name>) whose
+# value is the inbound shred: the generated outbound theory is proven sound — safe, no undefined
+# atom — without an answer set to solve. EXTRA (a dependency package's core.lp) grounds alongside,
+# as `ground_with` does for the cross-package holder.
+grounds_clean() {
+  local name=$1 proto=$2 include=$3 package=$4
+  shift 4
+  local dir=$work/$name
+  mkdir -p "$dir"
+  "$KERYX" gen "$proto" -I "$include" -o "$dir" --shape both 2> "$dir/gen.log" \
+    || fail "keryx gen $proto failed:
+$(cat "$dir/gen.log")"
+  if [ "$#" -eq 0 ]; then
+    ground "$dir/$package.emit.lp"
+    ground "$dir/$package.emit-diagnostic.lp"
+  else
+    ground_with "$dir/$package.emit.lp" "$@"
+    ground_with "$dir/$package.emit-diagnostic.lp" "$@"
+  fi
+  echo "ground: $name — strict and diagnostic theories ground clean"
+}
+
 # check NAME PROTO INCLUDE PACKAGE ANSWER DUPLICATE VIOLATION — generate PACKAGE's theories
 # from PROTO, ground both, and solve ANSWER: SAT under strict; with the DUPLICATE atom added,
 # UNSAT under strict and SAT under diagnostic with VIOLATION derived.
@@ -162,5 +185,9 @@ case "$model" in
 $model" ;;
 esac
 echo "ground: crossmap — SAT; UNSAT on a negative map key; key-range violation derived"
+
+# The feature examples (examples/<name>) — inbound-focused, so the gate is that the generated
+# outbound theory grounds clean, not an answer-set solve.
+grounds_clean enum "$root/examples/enum/signals.proto" "$root/examples/enum" signals.v1
 
 echo "ground: every theory grounds clean and solves as expected"

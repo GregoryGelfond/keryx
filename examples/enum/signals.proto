@@ -1,0 +1,15 @@
+syntax = "proto3";
+package signals.v1;
+
+// A traffic signal's phase — a proto3 (open) enum: §7.4 maps each value to a constant.
+enum Phase {
+  PHASE_UNSPECIFIED = 0;
+  PHASE_GO = 1;
+  PHASE_CAUTION = 2;
+  PHASE_STOP = 3;
+}
+
+// One intersection's current signal.
+message Light { string intersection = 1; Phase phase = 2; }
+// A corridor of lights — a sequence.
+message Corridor { repeated Light lights = 1; }

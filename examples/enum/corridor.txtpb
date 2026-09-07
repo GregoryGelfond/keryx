@@ -1,0 +1,5 @@
+# proto-file: signals.proto
+# proto-message: signals.v1.Corridor
+
+lights { intersection: "5th & Main" phase: PHASE_GO }
+lights { intersection: "Oak & 2nd" phase: PHASE_STOP }

@@ -1,0 +1,12 @@
+keryx-manifest v0
+schema-hash -  package signals.v1  target clingo  profile -  shape strict  keryx 0.1.0
+signals.v1.Corridor  sort  corridor/1
+signals.v1.Corridor.lights #1 fam  lights/2 -> light  light  seq ; view lights/3
+signals.v1.Light  sort  light/1
+signals.v1.Light.intersection #1 fn  intersection/2  string  total
+signals.v1.Light.phase #2 fn  phase/2  phase  total
+signals.v1.Phase  enum  phase/1  (open)
+PHASE_UNSPECIFIED  #0  value  unspecified
+PHASE_GO  #1  value  go
+PHASE_CAUTION  #2  value  caution
+PHASE_STOP  #3  value  stop
