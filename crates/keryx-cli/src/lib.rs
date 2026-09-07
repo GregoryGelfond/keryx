@@ -2,9 +2,9 @@
 //! name the exit contract ([`exit::Exit`]) rather than a raw process code (architecture §3: the
 //! CLI is a satellite that composes the library; §6: stdout is the product, stderr is
 //! diagnostics/progress, exit codes are stable and class-distinguishing). The public surface
-//! (§25) is `gen` (schema → ASP vocabulary), `explain` (mapping verdicts), and `facts` (payload →
-//! ground facts), with the internal `schema-facts` dump kept. The `keryx` binary is a shim over
-//! [`run`].
+//! (§25) is `gen` (schema → ASP vocabulary), `explain` (mapping verdicts), `facts` (payload →
+//! ground facts), and `emit` (answer set → payload — the outbound door, the mirror of `facts`),
+//! with the internal `schema-facts` dump kept. The `keryx` binary is a shim over [`run`].
 //!
 //! Design of record: `docs/design/architecture.md` (the architecture) over
 //! `docs/specification.md` (the spec).
@@ -13,11 +13,12 @@
 pub mod exit;
 pub mod render;
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use keryx_core::codec::{Codec, PayloadFormat, Root};
+use keryx_core::codec::{Codec, Emitted, PayloadFormat, Root, raise_answer_set};
 use keryx_core::descriptor::{Schema, compile, ingest};
 use keryx_core::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use keryx_core::emit::Shape;
@@ -25,7 +26,7 @@ use keryx_core::policy::{Mapping, Unit};
 use keryx_core::{emit, manifest, policy, schema_facts};
 
 use crate::exit::Exit;
-use crate::render::{Format, note, product, report};
+use crate::render::{Format, note, product, product_bytes, report};
 
 /// keryx — a bidirectional bridge between Protocol Buffers and Answer Set Programming.
 #[derive(Parser)]
@@ -46,6 +47,8 @@ enum Command {
     Explain(ExplainArgs),
     /// Shred a payload to ground facts over the schema's vocabulary (`.lp` on stdout, §11).
     Facts(FactsArgs),
+    /// Reassemble an answer set to one payload over the schema's vocabulary (bytes on stdout, §12.3).
+    Emit(EmitArgs),
     /// Dump a descriptor set's stage-0 descriptor facts (internal).
     SchemaFacts(SchemaFactsArgs),
 }
@@ -116,6 +119,48 @@ struct FactsArgs {
 }
 
 #[derive(clap::Args)]
+struct EmitArgs {
+    /// The answer set: a `.lp` file of ground facts — an inbound shred's output, or a consuming
+    /// tool's solver's, each `emit_<sort>(root)` marker naming one message to rebuild.
+    answer_set: PathBuf,
+    /// The schema: a `.proto` source, or a serialized descriptor set (`.binpb`).
+    spec: PathBuf,
+    /// The wire form to write: `binpb` (binary), `txtpb` (text), or `json`.
+    #[arg(long = "out", value_enum, default_value_t = OutFormat::Binpb)]
+    out: OutFormat,
+    /// Emit only the message of this type — a fully-qualified proto path, or the short name one
+    /// message bears — required when the answer set names more than one root (stdout carries one).
+    #[arg(long, value_name = "TYPE")]
+    root: Option<String>,
+    /// Include directories for import resolution (repeatable).
+    #[arg(short = 'I', long = "include")]
+    includes: Vec<PathBuf>,
+}
+
+/// The `--out` values — the wire form `keryx emit` writes: the command-line face of
+/// [`PayloadFormat`]'s output side, so clap's value names (`binpb`/`txtpb`/`json`, the payload
+/// extensions [`facts`] reads) and their help are keryx's own, as [`ShapeArg`] is `gen`'s.
+#[derive(Clone, Copy, ValueEnum)]
+enum OutFormat {
+    /// The protobuf binary wire format (`.binpb`).
+    Binpb,
+    /// The protobuf text format (`.txtpb`).
+    Txtpb,
+    /// The protobuf JSON mapping (`.json`), canonical.
+    Json,
+}
+
+impl From<OutFormat> for PayloadFormat {
+    fn from(out: OutFormat) -> Self {
+        match out {
+            OutFormat::Binpb => PayloadFormat::Binary,
+            OutFormat::Txtpb => PayloadFormat::Textproto,
+            OutFormat::Json => PayloadFormat::Json,
+        }
+    }
+}
+
+#[derive(clap::Args)]
 struct SchemaFactsArgs {
     /// A serialized `FileDescriptorSet`.
     set: PathBuf,
@@ -135,6 +180,7 @@ fn dispatch(cli: Cli) -> Exit {
         Command::Gen(args) => generate(&args, cli.format),
         Command::Explain(args) => explain(&args, cli.format),
         Command::Facts(args) => facts(&args, cli.format),
+        Command::Emit(args) => emit(&args, cli.format),
         Command::SchemaFacts(args) => dump_schema_facts(&args, cli.format),
     }
 }
@@ -321,6 +367,146 @@ fn facts(args: &FactsArgs, format: Format) -> Exit {
     }
 }
 
+/// Reassemble an answer set to one message and write its wire bytes to stdout (spec §12.3, §25) —
+/// the outbound door at the command, the mirror of [`facts`]. The schema — `.proto` source or a
+/// `.binpb` descriptor set, as `gen`/`explain`/`facts` take it — builds the [`Codec`]; the `.lp`
+/// answer set `answer_set` is read and raised to its ground facts, and the message its
+/// `emit_<sort>` marker names is reassembled to the wire form `--out` names and written to stdout
+/// (`keryx emit … | protoc --decode`). **Exactly one message reaches stdout (F9):** `--root Type`
+/// narrows the answer set's roots to one, since two messages concatenated would either merge into
+/// one bogus binary or be two documents where one is meant. The exit classes (§6): a `--root` that
+/// does not resolve to exactly one message, or an answer set naming several roots with none named,
+/// is `Usage`; a file that cannot be read is `Input`; a schema that builds no codec is `Schema`; an
+/// answer set that does not read, carries a term that does not lower to its field, or is not one the
+/// theory admits as serializable is `Shape` — the outbound counterpart of `facts`'s `Translation`,
+/// as [`Exit::Shape`] states; a contained engine fault on either door is `Dependency`; a keryx bug
+/// is `Internal`.
+fn emit(args: &EmitArgs, format: Format) -> Exit {
+    let codec = match load(
+        std::slice::from_ref(&args.spec),
+        &args.includes,
+        format,
+        Codec::new,
+        Codec::from_source,
+    ) {
+        Ok(codec) => codec,
+        Err(exit) => return exit,
+    };
+    // The `.lp` answer set: a file that cannot be read is `Input` (file I/O); its content is the
+    // answer-set door's to judge — bytes that are not UTF-8 are the paradigm unreadable answer set
+    // (`Shape`), as a non-UTF-8 payload is the inbound door's translation error, never `Input`.
+    let bytes = match read(&args.answer_set, format) {
+        Ok(bytes) => bytes,
+        Err(exit) => return exit,
+    };
+    let symbols = match std::str::from_utf8(&bytes)
+        .map_err(|_| unreadable_answer_set())
+        .and_then(raise_answer_set)
+    {
+        Ok(symbols) => symbols,
+        Err(diagnostics) => {
+            return report(
+                format,
+                Exit::classify(Exit::Shape, &diagnostics),
+                &diagnostics,
+            );
+        }
+    };
+    let reassembled = match codec.reassemble(&symbols, args.out.into()) {
+        Ok(reassembled) => reassembled,
+        Err(diagnostics) => {
+            return report(
+                format,
+                Exit::classify(Exit::Shape, &diagnostics),
+                &diagnostics,
+            );
+        }
+    };
+    // F9: exactly one message on stdout. `--root Type` narrows to one; none or several is `Usage`,
+    // naming the types found — never a merged or double-document product.
+    match select_one(reassembled.messages(), args.root.as_deref()) {
+        Ok(message) => product_bytes(format, message.bytes()),
+        Err(usage) => note(format, Exit::Usage, &usage),
+    }
+}
+
+/// Select the single message [`emit`] writes to stdout (F9, spec §12.3): the messages the answer
+/// set reassembled to, narrowed by `--root Type` when given. Exactly one must remain — zero or
+/// several is a usage error naming the types found ([`roots_note`]), so the caller narrows with
+/// `--root Type` or splits the answer set. `Ok` borrows the chosen message; `Err` carries the note.
+fn select_one<'a>(messages: &'a [Emitted], root: Option<&str>) -> Result<&'a Emitted, String> {
+    let selected: Vec<&'a Emitted> = match root {
+        Some(root) => messages
+            .iter()
+            .filter(|message| type_matches(message.type_name(), root))
+            .collect(),
+        None => messages.iter().collect(),
+    };
+    if let [message] = selected.as_slice() {
+        Ok(message)
+    } else {
+        Err(roots_note(messages, root, selected.len()))
+    }
+}
+
+/// Whether `type_name` (a fully-qualified proto path) is the one `--root Type` names: an exact
+/// match, or a match on the short name the type bears (its last `.`-separated segment) — the same
+/// fully-qualified-or-short resolution `facts`'s `--root Type` allows.
+fn type_matches(type_name: &str, root: &str) -> bool {
+    type_name == root || type_name.rsplit('.').next() == Some(root)
+}
+
+/// The usage note when the emit selection is not exactly one message (F9): what the answer set
+/// reassembled to and how to narrow it to the one stdout carries. Only the schema-derived type
+/// names are echoed — never the answer set's own root terms, which are untrusted (the threat
+/// model's property 3) — each with its count when a type names more than one root (which `--root`
+/// alone cannot separate). `selected` is how many the current `--root` matched, so the note tells a
+/// filter that matched nothing from one that matched several.
+fn roots_note(messages: &[Emitted], root: Option<&str>, selected: usize) -> String {
+    if messages.is_empty() {
+        return "the answer set names no message to emit".to_owned();
+    }
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for message in messages {
+        *counts.entry(message.type_name()).or_default() += 1;
+    }
+    let types = counts
+        .iter()
+        .map(|(type_name, count)| {
+            if *count > 1 {
+                format!("{type_name} ({count} roots)")
+            } else {
+                (*type_name).to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    match root {
+        Some(root) if selected == 0 => {
+            format!("`--root {root}` names no reassembled message; the answer set names {types}")
+        }
+        Some(root) => format!(
+            "`--root {root}` names more than one root; stdout carries one message, so split the answer set (one message each) — it names {types}"
+        ),
+        None => format!(
+            "the answer set names more than one root: {types} — name one with `--root Type`, or split the answer set (one message each)"
+        ),
+    }
+}
+
+/// The `UnreadableAnswerSet` an answer-set file that is not UTF-8 is (spec §12.3): the file read
+/// fine (not `Input`), but its bytes are not the text an answer set is — the paradigm unreadable
+/// answer set, the outbound door's own error (routed to `Shape`), as a non-UTF-8 payload is the
+/// inbound door's translation error rather than `Input`. Minted here because the door reads text
+/// ([`raise_answer_set`]); the whole-file locus, as the `.lp` is the unit read.
+fn unreadable_answer_set() -> Diagnostics {
+    Diagnostics::one(Diagnostic::new(
+        DiagnosticKind::UnreadableAnswerSet,
+        Locus::whole(),
+        "the answer set is not valid UTF-8 text",
+    ))
+}
+
 /// Split a `--root Type=payload` argument (spec §25) into the root type and the payload path at
 /// its first `=`: a proto type name never contains one, so the split is unambiguous, and the
 /// payload path may contain one itself (a `date=2026-09-04/` partition directory). No `=`, or an
@@ -488,7 +674,9 @@ mod tests {
 
     use keryx_core::codec::PayloadFormat;
 
-    use super::{PAYLOAD_FORMATS, admitted_payload_formats, parse_root, payload_format};
+    use super::{
+        PAYLOAD_FORMATS, admitted_payload_formats, parse_root, payload_format, type_matches,
+    };
 
     #[test]
     fn a_root_is_a_type_and_a_payload_split_at_the_first_equals() {
@@ -507,6 +695,21 @@ mod tests {
             let message = parse_root(malformed).expect_err("malformed");
             assert!(message.contains("Type=payload"), "{message}");
         }
+    }
+
+    #[test]
+    fn a_root_filter_matches_a_full_path_or_a_short_name() {
+        // `emit`'s `--root Type` selects a reassembled message by its type: the fully-qualified
+        // proto path, or the short name it bears (its last segment) — the same resolution `facts`
+        // allows. A different type, or a partial path, matches neither.
+        assert!(type_matches(
+            "thermal.v1.ReadingBatch",
+            "thermal.v1.ReadingBatch"
+        ));
+        assert!(type_matches("thermal.v1.ReadingBatch", "ReadingBatch"));
+        assert!(type_matches("ReadingBatch", "ReadingBatch"));
+        assert!(!type_matches("thermal.v1.ReadingBatch", "Reading"));
+        assert!(!type_matches("thermal.v1.ReadingBatch", "v1.ReadingBatch"));
     }
 
     #[test]

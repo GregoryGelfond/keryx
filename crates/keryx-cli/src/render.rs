@@ -53,16 +53,25 @@ pub fn progress(message: &str) {
 /// cleanly (§6 — no EPIPE panic), any other write error is internal (rendered in `format`).
 #[must_use]
 pub fn product(format: Format, text: &str) -> Exit {
-    write_product(format, &mut std::io::stdout().lock(), text)
+    product_bytes(format, text.as_bytes())
 }
 
-/// Write `text` to `out`, mapping a broken pipe (a closed downstream) to a clean success
+/// Write the product **bytes** to stdout — the outbound codec's reassembled wire message (spec
+/// §12.3), which is the binary form's raw bytes or a textproto/JSON form's UTF-8, and so is not
+/// always UTF-8. The bytes counterpart of [`product`]: a broken pipe (a closed downstream) exits
+/// cleanly (§6 — no EPIPE panic), any other write error is internal (rendered in `format`).
+#[must_use]
+pub fn product_bytes(format: Format, bytes: &[u8]) -> Exit {
+    write_product(format, &mut std::io::stdout().lock(), bytes)
+}
+
+/// Write `bytes` to `out`, mapping a broken pipe (a closed downstream) to a clean success
 /// (§6 — no EPIPE panic) and any other write error to an internal error rendered through [`note`]
 /// in `format` — so the `Internal` class is structured under `--format json` like every other
-/// (§6, §26). Split from [`product`] so the pipe/error handling is unit-testable over an arbitrary
-/// writer, rather than only against a real closed pipe.
-fn write_product<W: std::io::Write>(format: Format, out: &mut W, text: &str) -> Exit {
-    match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
+/// (§6, §26). Split from [`product`]/[`product_bytes`] so the pipe/error handling is unit-testable
+/// over an arbitrary writer, rather than only against a real closed pipe.
+fn write_product<W: std::io::Write>(format: Format, out: &mut W, bytes: &[u8]) -> Exit {
+    match out.write_all(bytes).and_then(|()| out.flush()) {
         Ok(()) => Exit::Success,
         Err(error) if error.kind() == ErrorKind::BrokenPipe => Exit::Success,
         Err(error) => note(format, Exit::Internal, &format!("write failed: {error}")),
@@ -150,7 +159,7 @@ mod tests {
         let exit = write_product(
             Format::Human,
             &mut FailingWriter(io::ErrorKind::BrokenPipe),
-            "product",
+            b"product",
         );
         assert_eq!(exit, Exit::Success);
     }
@@ -160,7 +169,7 @@ mod tests {
         let exit = write_product(
             Format::Human,
             &mut FailingWriter(io::ErrorKind::PermissionDenied),
-            "product",
+            b"product",
         );
         assert_eq!(exit, Exit::Internal);
     }
@@ -168,7 +177,7 @@ mod tests {
     #[test]
     fn a_good_write_delivers_the_product() {
         let mut buffer = Vec::new();
-        let exit = write_product(Format::Human, &mut buffer, "hello");
+        let exit = write_product(Format::Human, &mut buffer, b"hello");
         assert_eq!(exit, Exit::Success);
         assert_eq!(buffer, b"hello");
     }
