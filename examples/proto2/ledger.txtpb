@@ -1,0 +1,5 @@
+# proto-file: order.proto
+# proto-message: orders.v1.Ledger
+
+orders { id: "PO-1001" quantity: 5 tags: "rush" tags: "fragile" grade: GRADE_A }
+orders { id: "PO-1002" tags: "bulk" }

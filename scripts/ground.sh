@@ -194,5 +194,6 @@ echo "ground: crossmap — SAT; UNSAT on a negative map key; key-range violation
 grounds_clean enum "$root/examples/enum/signals.proto" "$root/examples/enum" signals.v1
 grounds_clean oneof "$root/examples/oneof/dispatch.proto" "$root/examples/oneof" dispatch.v1
 grounds_clean map "$root/examples/map/inventory.proto" "$root/examples/map" inventory.v1 catalog.v1
+grounds_clean proto2 "$root/examples/proto2/order.proto" "$root/examples/proto2" orders.v1
 
 echo "ground: every theory grounds clean and solves as expected"

@@ -1,0 +1,20 @@
+syntax = "proto2";
+package orders.v1;
+
+// A purchase order — proto2 presence across the three labels (§5).
+message Order {
+  required string id = 1;      // LEGACY_REQUIRED: total
+  optional int32 quantity = 2; // EXPLICIT: partial
+  repeated string tags = 3;    // Implicit (collection presence)
+  optional Grade grade = 4;    // a proto2 (closed) enum (§7.4)
+}
+
+// A proto2 enum — a closed sort (§7.4): a number it does not declare is invalid.
+enum Grade {
+  GRADE_UNSPECIFIED = 0;
+  GRADE_A = 1;
+  GRADE_B = 2;
+}
+
+// A ledger of orders — a sequence.
+message Ledger { repeated Order orders = 1; }
