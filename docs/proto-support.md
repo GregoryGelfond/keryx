@@ -113,3 +113,29 @@ consequence of the deserializer bounding itself by container rather than by occu
 
 The codec has no proto-version branch of its own: presence is decided from the mapping's totality
 (spec §5), which the descriptor door resolves from features, never from syntax era.
+
+## Output formats
+
+The outbound codec (`Codec::reassemble`; `keryx emit`) writes a reassembled message in each of the
+same three wire forms — binary (`--out binpb`), the protobuf text format (`--out txtpb`), and the
+canonical JSON mapping (`--out json`) — through one reassembly walk and one encode adapter, the
+inverse of the inbound read, as of the outbound codec (Increment 4). The three-way round-trip parity
+is exact and golden-tested: the thermal `ReadingBatch` reassembles to each form and shreds back to
+one fact set, and the composite forms — scalar and message-valued maps, enums, singular and repeated
+fields — round-trip in every form too (`tests/codec_roundtrip.rs`, `tests/codec_emit_shapes.rs`). A
+map's entries are ordered by key in each form, so identical answer sets yield identical bytes (spec
+§12.3): the binary wire re-sort (`codec::canonical`), the textproto sorter (`codec::canonical_text`),
+and serde_json's key-ordered map. `keryx emit` writes exactly one message to stdout; `--root Type`
+selects which when the answer set names more than one root (§25). The one proto-version asymmetry is
+the `LEGACY_REQUIRED` gap above, at reassembly as at solve time; the three output forms carry it
+identically.
+
+**The thermal example's outbound story at Increment 4 is the `ReadingBatch` round trip.** The worked
+example closes the round trip solver-free — `examples/thermal/batch.binpb` → facts →
+`examples/thermal/answer.lp` (its facts under the `emit_reading_batch(r0)` marker) → `keryx emit` →
+`examples/thermal/batch.reassembled.binpb`, byte-for-byte the payload again. The §28 story's *alert*
+half — an `AlertSet` of alerts emitted from a batch — is not part of this increment's end-to-end:
+`AlertSet.alerts` carries `(keryx.set)`, which is inert until annotation reading (Increment 5), so it
+is generated as a **sequence** needing dense indices from 0, which a natural `overheating/1` model
+does not produce. The alert half of the round trip therefore closes when `(keryx.set)` gains meaning
+at Increment 5; the `ReadingBatch` round trip is what the complete end-to-end means at Increment 4.
