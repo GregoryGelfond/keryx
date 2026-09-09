@@ -352,9 +352,15 @@ fn undecodable(desc: &MessageDescriptor, error: &str) -> Diagnostics {
 /// (a message *at* the ceiling still recurses that deep natively at encode), so the encode runs
 /// here with the dependency boundary's containment frame *inside* the thread, exactly as the
 /// inbound parse and decode do — the margin keryx's by construction, not the host's. Sized by the
-/// inbound threads' precedent; its **measure of record** — the encoders' frames per level against
-/// the pinned engine, in debug and release — is owed where the ceiling is exercised (the
-/// reassembler's depth instrument), as the inbound stacks cite theirs (*Open*).
+/// inbound threads' precedent, and now **measured** against the pinned engine (prost-reflect 0.16.5)
+/// in debug and release, for a message at the reconstruction ceiling — 99 message-typed levels, the
+/// deepest the reassembly walk admits: the costliest of the three encoders needs some 640 KiB in a
+/// debug build (576 KiB overflows — some 6.5 KB a level; the binary form is cheaper, overflowing
+/// below 512 KiB) and 192 KiB in release (128 KiB overflows — some 2 KB a level). This 8 MiB carries
+/// that need some twelve times over in debug and forty in release — where a spawned thread's 2 MB
+/// default would carry it in debug and a 512 KiB caller thread would not — so the margin is keryx's,
+/// not the host's. Measured by encoding a ceiling-deep chain on threads of decreasing size and
+/// bracketing the overflow (an abort, uncatchable), the method the inbound stacks' measures cite.
 const ENCODE_STACK: usize = 8 << 20;
 
 /// A message under construction — keryx's builder seam over prost-reflect, so the reassembly walk
