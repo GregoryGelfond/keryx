@@ -149,7 +149,7 @@ Arms are EXPLICIT-presence fields on the parent sort — ordinary partial functi
 
 #### 7.4 Enums
 
-- Each enum type is a **closed sort of symbolic constants**. Value names lower as follows: if all values share the conventional `ENUM_NAME_` prefix, strip it; lowercase the remainder (`SIGNAL_LOW` → `low`). Collisions after stripping fall back to unstripped names; residual collisions qualify per §4.2. All recorded in the manifest.
+- Each enum type is a **sort of symbolic constants**, closed or open per its resolved `enum_type` feature (a proto2-era enum is closed; a proto3-era enum is open — see *Open enums* below). Value names lower as follows: if all values share the conventional `ENUM_NAME_` prefix, strip it; lowercase the remainder (`SIGNAL_LOW` → `low`). Collisions after stripping fall back to unstripped names; residual collisions qualify per §4.2. All recorded in the manifest.
 - **Zero value.** The `*_UNSPECIFIED = 0` convention is the enum instance of §5's zero-as-absent: default maps it as an ordinary constant (`unspecified`); `(keryx.zero) = ABSENT` makes zero mean *unset* (no atom, field partial).
 - **Open enums.** Editions expose openness as the resolved `enum_type` feature (proto3-era enums are open: unknown integers are legal on the wire). Policy for an unknown numeric value arriving inbound: default is a **structured translation error** (loud, honest). `(keryx.unknown) = PRESERVE` opts into the escape hatch: the value maps to the term `unknown(N)`, and `unknown/1` terms are admitted to the sort. Outbound, only declared constants (plus `unknown(N)` under PRESERVE) are serializable; anything else is a shape violation.
 
