@@ -1,0 +1,17 @@
+syntax = "proto3";
+package keryx.emit_anymap;
+
+// A map beside an `Any` — the determinism boundary SR3-F1 found. With `expand_any` on, a
+// *resolvable* Any renders as `[type…]{…}`, a grammar the textproto map canonicalizer cannot
+// parse, so it falls through and leaves the sibling map in hash order. `Point` is the type the
+// Any resolves to (so the engine would expand it were expansion left on).
+import "google/protobuf/any.proto";
+
+message Point {
+  int32 x = 1;
+}
+
+message Outer {
+  map<string, int32> m = 1;
+  google.protobuf.Any thing = 2;
+}

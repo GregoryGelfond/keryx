@@ -29,6 +29,7 @@ use std::panic::resume_unwind;
 use std::thread;
 
 use prost::Message as _;
+use prost_reflect::text_format::FormatOptions;
 use prost_reflect::{
     DynamicMessage, FieldDescriptor, Kind, MapKey, MessageDescriptor, ReflectMessage as _, Value,
 };
@@ -457,9 +458,14 @@ pub(crate) fn encode(building: Building, format: PayloadFormat) -> Result<Vec<u8
     }
 }
 
-/// Encode to the protobuf text format (`.txtpb`) — `to_text_format`, then keryx's map re-ordering
-/// over its own output ([`canonical_text`]): the text writer emits maps in `HashMap` order and,
-/// unlike the JSON form, has no sorted intermediate to route through. UTF-8 bytes.
+/// Encode to the protobuf text format (`.txtpb`) — `to_text_format_with_options` with
+/// `expand_any(false)`, then keryx's map re-ordering over its own output ([`canonical_text`]): the
+/// text writer emits maps in `HashMap` order and, unlike the JSON form, has no sorted intermediate
+/// to route through. `expand_any(false)` keeps a `google.protobuf.Any` in its raw `type_url`/`value`
+/// form — the form `canonical_text` can parse, and the form matching keryx's opaque `Any` shred
+/// (§10). An *expanded* `[type…]{…}` is a grammar the canonicalizer cannot parse, so it would fall
+/// through and leave that message's maps — the `Any`'s own and any sibling's — in `HashMap` order,
+/// silently breaking determinism (property 5). UTF-8 bytes.
 pub(crate) fn encode_textproto(building: Building) -> Result<Vec<u8>, Diagnostics> {
     let message = building.message;
     let descriptor = message.descriptor();
@@ -471,7 +477,7 @@ pub(crate) fn encode_textproto(building: Building) -> Result<Vec<u8>, Diagnostic
         operation,
         move || {
             let text = contain(Dependency::ProstReflect, operation, || {
-                message.to_text_format()
+                message.to_text_format_with_options(&FormatOptions::new().expand_any(false))
             })?;
             // Order every map field's entries by key (property 5): total keryx code over its own
             // well-formed text, so `on_sized_thread`'s join never re-contains it (as at
