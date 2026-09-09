@@ -73,13 +73,22 @@ impl<'a> SlotIndex<'a> {
                     .map(|reference| (names::marker(sort.predicate()), reference))
             })
             .collect();
-        let field_predicates: BTreeSet<Name> = mapping
+        // The arities a field of each predicate takes — name AND arity identify an ASP predicate, so
+        // a field atom whose arity no field of that name takes is a *different* predicate, filed below
+        // into no slot and counted as no orphan (the model's private business, §12.1), exactly as the
+        // marker and occupancy branches ignore a wrong-arity `[root]`/`[occupant]`.
+        let mut arities_by_predicate: BTreeMap<Name, BTreeSet<usize>> = BTreeMap::new();
+        for field in mapping
             .units()
             .iter()
             .flat_map(Unit::sorts)
             .flat_map(SortMapping::fields)
-            .map(|field| field.predicate().clone())
-            .collect();
+        {
+            arities_by_predicate
+                .entry(field.predicate().clone())
+                .or_default()
+                .insert(expected_arity(field));
+        }
         let violates = names::violates();
 
         let mut slots: BTreeMap<(Name, Symbol), Vec<&'a Symbol>> = BTreeMap::new();
@@ -129,9 +138,14 @@ impl<'a> SlotIndex<'a> {
                 }
             } else if *name == violates {
                 violations.push(atom);
-            } else if field_predicates.contains(name) {
-                // A field atom `f(P, …)`: file it under `(f, P)` by predicate and first argument.
-                if let Some(parent) = arguments.first() {
+            } else if let Some(arities) = arities_by_predicate.get(name) {
+                // A field atom `f(P, …)`: file it under `(f, P)` by predicate and first argument, but
+                // only when its arity is one a field of that name takes — an atom of the name but
+                // another arity is a different predicate, ignored here (filed into no slot, counted as
+                // no orphan) so the slot, the field planner, and the orphan pass agree by construction.
+                if arities.contains(&arguments.len())
+                    && let Some(parent) = arguments.first()
+                {
                     slots
                         .entry((name.clone(), parent.clone()))
                         .or_default()
@@ -311,12 +325,13 @@ impl Assembler<'_, '_> {
 
     /// Plan one field from its slot under the form the mapping fixes (§4.1, §7): a singular value, a
     /// sequence, a map, or a oneof arm — the answer set's shape is checked against it, never trusted.
-    /// The slot's atoms are first filtered to the exact arity the field's form prescribes (a scalar
-    /// atom `f(P, V)`/`f(P, I, V)`/`f(P, K, V)`, or a message occupant `f(P)`/`f(P, I)`/`f(P, K)` —
-    /// [`expected_arity`]), so an atom of the field's name but another arity — a *different* predicate,
-    /// since ASP identifies a predicate by name and arity — is ignored as the model's private business
-    /// (§12.1), never read by position as this field. That is the posture the marker and occupancy
-    /// atoms already keep at the slot index (`[root]`, `[occupant]`); the field branch keeps it here.
+    /// The slot index filed only atoms whose arity a field of this predicate takes (name AND arity
+    /// identify an ASP predicate; a wrong-arity atom is a different predicate, ignored as the model's
+    /// private business, §12.1 — the posture the marker and occupancy atoms keep with
+    /// `[root]`/`[occupant]`), so a slot holds more than this *field*'s exact arity only for a predicate
+    /// shared across sorts at different arities; the planner filters again to that arity (a scalar atom
+    /// `f(P, V)`/`f(P, I, V)`/`f(P, K, V)`, a message occupant `f(P)`/`f(P, I)`/`f(P, K)` —
+    /// [`expected_arity`]) only then, borrowing the slot slice unchanged in the common case.
     fn plan_field(
         &mut self,
         work: &Discover,
@@ -325,14 +340,21 @@ impl Assembler<'_, '_> {
         stack: &mut Vec<Discover>,
     ) {
         let arity = expected_arity(field);
-        let entries: Vec<&Symbol> = self
-            .slots
-            .slot(field.predicate(), &work.occupant)
-            .iter()
-            .copied()
-            .filter(|&entry| is_function_of_arity(entry, arity))
-            .collect();
-        let entries = entries.as_slice();
+        let slot = self.slots.slot(field.predicate(), &work.occupant);
+        // The index already filed only atoms whose arity a field of this name takes, so a slot holds
+        // more than this field's arity only for a predicate shared across sorts at *different* arities;
+        // borrow the slice when it already matches (the common case, no allocation), filter only then.
+        let filtered: Vec<&Symbol>;
+        let entries: &[&Symbol] = if slot.iter().all(|&entry| is_function_of_arity(entry, arity)) {
+            slot
+        } else {
+            filtered = slot
+                .iter()
+                .copied()
+                .filter(|&entry| is_function_of_arity(entry, arity))
+                .collect();
+            &filtered
+        };
         match field.form() {
             EmitForm::Function | EmitForm::OneofArm { .. } => {
                 self.plan_singular(work, field, entries, fields, stack);

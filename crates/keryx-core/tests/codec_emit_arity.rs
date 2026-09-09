@@ -104,3 +104,34 @@ fn a_too_short_field_atom_is_ignored_too() {
         "the arity-1 `sensor` atom is ignored — sensor is missing: {diagnostics:?}"
     );
 }
+
+#[test]
+fn a_wrong_arity_atom_on_an_undeclared_reachable_parent_is_not_a_spurious_orphan() {
+    // `sensor(readings(b0, 0), "x", "y")` is `sensor/3` — a different predicate; its parent
+    // `readings(b0, 0)` descends from the marker root `b0` but is declared by no occupancy atom. The
+    // orphan pass refuses a *field atom* whose parent is reachable yet undeclared, so were `sensor/3`
+    // filed as one it would be a spurious `ShapeViolation`. Because arity discrimination happens at the
+    // slot index, `sensor/3` is filed as neither a slot entry nor an orphan candidate (§12.1, private
+    // business) — so the batch reassembles, its readings empty, exactly as the field planner ignores it.
+    let readings0 = atom("readings", vec![constant("b0"), Symbol::Number(0)]);
+    let answer = vec![
+        atom("emit_reading_batch", vec![constant("b0")]),
+        atom("reading_batch", vec![constant("b0")]),
+        atom(
+            "sensor",
+            vec![
+                readings0,
+                Symbol::String("x".to_owned()),
+                Symbol::String("y".to_owned()),
+            ],
+        ),
+    ];
+    let out = CODEC
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect("a wrong-arity atom on an undeclared parent is private business, not an orphan");
+    assert_eq!(
+        out.messages().len(),
+        1,
+        "the batch reassembles, its readings empty"
+    );
+}
