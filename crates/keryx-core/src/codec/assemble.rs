@@ -189,16 +189,18 @@ impl<'a> SlotIndex<'a> {
 }
 
 /// Rebuild one message — the `sort` instance named by the `root` occupant — from the answer set,
-/// and encode it to binary wire bytes. Every message or every diagnosis, never a partial build
-/// beside a diagnosis (§6, property 4): discovery collects every refusal, and the build (and the
-/// encode) run only if there is none.
+/// and encode it to the wire form `format` names. Every message or every diagnosis, never a partial
+/// build beside a diagnosis (§6, property 4): discovery collects every refusal, and the build (and
+/// the encode) run only if there is none.
 ///
 /// # Errors
 ///
 /// `ReassembledTooDeep` past the ceiling; `ShapeViolation` for a duplicate singular, a non-dense
 /// sequence, a oneof with two arms, a missing total field, or a present `violates` atom naming this
 /// root's occupants; `TermTypeMismatch`/`ValueOutOfRange`/`UnknownEnumValue`/`UnannotatedFloat` for
-/// a value that does not lower to its field's type; `DependencyFault` for a contained encode fault.
+/// a value that does not lower to its field's type; `UnrepresentableJson` for a well-known-type
+/// value canonical JSON cannot represent (the JSON form only); `DependencyFault` for a contained
+/// encode fault.
 pub(crate) fn assemble(
     mapping: &Mapping,
     index: &Index,

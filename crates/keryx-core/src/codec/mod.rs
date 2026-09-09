@@ -216,7 +216,8 @@ impl Codec {
     /// `ShapeViolation` for an orphan field atom or a diagnostic theory's `violates` atom;
     /// `ShapeViolation`/`TermTypeMismatch`/`ValueOutOfRange`/`UnknownEnumValue`/`UnannotatedFloat`/
     /// `ReassembledTooDeep` from a root's reassembly (their meanings as the reassembler's kinds
-    /// state); `DependencyFault` for a contained encode fault.
+    /// state); `UnrepresentableJson` for a well-known-type value canonical JSON cannot represent
+    /// (`--out json` only); `DependencyFault` for a contained encode fault.
     ///
     /// [`shred`]: Codec::shred
     pub fn reassemble(

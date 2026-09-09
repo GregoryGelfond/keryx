@@ -1,7 +1,7 @@
 syntax = "proto3";
 package keryx.emit_anymap;
 
-// A map beside an `Any` — the determinism boundary SR3-F1 found. With `expand_any` on, a
+// A map beside an `Any` — the determinism boundary an expanded `Any` opens. With `expand_any` on, a
 // *resolvable* Any renders as `[type…]{…}`, a grammar the textproto map canonicalizer cannot
 // parse, so it falls through and leaves the sibling map in hash order. `Point` is the type the
 // Any resolves to (so the engine would expand it were expansion left on).

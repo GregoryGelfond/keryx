@@ -23,8 +23,9 @@ pub enum Exit {
     /// A schema error — the `.proto`/descriptor set did not compile, ingest, or map.
     Schema = 4,
     /// A shape error — the answer set the outbound reassembler was given is not one `emit.lp`'s
-    /// theory admits as serializable, or a term in it does not lower to its field's type: a
-    /// `ShapeViolation`, a `TermTypeMismatch`, a `ReassembledTooDeep`, or an `UnreadableAnswerSet`.
+    /// theory admits as serializable, a term in it does not lower to its field's type, or a
+    /// well-known-type value the JSON form cannot represent: a `ShapeViolation`, a `TermTypeMismatch`,
+    /// a `ReassembledTooDeep`, an `UnreadableAnswerSet`, or an `UnrepresentableJson`.
     /// The response half's own error class — the outbound counterpart of `Translation` — distinct
     /// from a schema that does not build (`Schema`) and a payload that does not decode
     /// (`Translation`). The caller routes the reassembler's refusals here (a contained fault still

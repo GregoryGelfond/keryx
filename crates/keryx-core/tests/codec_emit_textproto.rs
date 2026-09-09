@@ -4,7 +4,7 @@
 //! instruments on real engine output: a map's entries come out key-ascending; and a *resolvable*
 //! `google.protobuf.Any` beside a map stays in its raw `type_url`/`value` form rather than expanding
 //! to `[type…]{…}` — the shape the canonicalizer cannot parse, which would silently drop the sort —
-//! so the sibling map stays ordered and the output is deterministic (SR3-F1, CR3-F2).
+//! so the sibling map stays ordered and the output is deterministic.
 
 use keryx_core::codec::{Codec, PayloadFormat, Root};
 use keryx_core::{Name, Sign, Symbol};
