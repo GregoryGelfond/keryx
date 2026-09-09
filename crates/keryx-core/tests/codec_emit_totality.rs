@@ -58,6 +58,10 @@ fn is_a_reassembler_kind(kind: DiagnosticKind) -> bool {
 }
 
 /// A predicate name: the schema's own vocabulary (to reach the walk), or an arbitrary identifier.
+/// The arbitrary branch is filtered through `Name::new`, so a draw that spells an ASP reserved
+/// word (`not`, say) is resampled, never admitted: an answer set's predicate names are always
+/// identifiers — themelios refuses a reserved word as a `Name` — so the generator samples that
+/// same domain and never itself panics constructing one.
 fn arb_name() -> impl Strategy<Value = Name> {
     prop_oneof![
         Just("emit_reading".to_owned()),
@@ -69,7 +73,10 @@ fn arb_name() -> impl Strategy<Value = Name> {
         Just("readings".to_owned()),
         "[a-z][a-z0-9_]{0,8}",
     ]
-    .prop_map(|name| Name::new(name).expect("the generator writes identifiers"))
+    .prop_filter_map(
+        "an answer set's predicate names are identifiers, never reserved words",
+        |name| Name::new(name).ok(),
+    )
 }
 
 /// An arbitrary ground symbol — a number, a string, a term-order bound, a function over a
