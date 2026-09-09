@@ -21,8 +21,9 @@
 //! ordering each sequence, keying each map — collecting every refusal. The build then runs only if
 //! discovery found none (every message or every diagnosis, never partial — property 4): it
 //! constructs each occupant bottom-up (children before parents, discovery order reversed) into a
-//! [`engine::Building`] and encodes the root. Binary only in this increment; the other formats and
-//! the `.lp` read arrive with their tasks.
+//! [`engine::Building`] and encodes the root in the wire form `format` names — the binary wire, the
+//! protobuf text format, or canonical JSON (an answer set read from an `.lp` module by
+//! `codec::answer` reassembles the same way).
 
 use std::collections::{BTreeMap, BTreeSet};
 

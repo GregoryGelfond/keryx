@@ -209,7 +209,7 @@ impl Codec {
     /// one type stay distinguishable). Every message or every diagnosis, never a partial reassembly
     /// beside a diagnosis (§6, property 4): an orphan field atom, a `violates` atom present, or any
     /// root's refusal fails the whole call. All three output forms (binary, textproto, JSON) are
-    /// `format`'s; the `.lp` read of the answer set arrives with its task.
+    /// `format`'s; an answer set read from an `.lp` module (`codec::answer`) reassembles the same way.
     ///
     /// # Errors
     ///
@@ -354,7 +354,7 @@ impl Reassembled {
 /// One reassembled message (spec §12.3): the fully-qualified proto type it is an instance of, the
 /// answer-set root [`Symbol`] its `emit_<sort>` marker named (carried so two roots of one type are
 /// told apart), and its encoded wire bytes. No engine type crosses out — the bytes are the wire form
-/// (binary in this increment), as a payload arrives on the inbound door.
+/// the reassembly named (binary, textproto, or JSON), as a payload arrives on the inbound door.
 #[derive(Clone, Debug)]
 pub struct Emitted {
     type_name: String,
