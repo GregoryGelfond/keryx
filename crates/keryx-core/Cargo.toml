@@ -56,6 +56,17 @@ themelios-syntax = { git = "https://github.com/GregoryGelfond/themelios.git", re
 # `a_json_payload_that_is_not_one_canonical_value_of_the_root_type_is_undecodable`,
 # which asserts `UndecodablePayload`), and re-owed with the catalogue on any
 # deliberate bump.
+# `text-format` also gates the text-format *writer* the outbound door's textproto
+# encode calls (`codec/engine.rs::encode_textproto`); the door couples to its output
+# in two ways re-owed on any bump. `codec::canonical_text` re-parses the writer's
+# compact grammar to re-order a message's map entries by key (determinism, threat
+# model property 5), so a change to that output shape would leave maps unsorted. And
+# the encode passes `FormatOptions::expand_any(false)` (0.16.5
+# `src/dynamic/text_format/mod.rs:210`) so a `google.protobuf.Any` stays in its raw
+# `type_url`/`value` form — the form the canonicaliser parses, matching keryx's opaque
+# `Any` shred (§10) — never an expanded `[type…]{…}` it cannot parse. A claim about
+# prost-reflect's text output at exactly this version, guarded by
+# `tests/codec_emit_textproto.rs`.
 prost-reflect = { version = "=0.16.5", features = ["text-format", "serde"] }
 
 # The JSON deserializer — the payload door's JSON decode drives the engine's `serde`
@@ -69,7 +80,13 @@ prost-reflect = { version = "=0.16.5", features = ["text-format", "serde"] }
 # Which binds first, the walk's uniform nesting ceiling or this limit, goes by the
 # field's form — a chain of singular message fields reaches the walk's ceiling first;
 # a repeated or map chain, spending a container of its own per level, meets this limit
-# first — as the JSON form records when it lands. Default features, no more.
+# first — as the JSON form records when it lands. The outbound JSON encode adds a
+# coupling of the same version-pinned kind: its map determinism (threat model,
+# property 5) routes through serde_json's `Value`, whose object is a sorted `BTreeMap`
+# only while the `preserve_order` feature stays *off* — with it on, `Value::Object`
+# becomes insertion-ordered and a reassembled message's map keys would serialise in
+# HashMap order. Guarded by `tests/codec_emit_determinism.rs`.
+# Default features (no `preserve_order`), no more.
 serde_json = "=1.0.151"
 
 # The pure-Rust `.proto` compiler — the `keryx gen` front door (§20, spec §31 M1).
