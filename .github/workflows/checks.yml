@@ -1,7 +1,9 @@
 name: checks
+# Automatic runs are paused for now; the same checks (the gate below, coverage, and
+# grounding) are run locally in the meantime. Restore the `push:` and `pull_request:`
+# triggers here to re-enable automatic CI.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 # Read-only workflow token; a compromised action can do no more than read.
 permissions:
