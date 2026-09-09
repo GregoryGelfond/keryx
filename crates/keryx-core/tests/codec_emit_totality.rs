@@ -42,8 +42,8 @@ static GAUGE: LazyLock<Codec> =
     LazyLock::new(|| Codec::new(&support::compile_fixture("obligations.proto")).expect("builds"));
 
 /// Whether `kind` is one the reassembler's contract names — the walk's shape checks, the inverse §6
-/// refusals, the ceiling, and (defense-in-depth) a contained encode fault — never a kind of another
-/// door.
+/// refusals, the ceiling, the JSON encode's well-known-type refusal, and (defense-in-depth) a
+/// contained encode fault — never a kind of another door.
 fn is_a_reassembler_kind(kind: DiagnosticKind) -> bool {
     matches!(
         kind,
@@ -53,6 +53,7 @@ fn is_a_reassembler_kind(kind: DiagnosticKind) -> bool {
             | DiagnosticKind::UnknownEnumValue
             | DiagnosticKind::UnannotatedFloat
             | DiagnosticKind::ReassembledTooDeep
+            | DiagnosticKind::UnrepresentableJson
             | DiagnosticKind::DependencyFault
     )
 }

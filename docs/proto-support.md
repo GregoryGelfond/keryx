@@ -122,13 +122,26 @@ canonical JSON mapping (`--out json`) — through one reassembly walk and one en
 inverse of the inbound read, as of the outbound codec (Increment 4). The three-way round-trip parity
 is exact and golden-tested: the thermal `ReadingBatch` reassembles to each form and shreds back to
 one fact set, and the composite forms — scalar and message-valued maps, enums, singular and repeated
-fields — round-trip in every form too (`tests/codec_roundtrip.rs`, `tests/codec_emit_shapes.rs`). A
+fields — round-trip in every form too (`tests/codec_roundtrip.rs`, `tests/codec_emit_shapes.rs`) — exact for every message all three forms can represent, the one class canonical JSON cannot documented below. A
 map's entries are ordered by key in each form, so identical answer sets yield identical bytes (spec
 §12.3): the binary wire re-sort (`codec::canonical`), the textproto sorter (`codec::canonical_text`),
 and serde_json's key-ordered map. `keryx emit` writes exactly one message to stdout; `--root Type`
 selects which when the answer set names more than one root (§25). The one proto-version asymmetry is
 the `LEGACY_REQUIRED` gap above, at reassembly as at solve time; the three output forms carry it
 identically.
+
+**One documented limit of `--out json`: a well-known type it cannot represent.** Canonical JSON
+mandates the resolved, range-validated form of a `Timestamp`, `Duration`, or `Any`, with no raw
+fallback — where the binary and text forms carry the two structural fields as they stand. keryx keeps
+well-known types opaque and structural on both ends (§10) and does not range-validate or resolve one
+at reassembly (that would special-case the model), so a value the reassembler admits but canonical
+JSON cannot represent — an out-of-range `Timestamp` or `Duration`, or an `Any` whose `type_url` the
+schema's pool cannot resolve — is refused at the JSON encode with `UnrepresentableJson`, naming the
+forms that carry it (`--out binpb`/`txtpb`), rather than emitted as a non-conforming document. The
+model stays symmetric: each output form refuses only what it alone cannot represent (the outbound
+counterpart of the inbound dialect's control-character refusal, `UnrepresentableText`), and the
+round-trip parity above is exact for every message all three forms can represent
+(`tests/codec_emit_wkt.rs`).
 
 **The thermal example's outbound story at Increment 4 is the `ReadingBatch` round trip.** The worked
 example closes the round trip solver-free — `examples/thermal/batch.binpb` → facts →

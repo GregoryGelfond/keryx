@@ -486,23 +486,37 @@ pub(crate) fn encode_textproto(building: Building) -> Result<Vec<u8>, Diagnostic
 /// order (property 5), then to bytes.
 pub(crate) fn encode_json(building: Building) -> Result<Vec<u8>, Diagnostics> {
     let message = building.message;
+    // The root type, captured before `message` moves onto the thread: a well-known-type value the
+    // serializer refuses names no field path, and validating the WKT at reassembly would
+    // special-case §10's structural model (the symmetry keryx keeps across the forms), so the
+    // refusal is named at the whole-message locus by this type.
+    let type_name = message.descriptor().full_name().to_owned();
     let operation = "serializing a JSON message";
-    on_sized_thread(
+    let serialized = on_sized_thread(
         "keryx-json-encode",
         ENCODE_STACK,
         Dependency::SerdeJson,
         operation,
         move || {
-            contain(Dependency::SerdeJson, operation, || {
-                // A validated message serializes: no unannotated float reaches the reassembler at
-                // Increment 4, and its strings are UTF-8, so `to_value`/`to_vec` do not error — an
-                // error would be a keryx invariant reached, contained here as a fault.
-                let value = serde_json::to_value(&message)
-                    .expect("a validated message serializes to a JSON value");
-                serde_json::to_vec(&value).expect("a JSON value serializes to bytes")
-            })
+            contain(
+                Dependency::SerdeJson,
+                operation,
+                || -> Result<Vec<u8>, serde_json::Error> {
+                    // `to_value` drives prost-reflect's `Serialize`, whose well-known-type
+                    // serializers validate JSON-specific invariants the reassembler does not: an
+                    // out-of-range `Timestamp`/`Duration`, an `Any` whose `type_url` the pool cannot
+                    // resolve (§10 keeps `Any` opaque). Those are *values* — a `serde_json::Error`
+                    // returned from the frame and mapped to `UnrepresentableJson` below — never an
+                    // `expect`, whose panic `contain` would misattribute to serde_json (a keryx
+                    // invariant is a bug to surface, not a dependency fault to mask). A genuine
+                    // `Serialize` *panic* in prost-reflect is still contained here as a fault.
+                    let value = serde_json::to_value(&message)?;
+                    serde_json::to_vec(&value)
+                },
+            )
         },
-    )
+    )?;
+    serialized.map_err(|error| unrepresentable_json(&type_name, &error.to_string()))
 }
 
 /// `TermTypeMismatch` at `at`: the validating setter rejected a value keryx's inverse §6 lowering
@@ -516,6 +530,26 @@ fn set_mismatch(number: i32, at: &str) -> Diagnostic {
             "the value built for field number {number} does not fit its declared type; the engine's validating setter refused it after keryx's own §6 validation (a keryx invariant, caught before any encode)"
         ),
     )
+}
+
+/// Compose the `UnrepresentableJson` for a message a well-known-type value makes canonical JSON
+/// unable to represent — an out-of-range `Timestamp`/`Duration`, or an `Any` whose `type_url` the
+/// pool cannot resolve (§10 keeps `Any` opaque, so keryx does not resolve it). The whole-message
+/// locus (the serializer names no field path, and validating the WKT at reassembly would
+/// special-case §10's structural model — the symmetry keryx keeps across the forms), naming the
+/// root type, with `serde_json`'s own message composed into the detail — never the value — and the
+/// forms that carry it structurally named. The JSON counterpart of [`undecodable`]'s inbound
+/// refusal and of `UnrepresentableText`: each output form refuses only what it alone cannot
+/// represent.
+fn unrepresentable_json(type_name: &str, error: &str) -> Diagnostics {
+    Diagnostic::new(
+        DiagnosticKind::UnrepresentableJson,
+        Locus::whole(),
+        format!(
+            "a well-known-type value of `{type_name}` cannot be represented in canonical JSON: {error}; emit it as `--out binpb` or `--out txtpb`, which carry it structurally"
+        ),
+    )
+    .into()
 }
 
 /// The one decoded tree of a payload, owned. Every view beneath it borrows from here — the root

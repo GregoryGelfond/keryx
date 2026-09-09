@@ -283,6 +283,18 @@ pub enum DiagnosticKind {
     /// from an answer set that raises but breaks a shape (`ShapeViolation`). The `.lp` read's,
     /// Increment 4.
     UnreadableAnswerSet,
+    /// A well-known-type value the reassembler admits cannot be represented in the canonical JSON
+    /// mapping (spec §10, §26): an out-of-range `Timestamp` or `Duration` (a `nanos` out of range,
+    /// or a `seconds` outside the representable dates), or an `Any` whose `type_url` the schema's
+    /// pool cannot resolve — keryx keeps `Any` opaque (`type_url` + `payload`), so it does not
+    /// resolve it. Canonical JSON mandates the resolved/validated form for these types with no raw
+    /// fallback, where the binary and text forms carry the value structurally — so `keryx emit
+    /// --out json` refuses it at the encode rather than emit a non-conforming document, naming the
+    /// root type and the forms that can carry it (`--out binpb`/`txtpb`). The JSON counterpart of
+    /// `UnrepresentableText` (which refuses a control character the `.lp` dialect cannot spell):
+    /// each output form refuses only what it alone cannot represent, keeping the translation
+    /// symmetric across the forms. The outbound JSON encode's, Increment 4.
+    UnrepresentableJson,
 }
 
 impl DiagnosticKind {
@@ -317,6 +329,7 @@ impl DiagnosticKind {
             DiagnosticKind::ShapeViolation => "shape_violation",
             DiagnosticKind::ReassembledTooDeep => "reassembled_too_deep",
             DiagnosticKind::UnreadableAnswerSet => "unreadable_answer_set",
+            DiagnosticKind::UnrepresentableJson => "unrepresentable_json",
         }
     }
 }
@@ -688,6 +701,10 @@ mod tests {
             DiagnosticKind::UnreadableAnswerSet.as_str(),
             "unreadable_answer_set"
         );
+        assert_eq!(
+            DiagnosticKind::UnrepresentableJson.as_str(),
+            "unrepresentable_json"
+        );
     }
 
     #[test]
@@ -722,7 +739,8 @@ mod tests {
             | DiagnosticKind::TermTypeMismatch
             | DiagnosticKind::ShapeViolation
             | DiagnosticKind::ReassembledTooDeep
-            | DiagnosticKind::UnreadableAnswerSet => {}
+            | DiagnosticKind::UnreadableAnswerSet
+            | DiagnosticKind::UnrepresentableJson => {}
         }
     }
 

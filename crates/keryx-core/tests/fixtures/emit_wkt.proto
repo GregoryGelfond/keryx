@@ -1,0 +1,16 @@
+syntax = "proto3";
+package keryx.emit_wkt;
+
+// §10: the well-known types whose canonical JSON forms validate what keryx's structural
+// reassembly does not — a `Timestamp`/`Duration` range, an `Any`'s resolvable `type_url`. The
+// outbound WKT-JSON representability boundary: keryx keeps them structural on both ends, so
+// `--out json` alone refuses one it cannot represent.
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/any.proto";
+
+message Boxed {
+  google.protobuf.Timestamp at = 1;      // range-validated by canonical JSON, not by keryx
+  google.protobuf.Duration elapsed = 2;  // likewise
+  google.protobuf.Any thing = 3;         // opaque (type_url + payload); JSON must resolve type_url
+}
