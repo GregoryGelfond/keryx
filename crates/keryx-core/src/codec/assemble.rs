@@ -311,6 +311,12 @@ impl Assembler<'_, '_> {
 
     /// Plan one field from its slot under the form the mapping fixes (§4.1, §7): a singular value, a
     /// sequence, a map, or a oneof arm — the answer set's shape is checked against it, never trusted.
+    /// The slot's atoms are first filtered to the exact arity the field's form prescribes (a scalar
+    /// atom `f(P, V)`/`f(P, I, V)`/`f(P, K, V)`, or a message occupant `f(P)`/`f(P, I)`/`f(P, K)` —
+    /// [`expected_arity`]), so an atom of the field's name but another arity — a *different* predicate,
+    /// since ASP identifies a predicate by name and arity — is ignored as the model's private business
+    /// (§12.1), never read by position as this field. That is the posture the marker and occupancy
+    /// atoms already keep at the slot index (`[root]`, `[occupant]`); the field branch keeps it here.
     fn plan_field(
         &mut self,
         work: &Discover,
@@ -318,7 +324,15 @@ impl Assembler<'_, '_> {
         fields: &mut Vec<Planned>,
         stack: &mut Vec<Discover>,
     ) {
-        let entries = self.slots.slot(field.predicate(), &work.occupant);
+        let arity = expected_arity(field);
+        let entries: Vec<&Symbol> = self
+            .slots
+            .slot(field.predicate(), &work.occupant)
+            .iter()
+            .copied()
+            .filter(|&entry| is_function_of_arity(entry, arity))
+            .collect();
+        let entries = entries.as_slice();
         match field.form() {
             EmitForm::Function | EmitForm::OneofArm { .. } => {
                 self.plan_singular(work, field, entries, fields, stack);
@@ -707,6 +721,33 @@ fn last_argument(entry: &Symbol) -> Option<&Symbol> {
         Symbol::Function { arguments, .. } => arguments.last(),
         _ => None,
     }
+}
+
+/// The exact arity a field's atoms carry under its form and value kind: a scalar or enum field atom
+/// `f(P, V)`/`f(P, I, V)`/`f(P, K, V)` (2 for a singular field or oneof arm, 3 for a sequence or map),
+/// or a message occupant term `f(P)`/`f(P, I)`/`f(P, K)` (one fewer — a message carries its value in
+/// the child, not a last argument). An atom of the field's name but another arity is a *different*
+/// predicate (ASP identifies a predicate by name and arity), filtered out before the field is planned
+/// ([`Discover::plan_field`]).
+fn expected_arity(field: &FieldMapping) -> usize {
+    let base = match field.form() {
+        EmitForm::Function | EmitForm::OneofArm { .. } => 2,
+        EmitForm::Sequence | EmitForm::Map { .. } => 3,
+        EmitForm::Set => unreachable!(
+            "the mapping produces no `Set` form before Increment 5; planning one is a keryx error"
+        ),
+    };
+    if matches!(field.value(), ValueMapping::Message(_)) {
+        base - 1
+    } else {
+        base
+    }
+}
+
+/// Whether `symbol` is a function of exactly `arity` arguments — the shape a field's atom must take
+/// under its form ([`expected_arity`]); a term of another arity is a different predicate, ignored.
+fn is_function_of_arity(symbol: &Symbol, arity: usize) -> bool {
+    matches!(symbol, Symbol::Function { arguments, .. } if arguments.len() == arity)
 }
 
 /// The fully-qualified proto path of a field by number, for a diagnostic locus.
