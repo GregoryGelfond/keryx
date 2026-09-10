@@ -244,7 +244,7 @@ fn shape(
 ) -> Result<(EmitForm, u32, ValueMapping), Diagnostics> {
     Ok(match field.shape() {
         FieldShape::Singular { value, .. } => {
-            let mapped = singular_value(field, value, sort_of)?;
+            let mapped = value_mapping(field, value, sort_of)?;
             // The oneof name rides into `EmitForm::OneofArm` — and thence `emit.lp` — as the
             // descriptor's own string, not lowered to a predicate. It is safe to carry verbatim
             // because the descriptor door already refused any non-identifier oneof name
@@ -259,25 +259,11 @@ fn shape(
             (annotate::field_form(field, base)?, 2, mapped)
         }
         FieldShape::Repeated { value } => {
-            let mapped = match value {
-                ValueType::Scalar(scalar) => ValueMapping::Scalar {
-                    kind: *scalar,
-                    treatment: annotate::field_treatment(field, *scalar)?,
-                },
-                ValueType::Message(path) => ValueMapping::Message(sort_of(path)?),
-                ValueType::Enum(path) => ValueMapping::Enum(sort_of(path)?),
-            };
+            let mapped = value_mapping(field, value, sort_of)?;
             (annotate::field_form(field, EmitForm::Sequence)?, 3, mapped)
         }
         FieldShape::Map { key, value } => {
-            let mapped = match value {
-                ValueType::Scalar(scalar) => ValueMapping::Scalar {
-                    kind: *scalar,
-                    treatment: annotate::field_treatment(field, *scalar)?,
-                },
-                ValueType::Message(path) => ValueMapping::Message(sort_of(path)?),
-                ValueType::Enum(path) => ValueMapping::Enum(sort_of(path)?),
-            };
+            let mapped = value_mapping(field, value, sort_of)?;
             // A key is a scalar in key position (spec §7.2: keys map per §6); `(keryx.numeric)` on a
             // map targets the key, resolved and validated here.
             let form = EmitForm::Map {
@@ -289,10 +275,14 @@ fn shape(
     })
 }
 
-/// A singular field's value treatment: a scalar, a message occupant (carrying the referent
-/// sort predicate), or an enum. The relational view is derived at the mapping
-/// ([`FieldMapping::view`]), not decided here.
-fn singular_value(
+/// A field value's `ValueMapping`: a scalar (its §6/annotation treatment resolved and validated at
+/// the policy door), a message occupant (carrying the referent sort predicate), or an enum — for a
+/// singular, repeated, or map-value field alike. For a message- or enum-valued field the
+/// scalar-value options (`(keryx.scale)`/`(keryx.opaque)`/`(keryx.numeric)`) cannot apply, so a
+/// present one is a mis-target diagnostic here (`annotate::reject_nonscalar_options`) — the
+/// option-admission rule applied uniformly, not only where a scalar treatment is produced. The
+/// relational view is derived at the mapping ([`FieldMapping::view`]), not decided here.
+fn value_mapping(
     field: &Field,
     value: &ValueType,
     sort_of: &impl Fn(&FqName) -> Result<Name, Diagnostics>,
@@ -302,8 +292,14 @@ fn singular_value(
             kind: *scalar,
             treatment: annotate::field_treatment(field, *scalar)?,
         },
-        ValueType::Message(path) => ValueMapping::Message(sort_of(path)?),
-        ValueType::Enum(path) => ValueMapping::Enum(sort_of(path)?),
+        ValueType::Message(path) => {
+            annotate::reject_nonscalar_options(field)?;
+            ValueMapping::Message(sort_of(path)?)
+        }
+        ValueType::Enum(path) => {
+            annotate::reject_nonscalar_options(field)?;
+            ValueMapping::Enum(sort_of(path)?)
+        }
     })
 }
 
