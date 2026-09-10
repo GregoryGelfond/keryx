@@ -6,16 +6,15 @@
 //!
 //! **Branch (a) at the crossing (the threat model's property 3).** themelios's parser bounds its own
 //! nesting and its `raise` is total, so no pre-parse guard of keryx's precedes them; the parse and
-//! raise are contained (`Dependency::Themelios`) as defense-in-depth, with no known trigger. The
-//! `Source` is built on keryx's side, its size bound refused as `UnreadableAnswerSet`, not a fault.
-//! themelios-syntax's types stay inside this module — the reader returns `Vec<Symbol>`, a value the
-//! surface already speaks — so no syntax-tier type crosses keryx's boundary.
+//! raise — reached through the one `themelios_program::raise_source` door — are contained
+//! (`Dependency::Themelios`) as defense-in-depth, with no known trigger. The `Source` is built on
+//! keryx's side, its size bound refused as `UnreadableAnswerSet`, not a fault. The reader returns
+//! `Vec<Symbol>`, a value the surface already speaks, and keryx touches only the program crate — no
+//! themelios-syntax type is named here or crosses keryx's boundary.
 
 use themelios_program::prelude::*;
-use themelios_program::raise::raise;
+use themelios_program::raise::raise_source;
 use themelios_program::term::TermParts;
-use themelios_syntax::base::source::{Source, SourceId};
-use themelios_syntax::parse::parse;
 
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use crate::fault::{Dependency, contain};
@@ -32,16 +31,16 @@ use crate::fault::{Dependency, contain};
 pub fn raise_answer_set(text: &str) -> Result<Vec<Symbol>, Diagnostics> {
     let source = Source::new(SourceId::new(0), text.to_owned())
         .map_err(|_| unreadable("the answer set is larger than keryx reads"))?;
-    let outcome = contain(Dependency::Themelios, "reading an answer set", || {
-        let parse = parse(&source, Dialect::Clingo);
-        // The parser is error-tolerant (it recovers a tree from malformed input), so its own syntax
-        // errors are the first refusal — checked here, since raise does not surface them.
-        (!parse.has_errors()).then(|| raise(&parse))
+    let raised = contain(Dependency::Themelios, "reading an answer set", || {
+        raise_source(&source, Dialect::Clingo)
     })?;
-    let Some(raised) = outcome else {
+    // The parser is error-tolerant (it recovers a tree from malformed input), so its syntax
+    // diagnostics are the first refusal, then the lowering (raise) diagnostics — neither surfaces
+    // the other, so both are checked.
+    if !raised.syntax_diagnostics().is_empty() {
         return Err(unreadable("the answer set does not parse as clingo facts"));
-    };
-    if !raised.diagnostics().is_empty() {
+    }
+    if !raised.lowering_diagnostics().is_empty() {
         return Err(unreadable("the answer set does not raise to ground facts"));
     }
     let mut symbols = Vec::new();

@@ -11,12 +11,19 @@ change, and the status (open / fixed-in `<rev>` / adopted).
 
 ## Candidates
 
-- **`raise` convenience.** keryx-core touches `themelios_syntax::parse`
+- **`raise` convenience.** keryx-core touched `themelios_syntax::parse`
   directly only to hand a `Parse` to `themelios_program::raise`. If that
   direct dependency reads as a leak, a `themelios_program::raise_source(&Source)
   -> Raised` convenience would let consumers touch only the program crate.
-  Status: open (raised at founding; not yet needed — the `admit` increment
-  decides).
+
+  **Resolution in `653ca5b`.** `themelios_program::raise_source(&Source, Dialect)
+  -> RaisedSource` — parse then raise behind one door, `RaisedSource` exposing the
+  program and both the syntax and lowering diagnostic streams — landed and is
+  adopted here: `codec::answer` reads an answer set through it, `Source`/`SourceId`
+  come from the program crate's prelude, and keryx-core's direct `themelios-syntax`
+  dependency is dropped (it remains only transitively, behind themelios-program), so
+  keryx names only the program tier. Status: fixed in `653ca5b`, adopted at that
+  rev-bump.
 
 - **Free-standing / inline `%` comment emission.** themelios's `render` emits
   comments only as statement-attached `%!` doc lines (from provenance); there is
@@ -58,8 +65,13 @@ change, and the status (open / fixed-in `<rev>` / adopted).
   WithProvenance::constructed(Comparison::new(…))) })` — where an atom composes in
   one step (`BodyElement::from(atom)`). A themelios `From<Comparison> for
   BodyElement` (or `for Literal`) would make the comparison seam as smooth as the
-  atom seam. Status: open (surfaced at the `emit` increment; cosmetic — the ladder
-  works, it is only bumpy). The one composition seam this increment found rough.
+  atom seam.
+
+  **Resolution in `653ca5b`.** `From<Comparison> for Literal` and `From<Comparison>
+  for BodyElement` (a positive body literal, no default negation) landed and are
+  adopted: `emit::build::compare` is now `BodyElement::from(Comparison::new(…))`, the
+  comparison seam composing in one step like the atom seam. Status: fixed in
+  `653ca5b`, adopted at that rev-bump.
 
 - **`%!` doc-comment spacing.** `render_documented`'s `render_docs` wrote each doc line as
   `%!` immediately followed by the text, with no space — a deliberate render↔raise fixpoint

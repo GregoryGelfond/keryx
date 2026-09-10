@@ -66,7 +66,7 @@ pub(crate) fn function(name: &str, arguments: Vec<Term>) -> Term {
 /// `Root::term`); the declaration-side `emit::build::apply`, applied to view variables,
 /// stays separate — see the module doc.
 pub(crate) fn apply(name: Name, arguments: Vec<Term>) -> Term {
-    Term::Function { name, arguments }.canonicalize()
+    Term::function(name, arguments)
 }
 
 /// A fact statement `pred(args...).` over a keryx-vocabulary predicate, carrying a
