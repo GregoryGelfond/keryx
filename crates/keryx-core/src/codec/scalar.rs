@@ -32,7 +32,8 @@ use crate::terms;
 /// |---|---|---|---|
 /// | `Native` | `I32` | the integer | — |
 /// | `Native` | `U32` | the integer, when it fits `i32` | `ValueOutOfRange` above `i32::MAX` |
-/// | `DecimalString` | `I64`, `U64` | the decimal string | — |
+/// | `DecimalString` | `I64`, `U64`; `U32` under `DECIMAL_STRING` | the decimal string | — |
+/// | `NativeChecked` | `I64`, `U64` | the integer, when it fits `i32` | `ValueOutOfRange` outside `[i32::MIN, i32::MAX]` |
 /// | `Bool` | `Bool` | the constant `true` / `false` | — |
 /// | `Text` | `Str` | the string | `InteriorNul` on a NUL; `UnrepresentableText` on any other control character but `\n` |
 /// | `HexString` | `Bytes` | the lowercase-hex string | — |
@@ -46,11 +47,12 @@ use crate::terms;
 /// never foreign input, and is discharged as one: an `unreachable` over the enumerated
 /// treatments and datum kinds, checked rather than wildcarded on either axis, so a walk that
 /// mis-paired a field fails loudly instead of lowering a value as another kind, and a treatment
-/// or datum kind added later fails to compile here. The annotation overrides of Increment 5
-/// (`(keryx.numeric)`, `(keryx.scale)`, `(keryx.opaque)`) change a field's treatment and so widen
-/// the table; the discharge is restated then. `scalar` also names the proto type in a refusal's
-/// detail — `uint32` against `fixed32`, `float` against `double` — which the treatment alone
-/// cannot.
+/// or datum kind added later fails to compile here. The annotation overrides of Increment 5 change
+/// a field's treatment and so widen the table: `(keryx.numeric)` adds `NativeChecked` and extends
+/// `DecimalString` to a `uint32`/`fixed32` (here); the float lowerings `(keryx.scale)`/
+/// `(keryx.opaque)` restate the discharge when they land. `scalar` also names the proto type in a
+/// refusal's detail — `uint32` against `fixed32`, `float` against `double` — which the treatment
+/// alone cannot.
 ///
 /// `NeedsAnnotation` reads no value: §6 makes the *field* the error, not the value, so an
 /// unannotated `float`/`double` field is refused whenever the walk reaches it, its materialised
@@ -79,9 +81,17 @@ pub(crate) fn lower(
         (ScalarTreatment::Text, Datum::Str(value)) => text(value, at),
         (ScalarTreatment::HexString, Datum::Bytes(value)) => Ok(terms::text(&hex(value))),
         (ScalarTreatment::NeedsAnnotation, Datum::F64(_)) => Err(unannotated(scalar, at)),
+        (ScalarTreatment::NativeChecked, Datum::I64(value)) => i32::try_from(*value)
+            .map(terms::int)
+            .map_err(|_| checked_out_of_range(scalar, value, at)),
+        (ScalarTreatment::NativeChecked, Datum::U64(value)) => i32::try_from(*value)
+            .map(terms::int)
+            .map_err(|_| checked_out_of_range(scalar, value, at)),
+        (ScalarTreatment::DecimalString, Datum::U32(value)) => Ok(decimal(value)),
         (
             ScalarTreatment::Native
             | ScalarTreatment::DecimalString
+            | ScalarTreatment::NativeChecked
             | ScalarTreatment::NeedsAnnotation
             | ScalarTreatment::Bool
             | ScalarTreatment::Text
@@ -102,8 +112,10 @@ pub(crate) fn lower(
     }
 }
 
-/// The decimal-string constant of a 64-bit integer (§6): its decimal text as a string term —
-/// opaque to clingo's arithmetic, faithful past its 32-bit integer width.
+/// The decimal-string constant of an integer (§6): its decimal text as a string term — opaque to
+/// clingo's arithmetic, faithful past a native term's 32-bit integer width. The §6 default for a
+/// 64-bit integer, and the `(keryx.numeric) = DECIMAL_STRING` treatment of a `uint32`/`fixed32`
+/// whose top-bit value a native `i32` cannot carry (Increment 5).
 fn decimal(value: impl fmt::Display) -> Term {
     terms::text(&value.to_string())
 }
@@ -164,6 +176,25 @@ fn out_of_range(scalar: Scalar, value: u32, at: &str) -> Diagnostic {
     )
 }
 
+/// `ValueOutOfRange`: a 64-bit integer under `(keryx.numeric) = NATIVE_CHECKED` that does not fit
+/// clingo's native `i32` — refused, never truncated or wrapped — naming the proto type, the value
+/// (a bounded integer, so it is named, as the unsigned-32 range is), the native range, and the way
+/// out: drop the annotation to carry it as the §6 default decimal string. Unlike [`out_of_range`],
+/// the value may be out of range below `i32::MIN` as well as above `i32::MAX`, so the message names
+/// the range rather than the single upper bound.
+fn checked_out_of_range(scalar: Scalar, value: impl fmt::Display, at: &str) -> Diagnostic {
+    refuse(
+        DiagnosticKind::ValueOutOfRange,
+        at,
+        format!(
+            "the {} value {value} does not fit the native clingo integer range [{}, {}] that `(keryx.numeric) = NATIVE_CHECKED` requires; drop the annotation to carry it as a decimal string",
+            scalar.as_str(),
+            i32::MIN,
+            i32::MAX
+        ),
+    )
+}
+
 /// `InteriorNul`: the NUL's character offset — never the value, a payload's text being the
 /// adversary's to flood a diagnostic with.
 fn interior_nul(offset: usize, at: &str) -> Diagnostic {
@@ -212,6 +243,9 @@ fn unannotated(scalar: Scalar, at: &str) -> Diagnostic {
 /// | `Native` | uint32/fixed32 | `Number(n)`, `n ≥ 0` | `U32(n)` | `n < 0` → `ValueOutOfRange`; another shape → `TermTypeMismatch` |
 /// | `DecimalString` | int64/sint64/sfixed64 | `String(s)`, `s` an `i64` | `I64` | non-`i64` decimal → `ValueOutOfRange`; another shape → `TermTypeMismatch` |
 /// | `DecimalString` | uint64/fixed64 | `String(s)`, `s` a `u64` | `U64` | non-`u64` decimal → `ValueOutOfRange`; another shape → `TermTypeMismatch` |
+/// | `DecimalString` | uint32/fixed32 (`DECIMAL_STRING`) | `String(s)`, `s` a `u32` | `U32` | non-`u32` decimal → `ValueOutOfRange`; another shape → `TermTypeMismatch` |
+/// | `NativeChecked` | int64/sint64/sfixed64 | `Number(n)` | `I64(n)` | another shape → `TermTypeMismatch` |
+/// | `NativeChecked` | uint64/fixed64 | `Number(n)`, `n ≥ 0` | `U64(n)` | `n < 0` → `ValueOutOfRange`; another shape → `TermTypeMismatch` |
 /// | `Bool` | bool | `true` / `false` constant | `Bool` | another shape → `TermTypeMismatch` |
 /// | `Text` | string | `String(s)` | `String(s)` | another shape → `TermTypeMismatch` |
 /// | `HexString` | bytes | `String(hex)`, even-length lowercase hex | `Bytes` | odd/non-hex or another shape → `TermTypeMismatch` |
@@ -238,6 +272,7 @@ pub(crate) fn raise(
     match treatment {
         ScalarTreatment::Native => raise_native(value, kind, at),
         ScalarTreatment::DecimalString => raise_decimal(value, kind, at),
+        ScalarTreatment::NativeChecked => raise_native_checked(value, kind, at),
         ScalarTreatment::Bool => raise_bool(value, at),
         ScalarTreatment::Text => match value {
             Symbol::String(text) => Ok(Value::String(text.clone())),
@@ -279,10 +314,42 @@ fn raise_native(value: &Symbol, kind: Scalar, at: &str) -> Result<Value, Diagnos
     }
 }
 
-/// A `DecimalString` scalar: a decimal-string symbol parsed to `I64` (signed 64) or `U64`
-/// (uint64/fixed64) — the inverse of `lower`'s `decimal`, which spelled a 64-bit integer as its
-/// decimal text. The type's range *is* the parsed integer type's, so a decimal outside it (or not a
-/// decimal at all) does not parse and is `ValueOutOfRange`; a non-string symbol is a shape mismatch.
+/// A `NativeChecked` scalar: a native integer symbol lifted to `I64` (signed 64) or `U64`
+/// (uint64/fixed64) — the inverse of `lower`'s `NativeChecked` branch, which range-checked a 64-bit
+/// datum into a native `i32`. `Symbol::Number` is an `i32`, in range for every signed 64-bit type;
+/// the only range refusal is a negative value where the kind is unsigned, re-checked with the same
+/// `negative_unsigned` the `Native` uint32 branch uses. Exhaustive over `Scalar` (no wildcard), as
+/// `raise_native`'s guard is: a kind `scalar_treatment` newly pairs with `NativeChecked` fails to
+/// compile here rather than lifting silently as `I64`.
+fn raise_native_checked(value: &Symbol, kind: Scalar, at: &str) -> Result<Value, Diagnostic> {
+    let Symbol::Number(number) = value else {
+        return Err(term_type_mismatch(kind, value, at));
+    };
+    match kind {
+        Scalar::Uint64 | Scalar::Fixed64 => u64::try_from(*number)
+            .map(Value::U64)
+            .map_err(|_| negative_unsigned(kind, *number, at)),
+        Scalar::Int64 | Scalar::Sint64 | Scalar::Sfixed64 => Ok(Value::I64(i64::from(*number))),
+        Scalar::Int32
+        | Scalar::Uint32
+        | Scalar::Sint32
+        | Scalar::Fixed32
+        | Scalar::Sfixed32
+        | Scalar::Bool
+        | Scalar::Float
+        | Scalar::Double
+        | Scalar::String
+        | Scalar::Bytes => unreachable!(
+            "`scalar_treatment` pairs `NativeChecked` only with a 64-bit integer kind; a narrower pairing is a keryx error"
+        ),
+    }
+}
+
+/// A `DecimalString` scalar: a decimal-string symbol parsed to `I64` (signed 64), `U64`
+/// (uint64/fixed64), or `U32` (a `uint32`/`fixed32` under `(keryx.numeric) = DECIMAL_STRING`,
+/// Increment 5) — the inverse of `lower`'s `decimal`, which spelled the integer as its decimal
+/// text. The type's range *is* the parsed integer type's, so a decimal outside it (or not a decimal
+/// at all) does not parse and is `ValueOutOfRange`; a non-string symbol is a shape mismatch.
 fn raise_decimal(value: &Symbol, kind: Scalar, at: &str) -> Result<Value, Diagnostic> {
     let Symbol::String(text) = value else {
         return Err(term_type_mismatch(kind, value, at));
@@ -298,17 +365,21 @@ fn raise_decimal(value: &Symbol, kind: Scalar, at: &str) -> Result<Value, Diagno
             .parse::<i64>()
             .map(Value::I64)
             .map_err(|_| decimal_out_of_range(kind, at)),
+        // `(keryx.numeric) = DECIMAL_STRING` carries a `uint32`/`fixed32`'s top-bit value as a
+        // decimal string (Increment 5): parse it back to `U32`, the range the parse enforces.
+        Scalar::Uint32 | Scalar::Fixed32 => text
+            .parse::<u32>()
+            .map(Value::U32)
+            .map_err(|_| decimal_out_of_range(kind, at)),
         Scalar::Int32
-        | Scalar::Uint32
         | Scalar::Sint32
-        | Scalar::Fixed32
         | Scalar::Sfixed32
         | Scalar::Bool
         | Scalar::Float
         | Scalar::Double
         | Scalar::String
         | Scalar::Bytes => unreachable!(
-            "`scalar_treatment` pairs `DecimalString` only with a 64-bit integer kind; a wider pairing is a keryx error"
+            "`scalar_treatment` pairs `DecimalString` only with a 64-bit integer or a 32-bit unsigned (`uint32`/`fixed32`) kind; a signed-32 or non-integer pairing is a keryx error"
         ),
     }
 }
@@ -542,9 +613,64 @@ mod tests {
     }
 
     #[test]
+    fn the_numeric_annotation_treatments_lower_each_admitted_value() {
+        use ScalarTreatment::{DecimalString, NativeChecked};
+        // The Increment-5 `(keryx.numeric)` treatments, beside the §6 defaults: NATIVE_CHECKED
+        // lowers a 64-bit integer to a native clingo integer within `i32` (signed and unsigned
+        // alike, at the boundaries), and DECIMAL_STRING carries a `uint32`/`fixed32`'s top-bit
+        // value — one a native `i32` cannot hold — as a decimal string.
+        let table = [
+            (
+                Scalar::Int64,
+                NativeChecked,
+                Datum::I64(2_000_000_000),
+                terms::int(2_000_000_000),
+            ),
+            (
+                Scalar::Sfixed64,
+                NativeChecked,
+                Datum::I64(i64::from(i32::MIN)),
+                terms::int(i32::MIN),
+            ),
+            (
+                Scalar::Uint64,
+                NativeChecked,
+                Datum::U64(2_000_000_000),
+                terms::int(2_000_000_000),
+            ),
+            (
+                Scalar::Fixed64,
+                NativeChecked,
+                Datum::U64(u64::try_from(i32::MAX).expect("i32::MAX is a u64")),
+                terms::int(i32::MAX),
+            ),
+            (
+                Scalar::Uint32,
+                DecimalString,
+                Datum::U32(u32::MAX),
+                terms::text("4294967295"),
+            ),
+            (
+                Scalar::Fixed32,
+                DecimalString,
+                Datum::U32(2_147_483_648),
+                terms::text("2147483648"),
+            ),
+        ];
+        for (scalar, treatment, datum, expected) in table {
+            let term = lowered(scalar, treatment, &datum);
+            assert_eq!(term, expected, "{scalar:?} {treatment:?} {datum:?}");
+            assert!(
+                matches!(term, Term::Symbolic(_)),
+                "{scalar:?} {treatment:?} {datum:?} lowered to an uncollapsed term"
+            );
+        }
+    }
+
+    #[test]
     fn the_section_6_table_refuses_each_named_case_at_the_field() {
         use DiagnosticKind::{InteriorNul, UnannotatedFloat, UnrepresentableText, ValueOutOfRange};
-        use ScalarTreatment::{Native, NeedsAnnotation, Text};
+        use ScalarTreatment::{Native, NativeChecked, NeedsAnnotation, Text};
         let table = [
             (
                 Scalar::Uint32,
@@ -603,6 +729,27 @@ mod tests {
                 NeedsAnnotation,
                 Datum::F64(0.0),
                 UnannotatedFloat,
+            ),
+            // NATIVE_CHECKED on a 64-bit value outside clingo's native i32 range (Increment 5):
+            // above i32::MAX, below i32::MIN, and an unsigned value above — each refused, never
+            // truncated or wrapped.
+            (
+                Scalar::Int64,
+                NativeChecked,
+                Datum::I64(i64::from(i32::MAX) + 1),
+                ValueOutOfRange,
+            ),
+            (
+                Scalar::Sint64,
+                NativeChecked,
+                Datum::I64(i64::from(i32::MIN) - 1),
+                ValueOutOfRange,
+            ),
+            (
+                Scalar::Uint64,
+                NativeChecked,
+                Datum::U64(u64::try_from(i32::MAX).expect("i32::MAX is a u64") + 1),
+                ValueOutOfRange,
             ),
         ];
         for (scalar, treatment, datum, kind) in table {
@@ -822,7 +969,7 @@ mod tests {
 
     #[test]
     fn raise_lifts_each_admitted_symbol_to_the_value_lower_produced_it_from() {
-        use ScalarTreatment::{Bool, DecimalString, HexString, Native, Text};
+        use ScalarTreatment::{Bool, DecimalString, HexString, Native, NativeChecked, Text};
         // Signed and unsigned 32-bit natives, the 64-bit decimal strings, the booleans, a string,
         // and hex bytes — the §6 table read backwards.
         assert_eq!(
@@ -885,12 +1032,41 @@ mod tests {
             raised(Scalar::Bytes, HexString, &Symbol::String(String::new())),
             Value::Bytes(Vec::new().into())
         );
+        // NATIVE_CHECKED (Increment 5): a native integer symbol lifts back to its 64-bit value —
+        // signed kinds to `I64`, unsigned to `U64` (re-checked non-negative).
+        assert_eq!(
+            raised(Scalar::Int64, NativeChecked, &Symbol::Number(2_000_000_000)),
+            Value::I64(2_000_000_000)
+        );
+        assert_eq!(
+            raised(Scalar::Sfixed64, NativeChecked, &Symbol::Number(i32::MIN)),
+            Value::I64(i64::from(i32::MIN))
+        );
+        assert_eq!(
+            raised(
+                Scalar::Uint64,
+                NativeChecked,
+                &Symbol::Number(2_000_000_000)
+            ),
+            Value::U64(2_000_000_000)
+        );
+        // DECIMAL_STRING on a uint32/fixed32 (Increment 5): the decimal string parses back to U32.
+        assert_eq!(
+            raised(
+                Scalar::Uint32,
+                DecimalString,
+                &Symbol::String("4294967295".to_owned())
+            ),
+            Value::U32(u32::MAX)
+        );
     }
 
     #[test]
     fn raise_refuses_a_mis_shaped_or_out_of_range_symbol_never_a_panic() {
         use DiagnosticKind::{TermTypeMismatch, UnannotatedFloat, ValueOutOfRange};
-        use ScalarTreatment::{Bool, DecimalString, HexString, Native, NeedsAnnotation};
+        use ScalarTreatment::{
+            Bool, DecimalString, HexString, Native, NativeChecked, NeedsAnnotation,
+        };
         let table = [
             // A negative native where the kind is unsigned — refused, never wrapped.
             (Scalar::Uint32, Native, Symbol::Number(-1), ValueOutOfRange),
@@ -942,6 +1118,27 @@ mod tests {
                 NeedsAnnotation,
                 Symbol::String("1.5".to_owned()),
                 UnannotatedFloat,
+            ),
+            // NATIVE_CHECKED (Increment 5): a negative native where the kind is unsigned — refused,
+            // never wrapped; a non-number symbol is a shape mismatch, never a panic.
+            (
+                Scalar::Uint64,
+                NativeChecked,
+                Symbol::Number(-1),
+                ValueOutOfRange,
+            ),
+            (
+                Scalar::Int64,
+                NativeChecked,
+                Symbol::String("x".to_owned()),
+                TermTypeMismatch,
+            ),
+            // DECIMAL_STRING on a uint32 (Increment 5): a decimal beyond the u32 range — refused.
+            (
+                Scalar::Uint32,
+                DecimalString,
+                Symbol::String("4294967296".to_owned()),
+                ValueOutOfRange,
             ),
         ];
         for (kind, treatment, symbol, expected) in table {

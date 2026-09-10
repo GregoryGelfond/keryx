@@ -405,8 +405,9 @@ fn sequence(
 }
 
 /// A map's obligations (§7.2): over a base-fact map, key functionality and each value's
-/// membership or range; over any map keyed by an unsigned native integer (`uint32`/`fixed32`,
-/// §6), the key's range — read from the field's occurrence at `K`, so a message-valued map's
+/// membership or range; over any map keyed by an unsigned native integer (`uint32`/`fixed32`, or a
+/// `uint64`/`fixed64` under `NATIVE_CHECKED`, §6), the key's range — read from the field's occurrence
+/// at `K`, so a message-valued map's
 /// key is held through its occupancy atom. A message-valued map's key functionality is
 /// structural: its occupant `f(P, K)` is one term per key.
 fn map(
@@ -453,8 +454,9 @@ fn map(
 
 /// A value's own obligation at the field's place (`[]`, `[I]`, or `[K]`; the value `V` follows):
 /// an enum value is held to its enum's membership table, `not ok_e(V)`; an unsigned native
-/// integer (`uint32`/`fixed32`, §6) to `V < 0` — the upper bound is the engine's own width (an
-/// emitted integer is an `i32`), and the reassembler's inverse re-checks the unsigned range.
+/// integer (`uint32`/`fixed32`, or a `uint64`/`fixed64` under `NATIVE_CHECKED`, §6) to `V < 0` —
+/// the upper bound is the engine's own width (an emitted integer is an `i32`), and the
+/// reassembler's inverse re-checks the unsigned range.
 /// No other value carries an obligation the theory states: a decimal string's range and a hex
 /// string's shape are term-type conditions, the reassembler's (§12.3), and a message value's
 /// presence is its occupancy.
@@ -494,11 +496,20 @@ fn value_obligation(
     })
 }
 
-/// Whether a scalar carries the unsigned range obligation (§6): a `uint32`/`fixed32` under the
-/// native treatment — a native integer that must not be negative. Under another treatment
-/// (an annotation's decimal string, Increment 5) the value is not an integer term at all.
+/// Whether a scalar carries the unsigned range obligation (§6): an unsigned native clingo integer
+/// that must not be negative — a `uint32`/`fixed32` under the native treatment, or a `uint64`/
+/// `fixed64` under `(keryx.numeric) = NATIVE_CHECKED` (Increment 5), both lowered to a native `i32`
+/// whose upper bound is the engine's own width. Under a decimal-string treatment the value is a
+/// string term, not an integer, so no range obligation is stated.
 fn unsigned(kind: Scalar, treatment: ScalarTreatment) -> bool {
-    treatment == ScalarTreatment::Native && matches!(kind, Scalar::Uint32 | Scalar::Fixed32)
+    matches!(
+        (treatment, kind),
+        (ScalarTreatment::Native, Scalar::Uint32 | Scalar::Fixed32)
+            | (
+                ScalarTreatment::NativeChecked,
+                Scalar::Uint64 | Scalar::Fixed64
+            )
+    )
 }
 
 /// Oneof exclusivity (§7.3): for each pair of arms of one oneof — grouped by the oneof's proto

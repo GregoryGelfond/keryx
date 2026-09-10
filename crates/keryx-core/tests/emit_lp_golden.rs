@@ -114,6 +114,24 @@ fn a_proto2_required_message_field_carries_an_occupancy_totality_obligation() {
     );
 }
 
+// (keryx.numeric) = NATIVE_CHECKED lowers a 64-bit integer to a native clingo integer (Increment 5),
+// so an unsigned 64-bit field carries the non-negative range obligation an unsigned native uint32
+// does — `:- <sort>(P), reach(P), f(P, V), V < 0.` — while a signed 64-bit field, whose native
+// value may be negative, carries none. The §6 default (a decimal string) states no range
+// obligation of the theory, so this obligation is exactly the treatment override's mark.
+#[test]
+fn a_native_checked_unsigned_64_bit_field_carries_the_range_obligation() {
+    let strict = emit::emit_strict(&unit_of("numeric.proto")).expect("emits");
+    assert!(
+        strict.contains(":- meter(P), reach(P), total(P, V), V < 0."),
+        "the NATIVE_CHECKED uint64 `total` field carries the non-negative range obligation:\n{strict}"
+    );
+    assert!(
+        !strict.contains("balance(P, V), V < 0."),
+        "the NATIVE_CHECKED int64 `balance` field carries no range obligation (signed):\n{strict}"
+    );
+}
+
 // The closure over every message-typed form on one parent sort — a singular field, a sequence,
 // a map, and a message-typed oneof arm — each reaching its occupant through the safe idiom: the
 // child sort atom binds the occupant, and the equality deconstructs it to bind the index or key

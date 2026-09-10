@@ -1,0 +1,13 @@
+syntax = "proto3";
+package keryx.metering;
+
+import "keryx/options.proto";
+
+// 64-bit counters carried as native clingo integers under (keryx.numeric) = NATIVE_CHECKED
+// (spec §6): lowered to a native integer rather than the §6 decimal-string default, so an
+// unsigned counter carries the emit.lp non-negative range obligation an unsigned native uint32
+// does, while a signed counter carries none.
+message Meter {
+  uint64 total = 1 [(keryx.numeric) = NATIVE_CHECKED];
+  int64 balance = 2 [(keryx.numeric) = NATIVE_CHECKED];
+}

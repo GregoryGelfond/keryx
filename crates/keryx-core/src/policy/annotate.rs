@@ -55,6 +55,25 @@ fn is_integer(scalar: Scalar) -> bool {
     )
 }
 
+/// Whether a scalar kind is a 64-bit integer — the target `(keryx.numeric) = NATIVE_CHECKED`
+/// overrides to a native clingo integer (§6). Its §6 default is a decimal string, so this is where
+/// `NATIVE_CHECKED` differs from the default; on a 32-bit integer `NATIVE_CHECKED` coincides with the
+/// native default (a no-op, F4c).
+fn is_64_bit(scalar: Scalar) -> bool {
+    matches!(
+        scalar,
+        Scalar::Int64 | Scalar::Uint64 | Scalar::Fixed64 | Scalar::Sfixed64 | Scalar::Sint64
+    )
+}
+
+/// Whether a scalar kind is a 32-bit unsigned integer (`uint32`/`fixed32`) — the target
+/// `(keryx.numeric) = DECIMAL_STRING` overrides to a decimal string (§6): its top-bit values a
+/// native `i32` cannot carry, where the §6 default `Native` would refuse them. On a 64-bit kind
+/// `DECIMAL_STRING` coincides with the default (a no-op, F4c).
+fn is_32_bit_unsigned(scalar: Scalar) -> bool {
+    matches!(scalar, Scalar::Uint32 | Scalar::Fixed32)
+}
+
 /// A rejection at a field's proto path — a `MalformedOption` naming the option and the rule it
 /// broke (never the adversary's option value; P1).
 fn reject_field(field: &Field, detail: &str) -> Diagnostic {
@@ -143,8 +162,8 @@ pub(super) fn reject_foreign_options(
 /// `Some(scalar)` for the field or key kind the option applies to, `None` for a non-scalar value
 /// (a message/enum field), where it can never apply. `NATIVE_CHECKED`/`DECIMAL_STRING` on a
 /// non-integer are a mis-target; `CLINGCON` is refused up front (profile-gated, deferred); any other
-/// value is malformed. An applicable value produces no override here — Task 6 turns on
-/// `NativeChecked` and extends `DecimalString` to a 32-bit unsigned.
+/// value is malformed. An applicable value produces no override here; the treatment override it
+/// resolves to is produced by [`numeric_treatment`], once this validation has admitted it.
 fn reject_numeric(
     field: &Field,
     target: Option<Scalar>,
@@ -224,11 +243,37 @@ fn validate_value_options(field: &Field, target: Option<Scalar>, rejections: &mu
     }
 }
 
-/// The §6 scalar treatment of a field's value under its `(keryx.scale)`/`(keryx.opaque)`/
-/// `(keryx.numeric)` annotations. Returns the §6 default plus any diagnostics; the positive
-/// treatment overrides (`FixedPoint`, `OpaqueFloat`, `NativeChecked`, and `DecimalString` on a
-/// 32-bit unsigned) extend this in Tasks 6/7. `(keryx.numeric)` on a **map** targets the key, not
-/// the value ([`key_treatment`]), so it is not read here for a map field's value.
+/// The scalar treatment a validated `(keryx.numeric)` annotation resolves to for a `target` integer
+/// kind, given its §6 `default` — the two positive overrides, else the default unchanged (F4c). A
+/// `NATIVE_CHECKED` on a 64-bit kind → `NativeChecked` (a native clingo integer, where the §6 default
+/// is a decimal string); a `DECIMAL_STRING` on a `uint32`/`fixed32` → `DecimalString` (the top-bit
+/// carry, where the §6 default `Native` would refuse it). Every other admitted case coincides with
+/// the default (`NATIVE_CHECKED` on a 32-bit kind, `DECIMAL_STRING` on a 64-bit kind) — a faithful
+/// no-op. Called only after [`reject_numeric`] has admitted the value, so a mis-target, malformed, or
+/// profile-gated value never reaches here; the last matching annotation wins, as the validators read
+/// each.
+fn numeric_treatment(field: &Field, target: Scalar, default: ScalarTreatment) -> ScalarTreatment {
+    let mut treatment = default;
+    for annotation in field.options() {
+        if annotation.key == "numeric"
+            && let AnnotationValue::Enum(name) = &annotation.value
+        {
+            treatment = match name.as_str() {
+                "NATIVE_CHECKED" if is_64_bit(target) => ScalarTreatment::NativeChecked,
+                "DECIMAL_STRING" if is_32_bit_unsigned(target) => ScalarTreatment::DecimalString,
+                _ => default,
+            };
+        }
+    }
+    treatment
+}
+
+/// The scalar treatment of a field's value under its `(keryx.scale)`/`(keryx.opaque)`/
+/// `(keryx.numeric)` annotations: the §6 default, or the `(keryx.numeric)` override
+/// ([`numeric_treatment`]), plus any diagnostics; the float overrides (`FixedPoint`, `OpaqueFloat`)
+/// for `(keryx.scale)`/`(keryx.opaque)` extend this in a later increment. `(keryx.numeric)` on a
+/// **map** targets the key, not the value ([`key_treatment`]), so a map field's value keeps its §6
+/// default here.
 pub(super) fn field_treatment(
     field: &Field,
     scalar: Scalar,
@@ -236,7 +281,15 @@ pub(super) fn field_treatment(
     let default = super::names::scalar_treatment(scalar);
     let mut rejections = Vec::new();
     validate_value_options(field, Some(scalar), &mut rejections);
-    Diagnostics::collect(rejections).map_or(Ok(default), Err)
+    if let Some(diagnostics) = Diagnostics::collect(rejections) {
+        return Err(diagnostics);
+    }
+    // `(keryx.numeric)` on a map targets the key (§7.2, `key_treatment`), so a map field's value
+    // keeps its §6 default; a non-map field's value takes any numeric override.
+    if matches!(field.shape(), FieldShape::Map { .. }) {
+        return Ok(default);
+    }
+    Ok(numeric_treatment(field, scalar, default))
 }
 
 /// Validate the scalar-value options on a **message- or enum-valued** field, where none of
@@ -271,8 +324,9 @@ pub(super) fn field_form(field: &Field, default: EmitForm) -> Result<EmitForm, D
     Diagnostics::collect(rejections).map_or(Ok(default), Err)
 }
 
-/// The §6 treatment of a map key under `(keryx.numeric)` (§7.2). Returns the key kind's §6 default
-/// plus any diagnostics; the positive overrides extend this in Task 6.
+/// The treatment of a map key under `(keryx.numeric)` (§7.2). Returns the key kind's §6 default or
+/// the `(keryx.numeric)` override ([`numeric_treatment`] — `NativeChecked` on a 64-bit key,
+/// `DecimalString` on a `uint32`/`fixed32` key), plus any diagnostics.
 pub(super) fn key_treatment(field: &Field, key: MapKey) -> Result<ScalarTreatment, Diagnostics> {
     let scalar = Scalar::from(key);
     let default = super::names::scalar_treatment(scalar);
@@ -282,7 +336,10 @@ pub(super) fn key_treatment(field: &Field, key: MapKey) -> Result<ScalarTreatmen
             reject_numeric(field, Some(scalar), &annotation.value, &mut rejections);
         }
     }
-    Diagnostics::collect(rejections).map_or(Ok(default), Err)
+    if let Some(diagnostics) = Diagnostics::collect(rejections) {
+        return Err(diagnostics);
+    }
+    Ok(numeric_treatment(field, scalar, default))
 }
 
 /// Whether an enum preserves unknown wire values under `(keryx.unknown) = PRESERVE` (§7.4). Returns
@@ -582,6 +639,93 @@ mod tests {
             MapKey::String,
         ));
         assert_eq!(kind, DiagnosticKind::MalformedOption);
+    }
+
+    // --- (keryx.numeric): the positive treatment overrides ---
+
+    #[test]
+    fn native_checked_on_a_64_bit_field_produces_native_checked() {
+        // NATIVE_CHECKED overrides the §6 decimal-string default of a 64-bit field: carry it as a
+        // native clingo integer, range-checked — signed and unsigned kinds alike.
+        for kind in [
+            Scalar::Int64,
+            Scalar::Sint64,
+            Scalar::Sfixed64,
+            Scalar::Uint64,
+            Scalar::Fixed64,
+        ] {
+            let treatment = field_treatment(
+                &singular(
+                    kind,
+                    vec![ann(
+                        "numeric",
+                        AnnotationValue::Enum("NATIVE_CHECKED".to_owned()),
+                    )],
+                ),
+                kind,
+            )
+            .expect("NATIVE_CHECKED on a 64-bit integer is applicable");
+            assert_eq!(treatment, ScalarTreatment::NativeChecked, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn decimal_string_on_a_32_bit_unsigned_field_produces_decimal_string() {
+        // DECIMAL_STRING overrides the native default of a uint32/fixed32 field: carry its top-bit
+        // values as a decimal string a native i32 cannot hold.
+        for kind in [Scalar::Uint32, Scalar::Fixed32] {
+            let treatment = field_treatment(
+                &singular(
+                    kind,
+                    vec![ann(
+                        "numeric",
+                        AnnotationValue::Enum("DECIMAL_STRING".to_owned()),
+                    )],
+                ),
+                kind,
+            )
+            .expect("DECIMAL_STRING on a 32-bit unsigned is applicable");
+            assert_eq!(treatment, ScalarTreatment::DecimalString, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn native_checked_on_a_64_bit_map_key_produces_native_checked() {
+        // On a map, `(keryx.numeric)` targets the key (§7.2): a 64-bit key under NATIVE_CHECKED is
+        // carried as a native clingo integer, the key's treatment on the `EmitForm::Map`.
+        let treatment = key_treatment(
+            &map(
+                MapKey::Int64,
+                Scalar::String,
+                vec![ann(
+                    "numeric",
+                    AnnotationValue::Enum("NATIVE_CHECKED".to_owned()),
+                )],
+            ),
+            MapKey::Int64,
+        )
+        .expect("NATIVE_CHECKED on an int64 key is applicable");
+        assert_eq!(treatment, ScalarTreatment::NativeChecked);
+    }
+
+    #[test]
+    fn native_checked_on_a_32_bit_field_stays_the_native_no_op() {
+        // NATIVE_CHECKED on a 32-bit integer coincides with the native default (the value already
+        // fits clingo's i32), so it admits unchanged — a faithful no-op, not an override.
+        for kind in [Scalar::Int32, Scalar::Sint32, Scalar::Sfixed32] {
+            let treatment = field_treatment(
+                &singular(
+                    kind,
+                    vec![ann(
+                        "numeric",
+                        AnnotationValue::Enum("NATIVE_CHECKED".to_owned()),
+                    )],
+                ),
+                kind,
+            )
+            .expect("NATIVE_CHECKED on a 32-bit integer coincides with the default");
+            assert_eq!(treatment, ScalarTreatment::Native, "{kind:?}");
+        }
     }
 
     // --- scale/opaque/numeric on message/enum-valued fields: F4c applied uniformly (mis-target) ---
