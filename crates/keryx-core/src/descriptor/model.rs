@@ -137,7 +137,7 @@ pub enum SchemaVersion {
 /// A field's shape (§4.1, §5, §7.1): the proto-structural form, and — for a
 /// singular field, the only place it is meaningful — its resolved presence.
 /// Set-ness is *not* here; `(keryx.set)` is an annotation on the field, given
-/// meaning at Increment 2 (§7.1).
+/// meaning at Increment 5 (§7.1).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FieldShape {
     /// A singular field — a (total or partial) function on its parent sort.
@@ -314,7 +314,7 @@ pub enum Openness {
 }
 
 /// An annotation's value, lowered from the applied option's protobuf value (§15).
-/// The scalar-policy meanings (§6) are applied at Increment 2; here it is faithful
+/// The scalar-policy meanings (§6) are applied at Increment 5; here it is faithful
 /// data. `Enum` carries the applied enum value's name (e.g. `CLINGCON`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AnnotationValue {
