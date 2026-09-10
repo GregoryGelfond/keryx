@@ -280,7 +280,9 @@ fn singular(
     let line = signature::field(sort, field);
     let p = build::var("P");
     obligations.push(functional(sort, field, Kind::Functionality, &[], &line));
-    if field.presence() == Totality::Total {
+    // A `Total` (IMPLICIT) or a `Required` (proto2 `required`) field is totality-obliged (E1):
+    // both mint the presence witness and carry the totality constraint; an EXPLICIT one does not.
+    if matches!(field.presence(), Totality::Total | Totality::Required) {
         // The witness `has_f(P) :- f(P, _).` is what the obligation negates: a default-negated
         // occurrence with a projected value would be unsafe as written, so the projection is
         // a positive rule of its own.

@@ -3,7 +3,7 @@
 #defined grade/1.
 %! grade : order -> grade  (partial)
 #defined grade/2.
-%! id : order -> string  (partial)
+%! id : order -> string  (required)
 #defined id/2.
 %! A ledger of orders — a sequence.
 %! sort ledger/1

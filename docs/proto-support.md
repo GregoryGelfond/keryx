@@ -7,9 +7,9 @@ features — not of keryx logic. keryx supports every version its engine
 This ledger states the proto-version support keryx *delivers* as of the gen
 increment (Increment 2) — proto2 and proto3 golden-tested by the facts
 renderer, editions per the front-loaded capability verdict — not the state of
-any single commit along the way. The outbound direction adds one proto-version
-asymmetry, stated after the table: a proto2 `required` field's completeness is
-unenforced outbound at Increment 4.
+any single commit along the way. The outbound direction is whole for both eras: a proto2 `required` field's
+totality obligation is emitted and enforced (stated after the table) — full
+proto2/proto3 parity.
 
 | version       | status as of the gen increment (Increment 2)                                                                                                                |
 |---------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -36,22 +36,18 @@ feature-based rather than era-based, resolves editions with no redesign. Spec §
 capability test is the tripwire; when it flips to SUPPORTED, add the editions fixture and golden
 and update this row.
 
-**Outbound, a proto2 `required` field's completeness is unenforced at Increment 4.** The
-specification has the serializability theory oblige totality of every IMPLICIT and
-`LEGACY_REQUIRED` singular field (spec §5, §12.2). The mapping's totality (`Totality::{Total,
-Partial}`) does not distinguish `LEGACY_REQUIRED` — proto2 `required` — from EXPLICIT presence:
-both are partial functions, so `emit.lp` emits the totality obligation for IMPLICIT fields alone,
-and a proto2 `required` field gets functionality only, exactly as an `optional` one does. An
-answer set that omits a `required` field is therefore not refused — under the strict theory it
-is satisfiable, under the diagnostic theory nothing is derived — and the message reassembled
-from it omits the field: faithful to the answer set that omitted it, an under-representation and
-never a misrepresentation, so the threat model's integrity property holds; what is left unchecked
-is a schema-completeness constraint, at solve time and, the reassembler reading the same mapping,
-at reassembly alike. proto3 has no `required`, so its outbound support is whole; the asymmetry is
-proto2's alone. Committed future, not a boundary: full proto2 and proto3 outbound parity — the
-`Mapping` widened so `Totality` carries the distinction and the obligation is emitted and
-enforced — for interconnect preservation and inbound↔outbound symmetry, in a later increment;
-this note and the threat model's *Open* item close with it.
+**Outbound, a proto2 `required` field's totality obligation is emitted and enforced — full
+proto2/proto3 parity.** The specification has the serializability theory oblige totality of every
+IMPLICIT and `LEGACY_REQUIRED` singular field (spec §5, §12.2). The mapping's totality carries the
+distinction: `Totality::Required` for a proto2 `required` field, `Total` for IMPLICIT, `Partial`
+for EXPLICIT. So `emit.lp` emits the totality obligation for a `required` field exactly as for an
+IMPLICIT one — strict: UNSAT on an answer set that omits it; diagnostic: `violates` derived at the
+field's path — and the reassembler, reading the same mapping, refuses an answer set that omits a
+`required` field with a `ShapeViolation`, so no incomplete proto2 message is produced: enforced at
+solve time and at reassembly alike. A `required` field's presence is still read from the message
+inbound (partial, like `optional`); only the outbound obligation distinguishes it. proto3 has no
+`required`, and proto2's `required` is now enforced outbound, so both eras have whole outbound
+support — for interconnect preservation and inbound↔outbound symmetry.
 
 ## Enum openness and unknown values
 
@@ -130,9 +126,8 @@ fields — round-trip in every form too (`tests/codec_roundtrip.rs`, `tests/code
 map's entries are ordered by key in each form, so identical answer sets yield identical bytes (spec
 §12.3): the binary wire re-sort (`codec::canonical`), the textproto sorter (`codec::canonical_text`),
 and serde_json's key-ordered map. `keryx emit` writes exactly one message to stdout; `--root Type`
-selects which when the answer set names more than one root (§25). The one proto-version asymmetry is
-the `LEGACY_REQUIRED` gap above, at reassembly as at solve time; the three output forms carry it
-identically.
+selects which when the answer set names more than one root (§25). The proto2 `required` totality obligation (above) is enforced at reassembly as at
+solve time, and the three output forms carry it identically — no proto-version asymmetry remains.
 
 **One documented limit of `--out json`: a well-known type it cannot represent.** Canonical JSON
 mandates the resolved, range-validated form of a `Timestamp`, `Duration`, or `Any`, with no raw

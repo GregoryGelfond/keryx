@@ -384,7 +384,9 @@ impl Assembler<'_, '_> {
     ) {
         let [entry] = entries else {
             if entries.is_empty() {
-                if field.presence() == Totality::Total {
+                // E1: a `Required` (proto2 `required`) field is totality-obliged outbound as a
+                // `Total` (IMPLICIT) one is — an answer set omitting it is a shape violation.
+                if matches!(field.presence(), Totality::Total | Totality::Required) {
                     self.diagnostics.push(missing_total(field));
                 }
             } else {
@@ -799,7 +801,7 @@ fn duplicate_singular(field: &FieldMapping) -> Diagnostic {
 
 /// `ShapeViolation`: a total (implicit-presence) field with no value.
 fn missing_total(field: &FieldMapping) -> Diagnostic {
-    shape(field, "a total field is missing its value")
+    shape(field, "a total or required field is missing its value")
 }
 
 /// Whether `occupant`'s parent spine — each term's first argument, followed inward — reaches a

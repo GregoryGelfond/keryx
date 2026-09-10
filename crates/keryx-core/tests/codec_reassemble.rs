@@ -84,6 +84,47 @@ fn two_roots_of_one_type_are_distinct_and_marker_ordered() {
     );
 }
 
+/// The proto2 example's codec (§5, §7.4), through the source door.
+fn proto2_codec() -> Codec {
+    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/proto2");
+    Codec::from_source(&[example.join("order.proto")], &[example])
+        .expect("the proto2 example compiles")
+}
+
+#[test]
+fn a_proto2_required_field_omitted_is_a_shape_violation_outbound() {
+    // E1 (#1): a proto2 `required` field is totality-obliged outbound, so an answer set naming an
+    // `Order` root but omitting its `required` id is refused at reassembly (`ShapeViolation`) — the
+    // reassembly-side enforcement paired with `emit.lp`'s totality obligation, full proto2/proto3
+    // parity, exactly as an IMPLICIT (`Total`) field's absence is refused. An `Order` carrying its
+    // id reassembles.
+    let codec = proto2_codec();
+    let with_id = vec![
+        atom("emit_order", vec![constant("o0")]),
+        atom("order", vec![constant("o0")]),
+        atom(
+            "id",
+            vec![constant("o0"), Symbol::String("PO-1".to_owned())],
+        ),
+    ];
+    codec
+        .reassemble(&with_id, PayloadFormat::Binary)
+        .expect("an order carrying its required id reassembles");
+    let without_id = vec![
+        atom("emit_order", vec![constant("o0")]),
+        atom("order", vec![constant("o0")]),
+    ];
+    let error = codec
+        .reassemble(&without_id, PayloadFormat::Binary)
+        .expect_err("an order omitting its required id is refused");
+    assert!(
+        error
+            .iter()
+            .any(|d| d.kind() == keryx_core::diagnostics::DiagnosticKind::ShapeViolation),
+        "the missing required field is a shape violation"
+    );
+}
+
 #[test]
 fn a_broken_answer_set_is_every_diagnosis_never_a_partial_reassembly() {
     // One good root and one with a duplicate singular: the whole call fails (property 4), no

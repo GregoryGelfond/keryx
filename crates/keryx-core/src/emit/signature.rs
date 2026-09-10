@@ -100,5 +100,6 @@ fn totality(t: Totality) -> &'static str {
     match t {
         Totality::Total => "total",
         Totality::Partial => "partial",
+        Totality::Required => "required",
     }
 }

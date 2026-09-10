@@ -174,11 +174,13 @@ pub(super) fn sort_table(schema: &Schema) -> Result<Vec<SortEntry>, Diagnostics>
     Ok(entries)
 }
 
-/// The presence classification (§5): IMPLICIT → total, `EXPLICIT/LEGACY_REQUIRED` → partial.
+/// The presence classification (§5): IMPLICIT → `Total`, EXPLICIT → `Partial`,
+/// `LEGACY_REQUIRED` → `Required` (partial inbound, totality-obliged outbound).
 pub(super) fn totality(presence: Presence) -> Totality {
     match presence {
         Presence::Implicit => Totality::Total,
-        Presence::Explicit | Presence::LegacyRequired => Totality::Partial,
+        Presence::Explicit => Totality::Partial,
+        Presence::LegacyRequired => Totality::Required,
     }
 }
 
