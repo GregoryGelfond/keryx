@@ -11,6 +11,7 @@
 //! [`Schema`]: crate::descriptor::model::Schema
 //! [`Mapping`]: model::Mapping
 
+mod annotate;
 pub mod model;
 pub(crate) mod names;
 mod qualify;
@@ -328,6 +329,10 @@ fn build_enum(
     enumeration: &Enum,
     sorts: &BTreeMap<String, qualify::Qualified>,
 ) -> Result<EnumMapping, Diagnostics> {
+    // Option-admission integrity (§21.3): validate `(keryx.unknown)` against the enum's openness at
+    // the policy door — a `PRESERVE` on a closed enum is a mis-target diagnostic here, never a silent
+    // no-op. The resolved flag is consumed on `EnumMapping` in the PRESERVE task (Increment 5).
+    annotate::enum_preserve(enumeration)?;
     let strip = names::enum_strip(enumeration);
     let mut values = Vec::new();
     for value in enumeration.values() {

@@ -15,6 +15,7 @@ use crate::descriptor::model::{
     Enum, EnumValue, Field, FieldShape, FqName, Presence, Scalar, Schema, ValueType,
 };
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
+use crate::policy::annotate;
 use crate::policy::model::{
     EmitForm, EnumValueMapping, FieldMapping, ScalarTreatment, Totality, ValueMapping,
 };
@@ -212,7 +213,7 @@ pub(super) fn field_mapping(
     oneof: Option<&str>,
     sort_of: &impl Fn(&FqName) -> Result<Name, Diagnostics>,
 ) -> Result<FieldMapping, Diagnostics> {
-    let (form, arity, value) = shape(field.shape(), oneof, sort_of)?;
+    let (form, arity, value) = shape(field, oneof, sort_of)?;
     let presence = match field.shape() {
         FieldShape::Singular { presence, .. } => totality(*presence),
         FieldShape::Repeated { .. } | FieldShape::Map { .. } => Totality::Total,
@@ -230,59 +231,60 @@ pub(super) fn field_mapping(
     })
 }
 
-/// The (form, arity, value) for a field shape (spec §4.1, §7). Repeated is always a
-/// `Sequence` at present; `Set` waits for `(keryx.set)` semantics (Increment 5).
+/// The (form, arity, value) for a field, with its `(keryx.set)`/`(keryx.scale)`/`(keryx.opaque)`/
+/// `(keryx.numeric)` annotations resolved and validated at the policy door (`annotate`, §21.3): the
+/// emit form and the scalar treatments come from `annotate`, so a mis-targeted or malformed option
+/// is a diagnostic here rather than a silent mis-lowering. The positive `Set`/`FixedPoint`/… form
+/// and treatment overrides land in each option's own task; today an applicable annotation resolves
+/// to the §6/§7 default.
 fn shape(
-    shape: &FieldShape,
+    field: &Field,
     oneof: Option<&str>,
     sort_of: &impl Fn(&FqName) -> Result<Name, Diagnostics>,
 ) -> Result<(EmitForm, u32, ValueMapping), Diagnostics> {
-    Ok(match shape {
+    Ok(match field.shape() {
         FieldShape::Singular { value, .. } => {
-            let mapped = singular_value(value, sort_of)?;
+            let mapped = singular_value(field, value, sort_of)?;
             // The oneof name rides into `EmitForm::OneofArm` — and thence `emit.lp` — as the
             // descriptor's own string, not lowered to a predicate. It is safe to carry verbatim
             // because the descriptor door already refused any non-identifier oneof name
             // (`descriptor::pre_validate` → `check_ident` → `is_proto_ident`), so it holds no quote,
             // newline, or control character that could break a quoted `.lp` string or a `%!` doc.
-            let form = match oneof {
+            let base = match oneof {
                 Some(name) => EmitForm::OneofArm {
                     oneof: name.to_owned(),
                 },
                 None => EmitForm::Function,
             };
-            (form, 2, mapped)
+            (annotate::field_form(field, base)?, 2, mapped)
         }
-        FieldShape::Repeated { value } => match value {
-            ValueType::Scalar(scalar) => (
-                EmitForm::Sequence,
-                3,
-                ValueMapping::Scalar {
-                    kind: *scalar,
-                    treatment: scalar_treatment(*scalar),
-                },
-            ),
-            ValueType::Message(path) => {
-                (EmitForm::Sequence, 3, ValueMapping::Message(sort_of(path)?))
-            }
-            ValueType::Enum(path) => (EmitForm::Sequence, 3, ValueMapping::Enum(sort_of(path)?)),
-        },
-        FieldShape::Map { key, value } => {
+        FieldShape::Repeated { value } => {
             let mapped = match value {
                 ValueType::Scalar(scalar) => ValueMapping::Scalar {
                     kind: *scalar,
-                    treatment: scalar_treatment(*scalar),
+                    treatment: annotate::field_treatment(field, *scalar)?,
                 },
                 ValueType::Message(path) => ValueMapping::Message(sort_of(path)?),
                 ValueType::Enum(path) => ValueMapping::Enum(sort_of(path)?),
             };
-            // A key is a scalar in key position (spec §7.2: keys map per §6), so its treatment
-            // is the §6 default of its kind, computed as a value's is.
+            (annotate::field_form(field, EmitForm::Sequence)?, 3, mapped)
+        }
+        FieldShape::Map { key, value } => {
+            let mapped = match value {
+                ValueType::Scalar(scalar) => ValueMapping::Scalar {
+                    kind: *scalar,
+                    treatment: annotate::field_treatment(field, *scalar)?,
+                },
+                ValueType::Message(path) => ValueMapping::Message(sort_of(path)?),
+                ValueType::Enum(path) => ValueMapping::Enum(sort_of(path)?),
+            };
+            // A key is a scalar in key position (spec §7.2: keys map per §6); `(keryx.numeric)` on a
+            // map targets the key, resolved and validated here.
             let form = EmitForm::Map {
                 key: *key,
-                key_treatment: scalar_treatment(Scalar::from(*key)),
+                key_treatment: annotate::key_treatment(field, *key)?,
             };
-            (form, 3, mapped)
+            (annotate::field_form(field, form)?, 3, mapped)
         }
     })
 }
@@ -291,13 +293,14 @@ fn shape(
 /// sort predicate), or an enum. The relational view is derived at the mapping
 /// ([`FieldMapping::view`]), not decided here.
 fn singular_value(
+    field: &Field,
     value: &ValueType,
     sort_of: &impl Fn(&FqName) -> Result<Name, Diagnostics>,
 ) -> Result<ValueMapping, Diagnostics> {
     Ok(match value {
         ValueType::Scalar(scalar) => ValueMapping::Scalar {
             kind: *scalar,
-            treatment: scalar_treatment(*scalar),
+            treatment: annotate::field_treatment(field, *scalar)?,
         },
         ValueType::Message(path) => ValueMapping::Message(sort_of(path)?),
         ValueType::Enum(path) => ValueMapping::Enum(sort_of(path)?),

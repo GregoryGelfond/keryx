@@ -83,8 +83,15 @@ pub enum DiagnosticKind {
     /// protobuf structural invariant (§6 — no panic on foreign input); names the
     /// element's locus.
     MalformedDescriptor,
-    /// A keryx custom option carried a value keryx could not lower to a fact
-    /// term (§15) — e.g. an integer outside the term range.
+    /// A keryx custom option keryx cannot apply as declared (§15, §21.3). Either a value it could
+    /// not lower to a fact term (an integer outside the term range); or — since the vocabulary now
+    /// drives translation — an option **mis-targeted** to a field type or cardinality it cannot
+    /// apply to (`(keryx.scale)`/`(keryx.opaque)` on a non-float, `(keryx.set)` on a non-repeated
+    /// field, `(keryx.numeric)` on a non-integer, `(keryx.unknown) = PRESERVE` on a closed enum),
+    /// **malformed** in its value, or **profile-gated** without its profile (`(keryx.numeric) =
+    /// CLINGCON`, deferred). Resolved and validated at the policy door (`policy::annotate`), named
+    /// at the annotated element's proto path, never a panic or a silent mis-lowering (the threat
+    /// model's option-admission integrity, property 4).
     MalformedOption,
     /// A custom option's key is not a valid ASP constant, so its `opt/3` descriptor fact cannot
     /// be rendered (§15, §6). Reachable only on a crafted descriptor set: option admission is a
