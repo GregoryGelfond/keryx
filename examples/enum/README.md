@@ -34,9 +34,9 @@ keryx facts --root Corridor=corridor.txtpb signals.proto -I .
 its own, and each field of that type as a total function into it:
 
 ```prolog
-%!enum phase/1  (open)
+%! enum phase/1  (open)
 #defined phase/1.
-%!phase : light -> phase  (total)
+%! phase : light -> phase  (total)
 #defined phase/2.
 ```
 

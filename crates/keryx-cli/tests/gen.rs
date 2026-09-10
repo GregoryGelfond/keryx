@@ -65,7 +65,7 @@ fn writes_the_file_set_per_package() {
         "core declares the sort"
     );
     assert!(
-        core.contains("%!sort reading/1"),
+        core.contains("%! sort reading/1"),
         "core carries the sort signature"
     );
     // The §13.2 relational view for the singular message field.

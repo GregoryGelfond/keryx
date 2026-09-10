@@ -87,7 +87,7 @@ pub(super) fn doc_line(proto: Option<&str>, signature: &str) -> String {
 /// text (proto prose, signature lines) rides as `%!` comment lines, which `render_docs`
 /// writes verbatim and never passes through `spell_string` either.
 pub(super) fn render(statements: Vec<WithProvenance<Statement>>) -> Result<String, Diagnostics> {
-    let program = Program::of(statements);
+    let program = Program::of_nodes(statements);
     render_documented(&program, Dialect::Clingo).map_err(|unspellable| {
         Diagnostics::from(Diagnostic::new(
             DiagnosticKind::UnrenderableFacts,

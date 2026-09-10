@@ -219,7 +219,7 @@ mod tests {
             }
         );
         assert_eq!(
-            render(&Program::of([statement]), Dialect::Clingo).expect("renders"),
+            render(&Program::of_nodes([statement]), Dialect::Clingo).expect("renders"),
             "reading(\"s-101\", 44, celsius, msg(\"x\")).\n"
         );
     }

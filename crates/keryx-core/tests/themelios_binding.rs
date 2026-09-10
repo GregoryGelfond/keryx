@@ -13,7 +13,7 @@ fn constructs_and_renders_a_fact() {
         Name::new("p").expect("a valid identifier"),
         [Term::from(1)],
     ));
-    let program = Program::of([WithProvenance::constructed(Statement::Rule(fact))]);
+    let program = Program::of([fact]);
     assert_eq!(
         render(&program, Dialect::Clingo).expect("renders"),
         "p(1).\n"

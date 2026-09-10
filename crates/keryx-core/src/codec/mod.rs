@@ -322,7 +322,7 @@ impl Facts {
     /// facts' rendering is.
     pub fn render(&self) -> Result<String, Diagnostics> {
         render_ast(
-            &Program::of(self.symbols.iter().map(terms::fact_of)),
+            &Program::of_nodes(self.symbols.iter().map(terms::fact_of)),
             Dialect::Clingo,
         )
         .map_err(|unspellable| {
@@ -405,7 +405,7 @@ mod tests {
             vec![root.term()],
         );
         assert_eq!(
-            render(&Program::of([batch]), Dialect::Clingo).expect("renders"),
+            render(&Program::of_nodes([batch]), Dialect::Clingo).expect("renders"),
             "reading_batch(r0).\n"
         );
     }

@@ -199,7 +199,7 @@ mod tests {
         );
         assert_eq!(
             render(vec![statement]).expect("renders"),
-            "%!reach : f\nreach(A) :- reach(P), t(P), u(A), A = f(P, I).\n"
+            "%! reach : f\nreach(A) :- reach(P), t(P), u(A), A = f(P, I).\n"
         );
     }
 
@@ -219,7 +219,7 @@ mod tests {
         );
         assert_eq!(
             render(vec![statement]).expect("renders"),
-            "%!the pairs p tells apart\ndistinct(A, E) :- p(A, E), A != E.\n"
+            "%! the pairs p tells apart\ndistinct(A, E) :- p(A, E), A != E.\n"
         );
     }
 
@@ -236,7 +236,7 @@ mod tests {
         );
         assert_eq!(
             render(vec![statement]).expect("renders"),
-            "%!no p pairs a value with itself\n:- p(A, E), A != E.\n"
+            "%! no p pairs a value with itself\n:- p(A, E), A != E.\n"
         );
     }
 
@@ -254,7 +254,7 @@ mod tests {
         );
         assert_eq!(
             render(vec![statement]).expect("renders"),
-            "%!every t is a p\n:- t(P), not p(P).\n"
+            "%! every t is a p\n:- t(P), not p(P).\n"
         );
     }
 
@@ -268,7 +268,7 @@ mod tests {
         );
         assert_eq!(
             render(vec![statement]).expect("renders"),
-            "%!membership of enum level/1  (open)\nok_level(low).\n"
+            "%! membership of enum level/1  (open)\nok_level(low).\n"
         );
     }
 
@@ -289,7 +289,7 @@ mod tests {
         );
         assert_eq!(
             render(vec![statement]).expect("renders"),
-            "%!contiguity of c\nviolates(\"a.B.c\", P) :- f(P, _), has(P, I), I > 0, not has(P, (I - 1)).\n"
+            "%! contiguity of c\nviolates(\"a.B.c\", P) :- f(P, _), has(P, I), I > 0, not has(P, (I - 1)).\n"
         );
     }
 }

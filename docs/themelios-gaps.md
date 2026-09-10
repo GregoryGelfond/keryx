@@ -61,10 +61,16 @@ change, and the status (open / fixed-in `<rev>` / adopted).
   atom seam. Status: open (surfaced at the `emit` increment; cosmetic — the ladder
   works, it is only bumpy). The one composition seam this increment found rough.
 
-- **`%!` doc-comment spacing.** `render_documented`'s `render_docs` writes each doc line as
+- **`%!` doc-comment spacing.** `render_documented`'s `render_docs` wrote each doc line as
   `%!` immediately followed by the text, with no space — a deliberate render↔raise fixpoint
   ("nothing is written after the `%!`, so … a marker space would accrue on each pass"). keryx's
-  generated `core.lp`/`views.lp` are thus `%!sort batch/1`, which reads cramped. Needed:
+  generated `core.lp`/`views.lp` were thus `%!sort batch/1`, which reads cramped. Needed:
   `render_docs` emits `%! ` (one space) and the raise strips a single leading space after `%!`,
-  preserving the fixpoint. keryx's signature goldens change on adoption. Status: open (surfaced
-  during the gen increment, 2026-09-03; to be done in a dedicated themelios session).
+  preserving the fixpoint.
+
+  **Resolution in `653ca5b`.** `render_docs` now writes `%! ` — the marker, one space, then the
+  content — and the raise strips exactly one leading space back off on read, so the space is a
+  rendering convention that does not accrue across passes and a content that itself begins with a
+  space is preserved. keryx's `core.lp`/`views.lp` now read `%! sort batch/1`. Status: fixed in
+  `653ca5b`, adopted at that rev-bump — the signature goldens and the worked-example `.lp` were
+  regenerated to the spaced form.
