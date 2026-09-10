@@ -35,15 +35,15 @@ keryx facts --root Ledger=ledger.txtpb order.proto -I .
 The field declarations in [`gen/orders.v1.core.lp`](gen/orders.v1.core.lp):
 
 ```prolog
-%!enum grade/1  (closed)
+%! enum grade/1  (closed)
 #defined grade/1.
-%!grade : order -> grade  (partial)
+%! grade : order -> grade  (partial)
 #defined grade/2.
-%!id : order -> string  (partial)
+%! id : order -> string  (partial)
 #defined id/2.
-%!quantity : order -> int32  (partial)
+%! quantity : order -> int32  (partial)
 #defined quantity/2.
-%!tags : order × index -> string  (sequence)
+%! tags : order × index -> string  (sequence)
 #defined tags/3.
 ```
 

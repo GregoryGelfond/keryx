@@ -46,7 +46,7 @@ a schema that spans packages generates a module per package that load together.
 [`gen/inventory.v1.core.lp`](gen/inventory.v1.core.lp):
 
 ```prolog
-%!bins : warehouse × string -> bin  (map)
+%! bins : warehouse × string -> bin  (map)
 ```
 
 Each entry is an **access-path term** — the value's address in the message, `bins(r0, "a-1")`
@@ -68,7 +68,7 @@ select an entry by key. Not a synthesized row id: the key *is* the identity.
 the boundary: `inventory.v1.core.lp` declares
 
 ```prolog
-%!featured : warehouse -> sku  (partial)
+%! featured : warehouse -> sku  (partial)
 ```
 
 where `sku` is `catalog.v1`'s sort, generated in its own file set

@@ -91,16 +91,16 @@ message-typed field has no base predicate here, so its functional signature ride
 parent sort's declaration:
 
 ```prolog
-%!An alert raised for an overheating reading.
-%!sort alert/1
+%! An alert raised for an overheating reading.
+%! sort alert/1
 #defined alert/1.
-%!A batch of readings — a sequence.
-%!sort reading_batch/1
-%!readings : reading_batch × index -> reading  (sequence)
+%! A batch of readings — a sequence.
+%! sort reading_batch/1
+%! readings : reading_batch × index -> reading  (sequence)
 #defined reading_batch/1.
 …
-%!sensor : alert -> string  (total)
-%!sensor : reading -> string  (total)
+%! sensor : alert -> string  (total)
+%! sensor : reading -> string  (total)
 #defined sensor/2.
 ```
 
@@ -126,7 +126,7 @@ downstream model can range over the elements of a sequence by sort:
 
 ```prolog
 #include "thermal.v1.core.lp".
-%!readings : reading_batch × index -> reading  (sequence)
+%! readings : reading_batch × index -> reading  (sequence)
 readings(P, I, E) :- reading(E), E = readings(P, I).
 ```
 
@@ -143,13 +143,13 @@ asserted marker, and guards each obligation by `reach` and by its sort:
 
 ```prolog
 #include "thermal.v1.core.lp".
-%!readings : reading_batch × index -> reading  (sequence)
+%! readings : reading_batch × index -> reading  (sequence)
 reach(A) :- reach(X), reading(A), reading_batch(X), A = readings(X, I).
-%!emit_reading_batch : reading_batch  (root)
+%! emit_reading_batch : reading_batch  (root)
 reach(X) :- emit_reading_batch(X).
-%!functionality of sensor : reading -> string  (total)
+%! functionality of sensor : reading -> string  (total)
 :- reach(P), reading(P), sensor(P, V1), sensor(P, V2), V1 != V2.
-%!contiguity of readings : reading_batch × index -> reading  (sequence)
+%! contiguity of readings : reading_batch × index -> reading  (sequence)
 :- has_readings(P, I), reach(P), reading_batch(P), I > 0, not has_readings(P, (I - 1)).
 ```
 

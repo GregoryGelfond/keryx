@@ -25,14 +25,14 @@ carrying the readable signature as a `%!` doc comment; `views.lp` adds a
 relational view rule per message-typed field:
 
 ```prolog
-%!sort batch/1
-%!readings : batch × index -> reading  (sequence)
+%! sort batch/1
+%! readings : batch × index -> reading  (sequence)
 #defined batch/1.
-%!sort reading/1
+%! sort reading/1
 #defined reading/1.
-%!sensor : reading -> string  (total)
+%! sensor : reading -> string  (total)
 #defined sensor/2.
-%!temp_c : reading -> int32  (total)
+%! temp_c : reading -> int32  (total)
 #defined temp_c/2.
 
 readings(P, I, E) :- reading(E), E = readings(P, I).   % views.lp

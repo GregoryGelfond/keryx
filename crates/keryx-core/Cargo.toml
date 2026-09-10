@@ -11,12 +11,12 @@ license.workspace = true
 # no credentials. keryx never modifies themelios; gaps go to a themelios session
 # (docs/themelios-gaps.md).
 [dependencies]
-themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", rev = "86c7dfb", package = "themelios-program" }
+themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", rev = "653ca5b", package = "themelios-program" }
 # The themelios syntax tier — the same pinned rev — for the outbound door's `.lp` answer-set read
 # (`parse` → `raise`). Its types stay inside `codec::answer` (the reader returns `Vec<Symbol>`), so
 # no themelios-syntax type crosses keryx's surface; a `raise_source`-style convenience that would
 # let keryx read an answer set without naming the syntax tier is logged in `docs/themelios-gaps.md`.
-themelios-syntax = { git = "https://github.com/GregoryGelfond/themelios.git", rev = "86c7dfb", package = "themelios-syntax" }
+themelios-syntax = { git = "https://github.com/GregoryGelfond/themelios.git", rev = "653ca5b", package = "themelios-syntax" }
 
 # The dynamic protobuf-descriptor engine — the ingestion path (§20) and the payload
 # door's decode engine (§22). Read only through the `descriptor` module — its private

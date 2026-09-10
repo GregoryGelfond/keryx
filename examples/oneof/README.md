@@ -36,11 +36,11 @@ keryx facts --root Outbox=outbox.txtpb dispatch.proto -I .
 belongs to, in [`gen/dispatch.v1.core.lp`](gen/dispatch.v1.core.lp):
 
 ```prolog
-%!email : notice -> string  (oneof channel, partial)
+%! email : notice -> string  (oneof channel, partial)
 #defined email/2.
-%!sms : notice -> string  (oneof channel, partial)
+%! sms : notice -> string  (oneof channel, partial)
 #defined sms/2.
-%!subject : notice -> string  (total)
+%! subject : notice -> string  (total)
 #defined subject/2.
 ```
 
@@ -69,7 +69,7 @@ Outbound, [`gen/dispatch.v1.emit.lp`](gen/dispatch.v1.emit.lp) holds a notice to
 one** arm of the oneof:
 
 ```prolog
-%!exclusivity of email | sms : notice  (oneof channel)
+%! exclusivity of email | sms : notice  (oneof channel)
 :- email(P, _), notice(P), reach(P), sms(P, _).
 ```
 

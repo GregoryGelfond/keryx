@@ -34,7 +34,7 @@ use crate::terms;
 /// themelios cannot spell a symbol — composed from an `Unspellable`, never
 /// exposed or panicked (§6).
 pub fn render(schema: &Schema) -> Result<String, Diagnostics> {
-    let program = Program::of(statements(schema)?);
+    let program = Program::of_nodes(statements(schema)?);
     render_ast(&program, Dialect::Clingo).map_err(|unspellable| {
         Diagnostics::from(Diagnostic::new(
             DiagnosticKind::UnrenderableFacts,

@@ -455,7 +455,7 @@ mod tests {
     /// One fact over a term, rendered under the clingo dialect — the `.lp` spelling of a term.
     fn spelled(term: Term) -> Result<String, Unspellable> {
         render(
-            &Program::of([terms::fact("p", vec![term])]),
+            &Program::of_nodes([terms::fact("p", vec![term])]),
             Dialect::Clingo,
         )
     }
@@ -784,7 +784,7 @@ mod tests {
                 &Datum::Bytes(&[0xde, 0xad]),
             ),
         ];
-        let program = Program::of([terms::fact("sample", arguments)]);
+        let program = Program::of_nodes([terms::fact("sample", arguments)]);
         assert_eq!(
             render(&program, Dialect::Clingo).expect("every lowered term spells"),
             "sample(-7, 2147483647, \"-9007199254740993\", true, \"a\\nb \\\"c\\\" \\\\\", \"dead\").\n"
