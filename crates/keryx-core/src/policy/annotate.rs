@@ -74,20 +74,22 @@ fn reject_enum(enumeration: &Enum, detail: &str) -> Diagnostic {
     )
 }
 
-/// Validate `(keryx.numeric)` against a scalar kind, pushing any rejection. `NATIVE_CHECKED` and
-/// `DECIMAL_STRING` on a non-integer are a mis-target; `CLINGCON` is refused up front (profile-gated,
-/// deferred); any other value is malformed. An applicable value produces no override here — Task 6
-/// turns on `NativeChecked` and extends `DecimalString` to a 32-bit unsigned.
+/// Validate `(keryx.numeric)` against a target integer kind, pushing any rejection. `target` is
+/// `Some(scalar)` for the field or key kind the option applies to, `None` for a non-scalar value
+/// (a message/enum field), where it can never apply. `NATIVE_CHECKED`/`DECIMAL_STRING` on a
+/// non-integer are a mis-target; `CLINGCON` is refused up front (profile-gated, deferred); any other
+/// value is malformed. An applicable value produces no override here — Task 6 turns on
+/// `NativeChecked` and extends `DecimalString` to a 32-bit unsigned.
 fn reject_numeric(
     field: &Field,
-    scalar: Scalar,
+    target: Option<Scalar>,
     value: &AnnotationValue,
     rejections: &mut Vec<Diagnostic>,
 ) {
     match value {
         AnnotationValue::Enum(name) => match name.as_str() {
             "NATIVE_CHECKED" | "DECIMAL_STRING" => {
-                if !is_integer(scalar) {
+                if !target.is_some_and(is_integer) {
                     rejections.push(reject_field(
                         field,
                         "(keryx.numeric) applies only to an integer field or map key",
@@ -112,6 +114,51 @@ fn reject_numeric(
     }
 }
 
+/// Validate a field's scalar-value options (`scale`/`opaque`/`numeric`) against its value kind,
+/// pushing any rejection — the shared core of [`field_treatment`] (a scalar value, which also
+/// produces the treatment) and [`reject_nonscalar_options`] (a message- or enum-valued field, which
+/// produces none). `target` is `Some(scalar)` for a scalar value, `None` for a non-scalar one, where
+/// none of the three can apply — each present one is a mis-target. `(keryx.numeric)` on a map targets
+/// the key ([`key_treatment`]), not the value, so it is skipped here for a map field.
+fn validate_value_options(field: &Field, target: Option<Scalar>, rejections: &mut Vec<Diagnostic>) {
+    let is_map = matches!(field.shape(), FieldShape::Map { .. });
+    for annotation in field.options() {
+        match annotation.key.as_str() {
+            "scale" => {
+                if target.is_some_and(is_float) {
+                    if !matches!(annotation.value, AnnotationValue::Int(_)) {
+                        rejections.push(reject_field(
+                            field,
+                            "(keryx.scale) takes an integer exponent",
+                        ));
+                    }
+                } else {
+                    rejections.push(reject_field(
+                        field,
+                        "(keryx.scale) applies only to a float or double field",
+                    ));
+                }
+            }
+            "opaque" => {
+                if target.is_some_and(is_float) {
+                    if !matches!(annotation.value, AnnotationValue::Bool(true)) {
+                        rejections.push(reject_field(field, "(keryx.opaque) takes the value true"));
+                    }
+                } else {
+                    rejections.push(reject_field(
+                        field,
+                        "(keryx.opaque) applies only to a float or double field",
+                    ));
+                }
+            }
+            "numeric" if !is_map => {
+                reject_numeric(field, target, &annotation.value, rejections);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// The §6 scalar treatment of a field's value under its `(keryx.scale)`/`(keryx.opaque)`/
 /// `(keryx.numeric)` annotations. Returns the §6 default plus any diagnostics; the positive
 /// treatment overrides (`FixedPoint`, `OpaqueFloat`, `NativeChecked`, and `DecimalString` on a
@@ -122,40 +169,20 @@ pub(super) fn field_treatment(
     scalar: Scalar,
 ) -> Result<ScalarTreatment, Diagnostics> {
     let default = super::names::scalar_treatment(scalar);
-    let is_map = matches!(field.shape(), FieldShape::Map { .. });
     let mut rejections = Vec::new();
-    for annotation in field.options() {
-        match annotation.key.as_str() {
-            "scale" => {
-                if !is_float(scalar) {
-                    rejections.push(reject_field(
-                        field,
-                        "(keryx.scale) applies only to a float or double field",
-                    ));
-                } else if !matches!(annotation.value, AnnotationValue::Int(_)) {
-                    rejections.push(reject_field(
-                        field,
-                        "(keryx.scale) takes an integer exponent",
-                    ));
-                }
-            }
-            "opaque" => {
-                if !is_float(scalar) {
-                    rejections.push(reject_field(
-                        field,
-                        "(keryx.opaque) applies only to a float or double field",
-                    ));
-                } else if !matches!(annotation.value, AnnotationValue::Bool(true)) {
-                    rejections.push(reject_field(field, "(keryx.opaque) takes the value true"));
-                }
-            }
-            "numeric" if !is_map => {
-                reject_numeric(field, scalar, &annotation.value, &mut rejections);
-            }
-            _ => {}
-        }
-    }
+    validate_value_options(field, Some(scalar), &mut rejections);
     Diagnostics::collect(rejections).map_or(Ok(default), Err)
+}
+
+/// Validate the scalar-value options on a **message- or enum-valued** field, where none of
+/// `(keryx.scale)`/`(keryx.opaque)`/`(keryx.numeric)` can apply — each present one is a mis-target
+/// diagnostic (the F4c rule, applied uniformly). Called for every non-scalar-valued field as
+/// [`field_form`] is called for every field's `(keryx.set)`, so a mis-placed scalar-value option is
+/// refused rather than silently dropped. Produces no treatment (the field has no scalar value).
+pub(super) fn reject_nonscalar_options(field: &Field) -> Result<(), Diagnostics> {
+    let mut rejections = Vec::new();
+    validate_value_options(field, None, &mut rejections);
+    Diagnostics::collect(rejections).map_or(Ok(()), Err)
 }
 
 /// The emit form of a field under `(keryx.set)`. Returns `default` (the §7 form) plus any
@@ -187,7 +214,7 @@ pub(super) fn key_treatment(field: &Field, key: MapKey) -> Result<ScalarTreatmen
     let mut rejections = Vec::new();
     for annotation in field.options() {
         if annotation.key == "numeric" {
-            reject_numeric(field, scalar, &annotation.value, &mut rejections);
+            reject_numeric(field, Some(scalar), &annotation.value, &mut rejections);
         }
     }
     Diagnostics::collect(rejections).map_or(Ok(default), Err)
@@ -277,6 +304,36 @@ mod tests {
             FieldShape::Map {
                 key,
                 value: ValueType::Scalar(value),
+            },
+            options,
+        )
+    }
+
+    fn singular_message(options: Vec<Annotation>) -> Field {
+        field(
+            FieldShape::Singular {
+                value: ValueType::Message(FqName::new("m.Foo")),
+                presence: Presence::Explicit,
+            },
+            options,
+        )
+    }
+
+    fn singular_enum(options: Vec<Annotation>) -> Field {
+        field(
+            FieldShape::Singular {
+                value: ValueType::Enum(FqName::new("m.E")),
+                presence: Presence::Explicit,
+            },
+            options,
+        )
+    }
+
+    fn message_valued_map(options: Vec<Annotation>) -> Field {
+        field(
+            FieldShape::Map {
+                key: MapKey::Int64,
+                value: ValueType::Message(FqName::new("m.Foo")),
             },
             options,
         )
@@ -460,6 +517,68 @@ mod tests {
             MapKey::String,
         ));
         assert_eq!(kind, DiagnosticKind::MalformedOption);
+    }
+
+    // --- scale/opaque/numeric on message/enum-valued fields: F4c applied uniformly (mis-target) ---
+
+    #[test]
+    fn scale_on_a_message_field_is_a_mis_target() {
+        let (kind, locus) = kind_at_locus(reject_nonscalar_options(&singular_message(vec![ann(
+            "scale",
+            AnnotationValue::Int(2),
+        )])));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
+        assert_eq!(locus, "m.M.f");
+    }
+
+    #[test]
+    fn opaque_on_a_message_field_is_a_mis_target() {
+        let (kind, _) = kind_at_locus(reject_nonscalar_options(&singular_message(vec![ann(
+            "opaque",
+            AnnotationValue::Bool(true),
+        )])));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
+    }
+
+    #[test]
+    fn numeric_on_an_enum_field_is_a_mis_target() {
+        let (kind, _) = kind_at_locus(reject_nonscalar_options(&singular_enum(vec![ann(
+            "numeric",
+            AnnotationValue::Enum("NATIVE_CHECKED".to_owned()),
+        )])));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
+    }
+
+    #[test]
+    fn numeric_on_a_message_valued_map_is_the_key_s_not_a_value_mis_target() {
+        // On a `map<int64, Message>`, `(keryx.numeric)` targets the key (`key_treatment`); the
+        // message value does not read it, so `reject_nonscalar_options` admits.
+        reject_nonscalar_options(&message_valued_map(vec![ann(
+            "numeric",
+            AnnotationValue::Enum("NATIVE_CHECKED".to_owned()),
+        )]))
+        .expect("numeric on a map value is the key's, not a value mis-target");
+    }
+
+    #[test]
+    fn scale_on_a_message_valued_map_is_a_mis_target() {
+        // `(keryx.scale)` is not the key's; on a message-valued map it is a mis-target on the value.
+        let (kind, _) = kind_at_locus(reject_nonscalar_options(&message_valued_map(vec![ann(
+            "scale",
+            AnnotationValue::Int(2),
+        )])));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
+    }
+
+    #[test]
+    fn a_message_field_carrying_no_scalar_value_option_is_admitted() {
+        // `reject_nonscalar_options` handles only the scalar-value options; `(keryx.set)` on a
+        // message field is `field_form`'s mis-target, not this pass's, so this admits.
+        reject_nonscalar_options(&singular_message(vec![ann(
+            "set",
+            AnnotationValue::Bool(true),
+        )]))
+        .expect("set is not a scalar-value option");
     }
 
     // --- (keryx.set): repeated-only ---
