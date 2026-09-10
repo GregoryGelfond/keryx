@@ -37,7 +37,7 @@ extend google.protobuf.FieldOptions {
   optional bool          set       = 50101;  // repeated: order/multiplicity not meaningful
   optional NumericPolicy numeric   = 50102;  // integral fields & map keys (§6, §7.2)
   optional int32         scale     = 50103;  // float/double: fixed-point x10^scale
-  optional bool          opaque    = 50104;  // float/double/bytes: decimal-/hex-string constant
+  optional bool          opaque    = 50104;  // float/double: decimal-string constant
   optional ZeroPolicy    zero_field = 50105; // IMPLICIT fields: is the zero value a value? (Appendix A `zero`; renamed — see header)
   optional string        default   = 50106;  // rendered per field type; editions default preferred
   optional string        mirror    = 50107;  // reserved (§14, open)

@@ -53,6 +53,10 @@ proto2's alone. Committed future, not a boundary: full proto2 and proto3 outboun
 enforced — for interconnect preservation and inbound↔outbound symmetry, in a later increment;
 this note and the threat model's *Open* item close with it.
 
+## Enum openness and unknown values
+
+keryx branches on an enum's **resolved openness**, never on syntax era (§5, §7.4). A proto3 enum is **open** — a wire value naming no declared constant is legal — and `(keryx.unknown) = PRESERVE` carries such a value through translation rather than refusing it: inbound, an unknown number `N` shreds to `unknown(N)`; outbound, `unknown(N)` re-encodes to `N`; without the annotation an unknown value is a structured refusal (`UnknownEnumValue`). A proto2 enum is **closed** — an unknown wire value is an error — so `PRESERVE` is inapplicable there (a mis-target diagnostic at the policy door). The inverse override — declaring a proto3 enum *closed* through the editions `enum_type = CLOSED` feature — is **deferred** with the rest of editions support (above): a resolved-feature drop-in when the descriptor engine gains editions, not a redesign.
+
 ## Payload formats
 
 The inbound codec (`Codec::shred`; `keryx facts`) accepts a payload in each wire form spec §26
