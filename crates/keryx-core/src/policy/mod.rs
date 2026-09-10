@@ -419,7 +419,8 @@ fn missing_file(path: &FqName, file: &str) -> Diagnostics {
 mod tests {
     use super::map;
     use crate::descriptor::model::{
-        Field, FieldShape, File, FqName, Message, Package, Presence, Scalar, Schema, ValueType,
+        Annotation, AnnotationValue, Field, FieldShape, File, FqName, MapKey, Message, Package,
+        Presence, Scalar, Schema, ValueType,
     };
     use crate::diagnostics::DiagnosticKind;
 
@@ -761,5 +762,148 @@ mod tests {
                 );
             }
         }
+    }
+
+    // --- the `policy::annotate` seam is wired into `map`, pinned adversarially end-to-end ---
+    //
+    // The leaf validators are unit-tested in `annotate.rs`; these pin that they are *invoked* from
+    // the mapping, so a mutant deleting an `annotate::` call in `field_mapping`/`value_mapping`/
+    // `build_sort`/`build_enum` fails a test here rather than surviving the whole suite (the
+    // option-admission integrity surface, §21.3).
+
+    fn ann(key: &str, value: AnnotationValue) -> Annotation {
+        Annotation {
+            key: key.to_owned(),
+            value,
+        }
+    }
+
+    fn with_field_options(mut field: Field, options: Vec<Annotation>) -> Field {
+        field.options = options;
+        field
+    }
+
+    fn with_message_options(mut message: Message, options: Vec<Annotation>) -> Message {
+        message.options = options;
+        message
+    }
+
+    fn with_enum_options(mut enumeration: Enum, options: Vec<Annotation>) -> Enum {
+        enumeration.options = options;
+        enumeration
+    }
+
+    fn assert_malformed_at(schema: &Schema, locus: &str) {
+        let error = map(schema).expect_err("a mis-targeted or foreign option is refused");
+        let diagnostic = error
+            .iter()
+            .find(|diagnostic| diagnostic.kind() == DiagnosticKind::MalformedOption)
+            .expect("a MalformedOption diagnostic");
+        assert_eq!(diagnostic.locus().path(), Some(locus));
+    }
+
+    #[test]
+    fn a_mis_targeted_scalar_option_is_refused_through_map() {
+        // `(keryx.scale)` on a (non-float) string field — pins `field_treatment` via `value_mapping`.
+        let field = with_field_options(
+            singular_field("M", 1, "f", Presence::Implicit),
+            vec![ann("scale", AnnotationValue::Int(2))],
+        );
+        assert_malformed_at(&m_schema(vec![message("M", vec![field])], vec![]), "m.M.f");
+    }
+
+    #[test]
+    fn set_on_a_singular_field_is_refused_through_map() {
+        // pins `field_form`'s invocation (`set` mis-applied to a singular field).
+        let field = with_field_options(
+            singular_field("M", 1, "f", Presence::Implicit),
+            vec![ann("set", AnnotationValue::Bool(true))],
+        );
+        assert_malformed_at(&m_schema(vec![message("M", vec![field])], vec![]), "m.M.f");
+    }
+
+    #[test]
+    fn a_scalar_option_on_a_message_valued_field_is_refused_through_map() {
+        // `(keryx.scale)` on an enum-valued field — pins `reject_nonscalar_options` (the non-scalar
+        // arm of `value_mapping`); the referent enum is present, so the miss is the option.
+        let field = Field {
+            number: 1,
+            name: "f".to_owned(),
+            path: FqName::new("m.M.f"),
+            shape: FieldShape::Singular {
+                value: ValueType::Enum(FqName::new("m.Level")),
+                presence: Presence::Implicit,
+            },
+            options: vec![ann("scale", AnnotationValue::Int(2))],
+            doc: None,
+        };
+        assert_malformed_at(
+            &m_schema(vec![message("M", vec![field])], vec![level_enum("Level")]),
+            "m.M.f",
+        );
+    }
+
+    #[test]
+    fn numeric_on_a_non_integer_map_key_is_refused_through_map() {
+        // `(keryx.numeric)` on a `map<string, string>` — pins `key_treatment`'s invocation.
+        let field = Field {
+            number: 1,
+            name: "f".to_owned(),
+            path: FqName::new("m.M.f"),
+            shape: FieldShape::Map {
+                key: MapKey::String,
+                value: ValueType::Scalar(Scalar::String),
+            },
+            options: vec![ann(
+                "numeric",
+                AnnotationValue::Enum("NATIVE_CHECKED".to_owned()),
+            )],
+            doc: None,
+        };
+        assert_malformed_at(&m_schema(vec![message("M", vec![field])], vec![]), "m.M.f");
+    }
+
+    #[test]
+    fn a_foreign_option_on_a_field_is_refused_through_map() {
+        // an enum option `unknown` on a field — pins `reject_foreign_options` in `field_mapping`.
+        let field = with_field_options(
+            singular_field("M", 1, "f", Presence::Implicit),
+            vec![ann("unknown", AnnotationValue::Enum("PRESERVE".to_owned()))],
+        );
+        assert_malformed_at(&m_schema(vec![message("M", vec![field])], vec![]), "m.M.f");
+    }
+
+    #[test]
+    fn a_foreign_option_on_a_message_is_refused_through_map() {
+        // a field option `set` on a message — pins `reject_foreign_options` in `build_sort`.
+        let msg = with_message_options(
+            message("M", vec![]),
+            vec![ann("set", AnnotationValue::Bool(true))],
+        );
+        assert_malformed_at(&m_schema(vec![msg], vec![]), "m.M");
+    }
+
+    #[test]
+    fn a_foreign_option_on_an_enum_is_refused_through_map() {
+        // a field option `scale` on an enum — pins `reject_foreign_options` in `build_enum`.
+        let enumeration =
+            with_enum_options(level_enum("E"), vec![ann("scale", AnnotationValue::Int(2))]);
+        assert_malformed_at(
+            &m_schema(vec![message("M", vec![])], vec![enumeration]),
+            "m.E",
+        );
+    }
+
+    #[test]
+    fn preserve_on_a_closed_enum_is_refused_through_map() {
+        // pins `enum_preserve`'s invocation (`level_enum` is closed, so `PRESERVE` mis-targets).
+        let enumeration = with_enum_options(
+            level_enum("E"),
+            vec![ann("unknown", AnnotationValue::Enum("PRESERVE".to_owned()))],
+        );
+        assert_malformed_at(
+            &m_schema(vec![message("M", vec![])], vec![enumeration]),
+            "m.E",
+        );
     }
 }
