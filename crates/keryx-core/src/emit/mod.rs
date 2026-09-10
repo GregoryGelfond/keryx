@@ -67,7 +67,7 @@ pub(super) fn doc_line(proto: Option<&str>, signature: &str) -> String {
     }
 }
 
-/// Render a statement list to documented clingo text (spec §21.4): `Program::of` puts the
+/// Render a statement list to documented clingo text (spec §21.4): `Program::of_nodes` puts the
 /// statements in canonical Ord order and de-duplicates (P3); `render_documented` prepends
 /// each statement's `%!` docs. Total (§6): a themelios `Unspellable` composes an
 /// `UnrenderableFacts` diagnostic. `Unspellable` fires only when the renderer spells a string
