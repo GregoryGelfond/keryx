@@ -218,6 +218,24 @@ pub enum DiagnosticKind {
     /// offending field's path. The inbound scalar policy's, Increment 3; the annotations that
     /// discharge it are Increment 5's option vocabulary.
     UnannotatedFloat,
+    /// A finite `float`/`double` value is off the grid its `(keryx.scale) = n` declares: the scaled
+    /// integer `m = round(f · 10ⁿ)` does not re-divide to the exact input double
+    /// (`(m as f64) / 10ⁿ != f`), so the fixed-point lowering would not round-trip byte-for-byte
+    /// (§6, §26). Refused rather than silently rounded — the threat model's integrity property
+    /// carries a value faithfully or names it, never coerces it to the nearest representable one —
+    /// and the detail names `(keryx.opaque)` as the exact alternative for a value with no
+    /// fixed-point form. Kept apart from `ValueOutOfRange` (a value too large for the scaled `i32`)
+    /// and `NonFiniteFloat` (a value with no finite magnitude at all). Named at the offending
+    /// field's path. The scalar policy's, Increment 5.
+    ValueNotOnScale,
+    /// A `float`/`double` value is non-finite — NaN, +∞, or −∞ — under `(keryx.scale)` or
+    /// `(keryx.opaque)`. No fixed-point integer and no single decimal string round-trips a
+    /// non-finite value to a fixed bit pattern, so it is refused under both float treatments
+    /// (§6, §26). Distinct from `ValueOutOfRange` (a *finite* value that does not fit its kind's
+    /// range) and from `ValueNotOnScale` (a finite value off its declared grid): the fix-it says a
+    /// non-finite float has no representation at all, not that a different annotation would admit
+    /// it. Named at the offending field's path. The scalar policy's, Increment 5.
+    NonFiniteFloat,
     /// The root type a caller named to `Codec::shred` resolves to no message of the codec's
     /// schema — or, given as a short name, to more than one, which only the fully-qualified name
     /// separates. The library is the one type-resolution site, so this is a caller's argument
@@ -322,6 +340,8 @@ impl DiagnosticKind {
             DiagnosticKind::UnrepresentableText => "unrepresentable_text",
             DiagnosticKind::UnknownEnumValue => "unknown_enum_value",
             DiagnosticKind::UnannotatedFloat => "unannotated_float",
+            DiagnosticKind::ValueNotOnScale => "value_not_on_scale",
+            DiagnosticKind::NonFiniteFloat => "non_finite_float",
             DiagnosticKind::UnknownRootType => "unknown_root_type",
             DiagnosticKind::PayloadTooDeep => "payload_too_deep",
             DiagnosticKind::GeneratedPredicateCollision => "generated_predicate_collision",
@@ -680,6 +700,11 @@ mod tests {
             "unannotated_float"
         );
         assert_eq!(
+            DiagnosticKind::ValueNotOnScale.as_str(),
+            "value_not_on_scale"
+        );
+        assert_eq!(DiagnosticKind::NonFiniteFloat.as_str(), "non_finite_float");
+        assert_eq!(
             DiagnosticKind::UnknownRootType.as_str(),
             "unknown_root_type"
         );
@@ -733,6 +758,8 @@ mod tests {
             | DiagnosticKind::UnrepresentableText
             | DiagnosticKind::UnknownEnumValue
             | DiagnosticKind::UnannotatedFloat
+            | DiagnosticKind::ValueNotOnScale
+            | DiagnosticKind::NonFiniteFloat
             | DiagnosticKind::UnknownRootType
             | DiagnosticKind::PayloadTooDeep
             | DiagnosticKind::GeneratedPredicateCollision
