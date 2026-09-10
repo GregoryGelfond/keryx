@@ -56,11 +56,7 @@ pub(super) fn minus(term: Term, amount: i32) -> Term {
 /// the bound element. The `Name` is pre-validated (from the `Mapping`); the term canonicalizes
 /// at the door.
 pub(super) fn apply(name: Name, args: Vec<Term>) -> Term {
-    Term::Function {
-        name,
-        arguments: args,
-    }
-    .canonicalize()
+    Term::function(name, args)
 }
 
 /// An atom `name(args…)` (a constant when `args` is empty) — a view rule's head or referent

@@ -31,6 +31,14 @@ use crate::fault::{Dependency, contain};
 pub fn raise_answer_set(text: &str) -> Result<Vec<Symbol>, Diagnostics> {
     let source = Source::new(SourceId::new(0), text.to_owned())
         .map_err(|_| unreadable("the answer set is larger than keryx reads"))?;
+    // The closure borrows only `source` (keryx-built) and returns the `RaisedSource`; a fault drops
+    // it with the unwind, so nothing keryx observes survives it. `raise_source` parses then raises,
+    // and neither holds process-global state a fault could leave inconsistent: the program tier
+    // "does no I/O, holds no global state, interns nothing" and hands out only owned
+    // `Send + Sync + 'static` data (themelios-program `lib.rs`, its crate contract), and the syntax
+    // parse interns only within the one `GreenNodeBuilder` minted per call (rowan's per-builder
+    // `NodeCache`; themelios-syntax keeps no `static`/`thread_local`/locked cache) and reads no
+    // filesystem — so the `AssertUnwindSafe` is sound. (themelios `653ca5b`.)
     let raised = contain(Dependency::Themelios, "reading an answer set", || {
         raise_source(&source, Dialect::Clingo)
     })?;
@@ -175,5 +183,17 @@ mod tests {
                 .iter()
                 .any(|d| d.kind() == DiagnosticKind::UnreadableAnswerSet)
         );
+    }
+
+    // themelios's parse and raise are total with no known fault trigger (unlike the payload door's
+    // engine, which a crafted descriptor can panic), so a forced-panic poison test as at the
+    // descriptor door is not constructible here. The observable guarantee the containment's
+    // discharge protects — a refused read leaves nothing that disturbs a later one — is pinned by
+    // refusing a malformed answer set, then reading a well-formed one cleanly.
+    #[test]
+    fn a_refused_read_does_not_disturb_a_later_read() {
+        raise_answer_set("emit_reading(r0").expect_err("the malformed read is refused");
+        let symbols = raise_answer_set("reading_batch(b0).").expect("the later read is clean");
+        assert_eq!(symbols, vec![atom("reading_batch", vec![constant("b0")])]);
     }
 }
