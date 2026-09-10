@@ -102,8 +102,22 @@ pub enum ScalarTreatment {
     NativeChecked,
     /// `float`, `double` — no default; an annotation is required. Unannotated, the codec's
     /// scalar policy refuses the field (`UnannotatedFloat`, Increment 3); the annotations that
-    /// discharge the refusal, `(keryx.scale)` and `(keryx.opaque)`, are Increment 5.
+    /// discharge the refusal are `FixedPoint` (`(keryx.scale)`) and `OpaqueFloat` (`(keryx.opaque)`).
     NeedsAnnotation,
+    /// A `float`/`double` field under `(keryx.scale) = n` — lowered to a **fixed-point native clingo
+    /// integer**, the value scaled by `10ⁿ` and rounded, admitted only when it re-divides to the
+    /// exact input (byte-for-byte, §26): off the grid → `ValueNotOnScale`, non-finite →
+    /// `NonFiniteFloat`, past the scaled `i32` → `ValueOutOfRange`. `scale` is validated
+    /// `0 ≤ scale ≤ 9` at the policy door, before any `10ⁿ` is formed (Increment 5).
+    FixedPoint {
+        /// The decimal scale exponent `n` (`0 ≤ n ≤ 9`): the value is carried as `round(f · 10ⁿ)`.
+        scale: u32,
+    },
+    /// A `float`/`double` field under `(keryx.opaque) = true` — lowered to a **decimal-string
+    /// constant** (the value's shortest round-trippable decimal), opaque to clingo's arithmetic; the
+    /// exact alternative to `(keryx.scale)` for a value with no fixed-point grid. Non-finite →
+    /// `NonFiniteFloat` (Increment 5).
+    OpaqueFloat,
     /// `bool` — the constants `true`/`false`.
     Bool,
     /// `string` — a clingo string constant.
