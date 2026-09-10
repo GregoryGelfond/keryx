@@ -548,7 +548,7 @@ pub struct EnumValue {
 /// A keryx annotation — one applied custom option (§15), keyed by its option name
 /// with `keryx.` stripped (`set`, `numeric`, …). A repeated option expands to one
 /// `Annotation` per element. Inline-sourced at ingestion; overlay provenance (§16) is
-/// added with overlays at Increment 5.
+/// added with overlays at Increment 8.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Annotation {
     /// The option name with `keryx.` stripped (e.g. `set`, `numeric`).

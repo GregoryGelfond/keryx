@@ -265,9 +265,11 @@ fn path(field: &FieldMapping) -> String {
 /// range. Totality is emitted for `Total` and `Required` alike — IMPLICIT presence and proto2
 /// `required` (`Totality::Required`, E1): both mint the presence witness and carry the totality
 /// constraint, so a proto2 `required` field's completeness is enforced outbound (full
-/// proto2/proto3 parity), while an EXPLICIT (`Partial`) field gets functionality only. A message-typed slot gets nothing here: its occupant `f(P)` is one term, so
-/// functionality is structural, and its presence is its occupancy — held from the parent over
-/// the slot ([`slot_occupancy`]).
+/// proto2/proto3 parity), while an EXPLICIT (`Partial`) field gets functionality only. A
+/// message-typed slot's functionality is structural (its occupant `f(P)` is one term) and its
+/// presence is its occupancy, held from the parent over the slot ([`slot_occupancy`]) — except a
+/// `Required` (proto2 `required`) message slot, which additionally carries a totality obligation
+/// over its occupant, `not <child>(f(P))` (below; E1).
 fn singular(
     sort: &SortMapping,
     field: &FieldMapping,
