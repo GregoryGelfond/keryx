@@ -102,6 +102,18 @@ fn a_proto2_required_field_carries_the_outbound_totality_obligation() {
     );
 }
 
+// E1 (Slice 1 close): a proto2 `required` MESSAGE field is totality-obliged over occupancy — the
+// occupant must exist — so `emit.lp` enforces it as the reassembler does (full parity), not only
+// for a required scalar. `Order.info` is `required Detail`.
+#[test]
+fn a_proto2_required_message_field_carries_an_occupancy_totality_obligation() {
+    let strict = emit::emit_strict(&unit_of("proto2.proto")).expect("emits");
+    assert!(
+        strict.contains(":- order(P), reach(P), not detail(info(P))."),
+        "the required message field `info` obliges its occupant's presence:\n{strict}"
+    );
+}
+
 // The closure over every message-typed form on one parent sort — a singular field, a sequence,
 // a map, and a message-typed oneof arm — each reaching its occupant through the safe idiom: the
 // child sort atom binds the occupant, and the equality deconstructs it to bind the index or key

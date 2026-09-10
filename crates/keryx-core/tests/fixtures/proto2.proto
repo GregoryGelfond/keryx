@@ -1,11 +1,17 @@
 syntax = "proto2";
 package keryx.p2;
 
-// A purchase order — proto2 presence across the three labels.
+// A purchase order — proto2 presence across the three labels, and a required message field.
 message Order {
-  required string id = 1;       // LEGACY_REQUIRED
+  required string id = 1;       // LEGACY_REQUIRED (scalar)
   optional int32 quantity = 2;  // EXPLICIT
   repeated string tags = 3;     // Implicit (collection presence)
+  required Detail info = 4;     // LEGACY_REQUIRED (message) — totality over occupancy
+}
+
+// A message-typed occupant, so a required message field's presence obligation is exercised.
+message Detail {
+  optional string text = 1;
 }
 
 // A proto2 enum — a closed sort (§7.4).

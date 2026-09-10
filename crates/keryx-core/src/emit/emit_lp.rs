@@ -262,10 +262,10 @@ fn path(field: &FieldMapping) -> String {
 
 /// A singular field's obligations (`Function` or `OneofArm`) over a base-fact field — scalar
 /// or enum: functionality, totality when the field is total, and the value's membership or
-/// range. Totality is emitted for `Total` alone — IMPLICIT presence: the mapping does not tell
-/// `LEGACY_REQUIRED` from EXPLICIT (both `Partial`), so a proto2 `required` field gets
-/// functionality only, and its completeness is unenforced outbound until the distinction is
-/// carried. A message-typed slot gets nothing here: its occupant `f(P)` is one term, so
+/// range. Totality is emitted for `Total` and `Required` alike — IMPLICIT presence and proto2
+/// `required` (`Totality::Required`, E1): both mint the presence witness and carry the totality
+/// constraint, so a proto2 `required` field's completeness is enforced outbound (full
+/// proto2/proto3 parity), while an EXPLICIT (`Partial`) field gets functionality only. A message-typed slot gets nothing here: its occupant `f(P)` is one term, so
 /// functionality is structural, and its presence is its occupancy — held from the parent over
 /// the slot ([`slot_occupancy`]).
 fn singular(
@@ -274,10 +274,29 @@ fn singular(
     auxiliaries: &mut Vec<WithProvenance<Statement>>,
     obligations: &mut Vec<Obligation>,
 ) {
-    if field.view().is_some() {
+    let line = signature::field(sort, field);
+    if let Some((kind, child)) = field.view() {
+        // A message-typed slot: functionality is structural (one occupant term), and its presence
+        // is held from the parent (`slot_occupancy`). A `Required` (proto2 `required`) message field
+        // adds a totality obligation over occupancy — the occupant `f(P)` must be a `<child>` — the
+        // message counterpart of the scalar witness-and-constraint below, so `emit.lp` enforces a
+        // `required` field on both the scalar and the message side (E1, full proto2/proto3 parity).
+        if field.presence() == Totality::Required {
+            let p = build::var("P");
+            let mut body = guard(sort, &p);
+            body.push(build::not_atom(build::atom(
+                child.clone(),
+                [slot(field, kind, p.clone())],
+            )));
+            obligations.push(Obligation {
+                path: path(field),
+                subject: p,
+                body,
+                doc: doc(Kind::Totality, &line),
+            });
+        }
         return;
     }
-    let line = signature::field(sort, field);
     let p = build::var("P");
     obligations.push(functional(sort, field, Kind::Functionality, &[], &line));
     // A `Total` (IMPLICIT) or a `Required` (proto2 `required`) field is totality-obliged (E1):
