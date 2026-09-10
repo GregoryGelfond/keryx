@@ -22,9 +22,10 @@
 //! Per option, its **positive production** (the `ScalarTreatment`/`EmitForm` override an applicable
 //! annotation resolves to) lands in that option's own task, so no commit carries a `Mapping` variant
 //! that is producible but unhandled (F5). This module establishes the framework, the validation
-//! table, the classification rule, and the default-and-no-op path; today it produces no new variant
-//! — an applicable-but-not-yet-produced annotation (a scaled float, a `NATIVE_CHECKED` 64-bit field,
-//! a set on a repeated field) resolves to the §6/§7 default until its task turns on the override.
+//! table, the classification rule, and the default-and-no-op path; the scalar-value overrides land
+//! here — `(keryx.numeric)` → `NativeChecked`/`DecimalString`, `(keryx.scale)`/`(keryx.opaque)` →
+//! `FixedPoint`/`OpaqueFloat` — while an option not yet lowered (a set on a repeated field) resolves
+//! to the §7 default meanwhile.
 
 use crate::descriptor::model::{
     Annotation, AnnotationValue, Enum, Field, FieldShape, MapKey, Openness, Scalar,
@@ -73,6 +74,12 @@ fn is_64_bit(scalar: Scalar) -> bool {
 fn is_32_bit_unsigned(scalar: Scalar) -> bool {
     matches!(scalar, Scalar::Uint32 | Scalar::Fixed32)
 }
+
+/// The largest `(keryx.scale)` exponent keryx admits: `10⁹ ≤ i32::MAX`, so a scaled value can still
+/// fit a native clingo integer, and — validated here, before any `10ⁿ` is formed — an
+/// adversary-supplied exponent can never overflow the exponentiation (the option-admission panic
+/// vector, `docs/design/threat-model.md`). Beyond it, `(keryx.scale)` is a `MalformedOption`.
+const SCALE_MAX: u32 = 9;
 
 /// A rejection at a field's proto path — a `MalformedOption` naming the option and the rule it
 /// broke (never the adversary's option value; P1).
@@ -210,11 +217,20 @@ fn validate_value_options(field: &Field, target: Option<Scalar>, rejections: &mu
         match annotation.key.as_str() {
             "scale" => {
                 if target.is_some_and(is_float) {
-                    if !matches!(annotation.value, AnnotationValue::Int(_)) {
-                        rejections.push(reject_field(
+                    match annotation.value {
+                        // Capped at SCALE_MAX, and validated *here* — before any `10ⁿ` — so an
+                        // adversary exponent cannot overflow the exponentiation (the panic vector).
+                        AnnotationValue::Int(n) if (0..=i64::from(SCALE_MAX)).contains(&n) => {}
+                        AnnotationValue::Int(_) => rejections.push(reject_field(
+                            field,
+                            &format!(
+                                "(keryx.scale) exponent is out of range; it must be between 0 and {SCALE_MAX}, so 10^n fits a native clingo integer"
+                            ),
+                        )),
+                        _ => rejections.push(reject_field(
                             field,
                             "(keryx.scale) takes an integer exponent",
-                        ));
+                        )),
                     }
                 } else {
                     rejections.push(reject_field(
@@ -240,6 +256,24 @@ fn validate_value_options(field: &Field, target: Option<Scalar>, rejections: &mu
             }
             _ => {}
         }
+    }
+    // `(keryx.scale)` and `(keryx.opaque)` are two different float lowerings; a float field may take
+    // at most one (F4b). On a non-float each is already a mis-target above, so the conflict is gated
+    // to a float target, where both would otherwise be admissible.
+    if target.is_some_and(is_float)
+        && field
+            .options()
+            .iter()
+            .any(|annotation| annotation.key == "scale")
+        && field
+            .options()
+            .iter()
+            .any(|annotation| annotation.key == "opaque")
+    {
+        rejections.push(reject_field(
+            field,
+            "(keryx.scale) and (keryx.opaque) are mutually exclusive; a field may carry at most one",
+        ));
     }
 }
 
@@ -268,12 +302,36 @@ fn numeric_treatment(field: &Field, target: Scalar, default: ScalarTreatment) ->
     treatment
 }
 
+/// The scalar treatment a validated `(keryx.scale)`/`(keryx.opaque)` annotation resolves to for a
+/// `float`/`double` `target`, given its §6 `default` (`NeedsAnnotation`): `(keryx.scale) = n` →
+/// `FixedPoint { scale: n }` (`n` validated `0..=SCALE_MAX` at the door), `(keryx.opaque) = true` →
+/// `OpaqueFloat`. A non-float `target` keeps its `default` (the two options mis-target there, refused
+/// in [`validate_value_options`]). Called only after validation admits the field; `scale`/`opaque`
+/// are mutually exclusive (F4b), so at most one fires.
+fn float_treatment(field: &Field, target: Scalar, default: ScalarTreatment) -> ScalarTreatment {
+    if !is_float(target) {
+        return default;
+    }
+    for annotation in field.options() {
+        if annotation.key == "scale"
+            && let AnnotationValue::Int(n) = annotation.value
+        {
+            let scale =
+                u32::try_from(n).expect("(keryx.scale) exponent validated to 0..=SCALE_MAX");
+            return ScalarTreatment::FixedPoint { scale };
+        }
+        if annotation.key == "opaque" && matches!(annotation.value, AnnotationValue::Bool(true)) {
+            return ScalarTreatment::OpaqueFloat;
+        }
+    }
+    default
+}
+
 /// The scalar treatment of a field's value under its `(keryx.scale)`/`(keryx.opaque)`/
-/// `(keryx.numeric)` annotations: the §6 default, or the `(keryx.numeric)` override
-/// ([`numeric_treatment`]), plus any diagnostics; the float overrides (`FixedPoint`, `OpaqueFloat`)
-/// for `(keryx.scale)`/`(keryx.opaque)` extend this in a later increment. `(keryx.numeric)` on a
-/// **map** targets the key, not the value ([`key_treatment`]), so a map field's value keeps its §6
-/// default here.
+/// `(keryx.numeric)` annotations: the §6 default, or the `(keryx.scale)`/`(keryx.opaque)` override
+/// ([`float_treatment`]) or the `(keryx.numeric)` override ([`numeric_treatment`]), plus any
+/// diagnostics. `(keryx.numeric)` on a **map** targets the key, not the value ([`key_treatment`]), so
+/// a map field's value keeps its §6 default here.
 pub(super) fn field_treatment(
     field: &Field,
     scalar: Scalar,
@@ -285,11 +343,17 @@ pub(super) fn field_treatment(
         return Err(diagnostics);
     }
     // `(keryx.numeric)` on a map targets the key (§7.2, `key_treatment`), so a map field's value
-    // keeps its §6 default; a non-map field's value takes any numeric override.
+    // keeps its §6 default; a non-map field's value takes a float or numeric override.
     if matches!(field.shape(), FieldShape::Map { .. }) {
         return Ok(default);
     }
-    Ok(numeric_treatment(field, scalar, default))
+    // A float field takes a scale/opaque override, an integer field a numeric one; neither applies to
+    // the other kind (validated), so the two resolutions compose.
+    Ok(numeric_treatment(
+        field,
+        scalar,
+        float_treatment(field, scalar, default),
+    ))
 }
 
 /// Validate the scalar-value options on a **message- or enum-valued** field, where none of
@@ -520,15 +584,70 @@ mod tests {
     }
 
     #[test]
-    fn scale_on_a_float_admits_today_as_the_needs_annotation_default() {
-        // Applicable (float) but not yet produced: Task 7 turns on `FixedPoint`; the §6 default
-        // (`NeedsAnnotation`) stands here, and no diagnostic fires.
-        let treatment = field_treatment(
-            &singular(Scalar::Double, vec![ann("scale", AnnotationValue::Int(2))]),
+    fn scale_on_a_float_produces_fixed_point() {
+        // `(keryx.scale) = n` overrides the float's `NeedsAnnotation` default with a fixed-point
+        // integer treatment, on a float and a double alike, at the boundary exponents 0 and 9.
+        for kind in [Scalar::Float, Scalar::Double] {
+            // 0 and 9 are the admitted boundary exponents (9 is the cap; 10⁹ ≤ i32::MAX).
+            for exponent in [0, 2, 9] {
+                let treatment = field_treatment(
+                    &singular(kind, vec![ann("scale", AnnotationValue::Int(exponent))]),
+                    kind,
+                )
+                .expect("scale on a float is applicable");
+                let scale = u32::try_from(exponent).expect("a small exponent");
+                assert_eq!(treatment, ScalarTreatment::FixedPoint { scale }, "{kind:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn opaque_on_a_float_produces_opaque_float() {
+        for kind in [Scalar::Float, Scalar::Double] {
+            let treatment = field_treatment(
+                &singular(kind, vec![ann("opaque", AnnotationValue::Bool(true))]),
+                kind,
+            )
+            .expect("opaque on a float is applicable");
+            assert_eq!(treatment, ScalarTreatment::OpaqueFloat, "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn a_scale_exponent_above_the_cap_is_malformed() {
+        // The scale is capped at 9 so `10ⁿ` cannot overflow a native integer; exponent 10 is
+        // refused at the door, before any exponentiation is formed (the panic vector closed).
+        let (kind, locus) = kind_at_locus(field_treatment(
+            &singular(Scalar::Double, vec![ann("scale", AnnotationValue::Int(10))]),
             Scalar::Double,
-        )
-        .expect("scale on a double is applicable");
-        assert_eq!(treatment, ScalarTreatment::NeedsAnnotation);
+        ));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
+        assert_eq!(locus, "m.M.f");
+    }
+
+    #[test]
+    fn a_negative_scale_exponent_is_malformed() {
+        let (kind, _) = kind_at_locus(field_treatment(
+            &singular(Scalar::Float, vec![ann("scale", AnnotationValue::Int(-1))]),
+            Scalar::Float,
+        ));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
+    }
+
+    #[test]
+    fn scale_and_opaque_on_one_field_conflict() {
+        // The two float lowerings are mutually exclusive; a field carrying both is refused.
+        let (kind, _) = kind_at_locus(field_treatment(
+            &singular(
+                Scalar::Double,
+                vec![
+                    ann("scale", AnnotationValue::Int(2)),
+                    ann("opaque", AnnotationValue::Bool(true)),
+                ],
+            ),
+            Scalar::Double,
+        ));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
     }
 
     // --- (keryx.numeric): integer-only; no-op vs mis-target (F4c) ---
