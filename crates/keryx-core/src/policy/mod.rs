@@ -147,6 +147,13 @@ fn build_sort(
     sort_of: &impl Fn(&FqName) -> Result<Name, Diagnostics>,
     sorts: &BTreeMap<String, qualify::Qualified>,
 ) -> Result<SortMapping, Diagnostics> {
+    // Option-admission integrity (§21.3): a keryx option on the wrong element category — a field or
+    // enum option applied to this message — is a mis-target at the message's locus.
+    annotate::reject_foreign_options(
+        message.path().as_str(),
+        message.options(),
+        annotate::Category::Message,
+    )?;
     let mut fields = Vec::new();
     for field in message.fields() {
         let oneof = message
@@ -333,6 +340,13 @@ fn build_enum(
     // the policy door — a `PRESERVE` on a closed enum is a mis-target diagnostic here, never a silent
     // no-op. The resolved flag is consumed on `EnumMapping` in the PRESERVE task (Increment 5).
     annotate::enum_preserve(enumeration)?;
+    // And a keryx option on the wrong element category — a field or message option on this enum — is
+    // a mis-target here.
+    annotate::reject_foreign_options(
+        enumeration.path().as_str(),
+        enumeration.options(),
+        annotate::Category::Enum,
+    )?;
     let strip = names::enum_strip(enumeration);
     let mut values = Vec::new();
     for value in enumeration.values() {

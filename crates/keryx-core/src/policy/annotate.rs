@@ -27,7 +27,7 @@
 //! a set on a repeated field) resolves to the §6/§7 default until its task turns on the override.
 
 use crate::descriptor::model::{
-    AnnotationValue, Enum, Field, FieldShape, MapKey, Openness, Scalar,
+    Annotation, AnnotationValue, Enum, Field, FieldShape, MapKey, Openness, Scalar,
 };
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use crate::policy::model::{EmitForm, ScalarTreatment};
@@ -72,6 +72,71 @@ fn reject_enum(enumeration: &Enum, detail: &str) -> Diagnostic {
         Locus::at(enumeration.path().as_str()),
         detail.to_owned(),
     )
+}
+
+/// The element category a keryx option extends (§15, Appendix A): a field, a message, or an enum
+/// option. An option applied to a different category is a mis-target ([`reject_foreign_options`]) —
+/// reachable only on a crafted descriptor set, since protoc enforces the extendee, but the door's
+/// option admission is a file-name heuristic, so keryx validates the category itself.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Category {
+    Field,
+    Message,
+    Enum,
+}
+
+impl Category {
+    /// The noun a diagnostic names this category by.
+    fn noun(self) -> &'static str {
+        match self {
+            Category::Field => "a field",
+            Category::Message => "a message",
+            Category::Enum => "an enum",
+        }
+    }
+}
+
+/// The element category a known keryx option key extends (Appendix A), or `None` for a key that is
+/// not a registered keryx option — which stays an `opt/3` fact (the file-name heuristic admits it,
+/// but it drives no translation, so it is faithfully reported, not a mis-target). Kept in step with
+/// the registry (`crates/keryx-core/proto/keryx/options.proto`).
+fn key_category(key: &str) -> Option<Category> {
+    match key {
+        "set" | "numeric" | "scale" | "opaque" | "zero_field" | "default" | "mirror" => {
+            Some(Category::Field)
+        }
+        "value" | "key" | "any_types" | "reify" => Some(Category::Message),
+        "zero" | "unknown" => Some(Category::Enum),
+        _ => None,
+    }
+}
+
+/// Refuse a known keryx option applied to the wrong element category (§15): an enum option on a
+/// field, a field option on an enum, and so on. Each is a mis-target at the element's locus, so
+/// `policy::annotate` validates *every* applied option against its target's kind — not only the
+/// options its own category consumes — the F4c rule across element categories. A within-category
+/// mis-application (`(keryx.set)` on a singular field) is the per-option validator's, not this
+/// pass's; an unregistered key is left alone (an `opt/3` fact, driving no translation).
+pub(super) fn reject_foreign_options(
+    path: &str,
+    options: &[Annotation],
+    own: Category,
+) -> Result<(), Diagnostics> {
+    let mut rejections = Vec::new();
+    for annotation in options {
+        if key_category(&annotation.key).is_some_and(|category| category != own) {
+            rejections.push(Diagnostic::new(
+                DiagnosticKind::MalformedOption,
+                Locus::at(path),
+                format!(
+                    "(keryx.{}) does not apply to {}",
+                    annotation.key,
+                    own.noun()
+                ),
+            ));
+        }
+    }
+    Diagnostics::collect(rejections).map_or(Ok(()), Err)
 }
 
 /// Validate `(keryx.numeric)` against a target integer kind, pushing any rejection. `target` is
@@ -579,6 +644,73 @@ mod tests {
             AnnotationValue::Bool(true),
         )]))
         .expect("set is not a scalar-value option");
+    }
+
+    // --- cross-category: a keryx option on the wrong element category is a mis-target ---
+
+    #[test]
+    fn an_enum_option_on_a_field_is_a_mis_target() {
+        let (kind, locus) = kind_at_locus(reject_foreign_options(
+            "m.M.f",
+            &[ann("unknown", AnnotationValue::Enum("PRESERVE".to_owned()))],
+            Category::Field,
+        ));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
+        assert_eq!(locus, "m.M.f");
+    }
+
+    #[test]
+    fn a_message_option_on_a_field_is_a_mis_target() {
+        let (kind, _) = kind_at_locus(reject_foreign_options(
+            "m.M.f",
+            &[ann("value", AnnotationValue::Bool(true))],
+            Category::Field,
+        ));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
+    }
+
+    #[test]
+    fn a_field_option_on_an_enum_is_a_mis_target() {
+        let (kind, _) = kind_at_locus(reject_foreign_options(
+            "m.E",
+            &[ann("set", AnnotationValue::Bool(true))],
+            Category::Enum,
+        ));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
+    }
+
+    #[test]
+    fn a_field_option_on_a_message_is_a_mis_target() {
+        let (kind, _) = kind_at_locus(reject_foreign_options(
+            "m.M",
+            &[ann("scale", AnnotationValue::Int(2))],
+            Category::Message,
+        ));
+        assert_eq!(kind, DiagnosticKind::MalformedOption);
+    }
+
+    #[test]
+    fn a_same_category_key_is_left_to_its_own_validator() {
+        // `(keryx.set)` on a field is a field-category key — its within-category mis-application (on
+        // a singular, say) is `field_form`'s, not this cross-category pass's — so this admits.
+        reject_foreign_options(
+            "m.M.f",
+            &[ann("set", AnnotationValue::Bool(true))],
+            Category::Field,
+        )
+        .expect("a field key on a field is not cross-category");
+    }
+
+    #[test]
+    fn an_unregistered_key_is_not_a_cross_category_mis_target() {
+        // A key that is not a registered keryx option stays an `opt/3` fact (it drives no
+        // translation), so it is not refused here.
+        reject_foreign_options(
+            "m.M.f",
+            &[ann("bogus", AnnotationValue::Bool(true))],
+            Category::Field,
+        )
+        .expect("an unregistered key is left alone");
     }
 
     // --- (keryx.set): repeated-only ---
