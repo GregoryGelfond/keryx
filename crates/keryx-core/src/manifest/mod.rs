@@ -122,10 +122,10 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 /// proto-declared type regardless of `kind`/target
 /// (`declared`). `<descriptor>` is the family's shape — `seq` (sequence), `map<key>` (map), or
 /// `set` (a `(keryx.set)` membership relation, reserved at present) — or, for a singular field or
-/// oneof arm, its `Totality` (§5), not the finer presence — the fidelity the `Mapping` carries,
-/// `LEGACY_REQUIRED` folded into `partial`, so a proto2 `required` field's distinct outbound
-/// totality obligation is neither recorded here nor yet emitted by `emit.lp`
-/// (`policy::model::Totality`, a committed follow-up).
+/// oneof arm, its `Totality` (§5), not the finer presence — the fidelity the `Mapping` carries: a
+/// proto2 `required` field renders `required` (not folded into `partial`), its distinct outbound
+/// totality obligation emitted by `emit.lp` (`policy::model::Totality`, E1 — full proto2/proto3
+/// parity).
 /// A map's `<key>` is the *declared* key type (§13.4): the codec lowers a key under its §6
 /// default treatment (an `int64` key travels as a decimal string, §7.2), but the manifest records
 /// the declaration, so `map<int64>` names the declared key, never the emitted term's shape.
