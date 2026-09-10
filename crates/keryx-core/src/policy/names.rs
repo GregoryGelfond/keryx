@@ -213,6 +213,13 @@ pub(super) fn field_mapping(
     oneof: Option<&str>,
     sort_of: &impl Fn(&FqName) -> Result<Name, Diagnostics>,
 ) -> Result<FieldMapping, Diagnostics> {
+    // A keryx option on the wrong element category — an enum or message option on this field — is a
+    // mis-target at the field's locus (§21.3).
+    annotate::reject_foreign_options(
+        field.path().as_str(),
+        field.options(),
+        annotate::Category::Field,
+    )?;
     let (form, arity, value) = shape(field, oneof, sort_of)?;
     let presence = match field.shape() {
         FieldShape::Singular { presence, .. } => totality(*presence),
