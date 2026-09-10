@@ -275,7 +275,6 @@ dependencies = [
  "protox",
  "serde_json",
  "themelios-program",
- "themelios-syntax",
 ]
 
 [[package]]

@@ -157,16 +157,12 @@ pub(super) fn positive(atom: Atom) -> BodyElement {
     BodyElement::from(atom)
 }
 
-/// The comparison `first R second` as a positive body element, in the written direction. A
-/// [`Comparison`] has no body coercion of its own, so this is its one wrapping into a
-/// [`Literal`] — [`view_rule`]'s `element = occupant` goes through it too.
+/// The comparison `first R second` as a positive body element, in the written direction —
+/// themelios's own `From<Comparison> for BodyElement` coercion (a positive body literal, no
+/// default negation), spelled here so no emitter reaches its construction surface for it.
+/// [`view_rule`]'s `element = occupant` goes through it too.
 pub(super) fn compare(first: Term, relation: Relation, second: Term) -> BodyElement {
-    BodyElement::from(Literal {
-        negation: DefaultNegation::None,
-        inner: LiteralInner::Comparison(WithProvenance::constructed(Comparison::new(
-            first, relation, second,
-        ))),
-    })
+    BodyElement::from(Comparison::new(first, relation, second))
 }
 
 #[cfg(test)]
