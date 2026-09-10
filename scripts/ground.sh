@@ -217,6 +217,29 @@ $model" ;;
 esac
 echo "ground: proto2 — SAT with the required id; UNSAT omitting it; required-field violation derived"
 
+# proto2 fixture (E1, required MESSAGE field): a proto2 `required` message field's presence is
+# obliged over occupancy in emit.lp, as the reassembler enforces it — full parity. `Order.info` is
+# `required Detail`; an order naming its id and its info occupant is SAT under strict, one omitting
+# the info occupant is UNSAT under strict and, under diagnostic, SAT with the info violation derived.
+p2fix=$work/p2fix
+mkdir -p "$p2fix"
+"$KERYX" gen "$fixtures/proto2.proto" -I "$fixtures" -o "$p2fix" --shape both 2> "$p2fix/gen.log" \
+  || fail "keryx gen proto2.proto failed:
+$(cat "$p2fix/gen.log")"
+ground "$p2fix/keryx.p2.emit.lp"
+ground "$p2fix/keryx.p2.emit-diagnostic.lp"
+printf '%s\n' 'emit_order(o0).' 'order(o0).' 'id(o0, "x").' 'detail(info(o0)).' > "$p2fix/answer.lp"
+printf '%s\n' 'emit_order(o0).' 'order(o0).' 'id(o0, "x").' > "$p2fix/missing.lp"
+solve sat "$p2fix/keryx.p2.emit.lp" "$p2fix/answer.lp"
+solve unsat "$p2fix/keryx.p2.emit.lp" "$p2fix/missing.lp"
+solve sat "$p2fix/keryx.p2.emit-diagnostic.lp" "$p2fix/missing.lp"
+case "$model" in
+  *'violates("keryx.p2.Order.info",o0)'*) ;;
+  *) fail "the proto2 fixture diagnostic theory did not derive the required-message-field violation:
+$model" ;;
+esac
+echo "ground: proto2 fixture — SAT with the required message occupant; UNSAT omitting it; violation derived"
+
 # config — the computed example (examples/config): the generated theory grounds clean, and the
 # consuming tool's model.lp, over the shredded config, derives a Report that satisfies the theory.
 # clingo here is test infrastructure driving the PATH solver — keryx itself spawns none.

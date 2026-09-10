@@ -9,8 +9,18 @@ ok_grade(a).
 ok_grade(b).
 %! membership of enum grade/1  (closed)
 ok_grade(unspecified).
+%! info : order -> detail  (required)
+reach(A) :- detail(A), order(X), reach(X), A = info(X).
+%! emit_detail : detail  (root)
+reach(X) :- emit_detail(X).
 %! emit_order : order  (root)
 reach(X) :- emit_order(X).
+%! occupancy of emit_detail : detail  (root)
+violates("keryx.p2.Detail", P) :- emit_detail(P), text(P, _), not detail(P).
+%! functionality of text : detail -> string  (partial)
+violates("keryx.p2.Detail.text", P) :- detail(P), reach(P), text(P, V1), text(P, V2), V1 != V2.
+%! occupancy of emit_order : order  (root)
+violates("keryx.p2.Order", P) :- detail(info(P)), emit_order(P), not order(P).
 %! occupancy of emit_order : order  (root)
 violates("keryx.p2.Order", P) :- emit_order(P), id(P, _), not order(P).
 %! occupancy of emit_order : order  (root)
@@ -21,11 +31,17 @@ violates("keryx.p2.Order", P) :- emit_order(P), tags(P, _, _), not order(P).
 violates("keryx.p2.Order.id", P) :- id(P, V1), id(P, V2), order(P), reach(P), V1 != V2.
 %! totality of id : order -> string  (required)
 violates("keryx.p2.Order.id", P) :- order(P), reach(P), not has_id(P).
+%! totality of info : order -> detail  (required)
+violates("keryx.p2.Order.info", P) :- order(P), reach(P), not detail(info(P)).
+%! occupancy of info : order -> detail  (required)
+violates("keryx.p2.Order.info", info(X)) :- order(X), reach(X), text(info(X), _), not detail(info(X)).
 %! functionality of quantity : order -> int32  (partial)
 violates("keryx.p2.Order.quantity", P) :- order(P), quantity(P, V1), quantity(P, V2), reach(P), V1 != V2.
 %! contiguity of tags : order × index -> string  (sequence)
 violates("keryx.p2.Order.tags", P) :- has_tags(P, I), order(P), reach(P), I > 0, not has_tags(P, (I - 1)).
 %! contiguity of tags : order × index -> string  (sequence)
 violates("keryx.p2.Order.tags", P) :- order(P), reach(P), tags(P, I, _), I < 0.
+%! emit_detail : detail  (root)
+#defined emit_detail/1.
 %! emit_order : order  (root)
 #defined emit_order/1.
