@@ -127,6 +127,8 @@ Term shapes are type-directed (P5). Range violations are structured translation-
 
 `NATIVE_CHECKED` semantics everywhere: the translator verifies the value fits clingo's integer range at decode time (inbound) and `emit.lp` and the reassembler verify at emit time (outbound); violations are structured errors naming the field path.
 
+**Float lowering (`(keryx.scale)` / `(keryx.opaque)`) is byte-for-byte or a refusal.** A `float`/`double` field carries no default term — one of the two annotations is required (an unannotated float field is `UnannotatedFloat`, a translation error with a two-choice fix-it). `(keryx.scale) = n` lowers a finite value `f` to the fixed-point integer `m = round(f · 10ⁿ)` **only if** re-dividing reproduces the exact input double — `(m as f64) / 10ⁿ == f` — else `f` is *off the declared scale* and refused (`ValueNotOnScale`, whose fix-it names `(keryx.opaque)` as the exact alternative); `|f · 10ⁿ| > i32::MAX` is `ValueOutOfRange` (the scaled integer is a native clingo `i32`). The exponent `n` is capped `SCALE_MAX = 9` (so `10ⁿ ≤ i32::MAX`) and validated **before** any `10ⁿ` is formed — an `n` past the cap is a malformed annotation at the policy door, never an overflow. `(keryx.opaque) = true` lowers `f` to its **shortest round-trippable decimal** string (float/double-only). A **non-finite** value (NaN, ±Inf) has no fixed-point integer nor single decimal that round-trips to a fixed bit pattern, so it is refused under **both** treatments (`NonFiniteFloat`). The governing rule is the byte-for-byte round trip (§26): a value admitted inbound reproduces its exact wire bytes outbound, so an off-grid or non-finite float is refused, never silently rounded.
+
 ### 7. Composite constructs
 
 #### 7.1 `repeated` — sequences and sets
@@ -725,7 +727,7 @@ extend google.protobuf.FieldOptions {
   bool          set      = 50101;   // repeated: order/multiplicity not meaningful
   NumericPolicy numeric  = 50102;   // integral fields & map keys (§6, §7.2)
   int32         scale    = 50103;   // float/double: fixed-point ×10^scale
-  bool          opaque   = 50104;   // float/double/bytes: decimal-/hex-string constant
+  bool          opaque   = 50104;   // float/double: decimal-string constant
   ZeroPolicy    zero_field = 50105; // IMPLICIT fields: is the zero value a value? (proto symbol-namespace forces the field-level rename from `zero`; enum-level `zero` = 50141 below is kept)
   string        default  = 50106;   // rendered per field type; editions `default` preferred
   string        mirror   = 50107;   // reserved (§14, open)
@@ -773,7 +775,7 @@ message SolveResponse { Result result = 1; repeated Model models = 2; }
 
 ## Appendix C — Stage-0 descriptor-fact vocabulary (sketch)
 
-Definable as keryx(descriptor.proto) once M1 lands (§21.2); hand-written form for M0:
+Definable as keryx(descriptor.proto) as of M1 (§21.2); hand-written form for M0:
 
 ```prolog
 file(File, Package).                 message(Msg, File).      nested(Inner, Outer).
