@@ -95,7 +95,7 @@ Each door: its input, its trust in the typical deployment, the foreign code it i
   - *Bounded work:* the Θ(*n*·*d*) profile is the truth today; the allocation-budget instrument is *this pass*.
   - *Integrity, determinism:* *held at `b093008`* (the refusal set; the golden tests).
 - **A boundary this door crosses.** The `package` string is adversary-controlled here yet reaches two sinks that each assume an identifier shape — the CLI's per-package output path (`<out>/<package>.…`, a filesystem *write*) and the emitted `#include "<package>.core.lp"` operand (a clingo directive) — so an unvalidated package could name a traversing path or inject a directive through the `.lp` a consumer loads. *This pass* refuses at the door any package that is not a dotted sequence of proto identifiers within a segment bound, and *represents* the proof: a `Package` newtype constructed only at the door and carried to `Unit::package()`, so neither sink re-derives trust from a bare string. Integrity (property 4) is thereby held for the package too — it reaches the path and the `#include` only as a validated identifier.
-- **A named vector at this door.** Option admission is a **file-name heuristic** (`descriptor::options::read`: an extension is keryx's iff its declaring file is *named* `keryx/options.proto`), not true extension identity — a crafted set can self-declare that file name (`options.rs` documents this). *Totality* survives it: a non-identifier option key is diagnosed downstream (`UnmappableOptionKey`), not panicked. *Integrity* survives it **today**: no annotation semantics are consumed at the gen stage, so a spoofed registry changes only `opt/3` facts, which faithfully report what the set declared; the obligation re-arises when an annotation gains meaning (Increment 5). Replacing the file-name heuristic with true extension identity is an additive follow-up.
+- **A named vector at this door.** Option admission is a **file-name heuristic** (`descriptor::options::read`: an extension is keryx's iff its declaring file is *named* `keryx/options.proto`), not true extension identity — a crafted set can self-declare that file name (`options.rs` documents this). *Totality* survives it: a non-identifier option key is diagnosed downstream (`UnmappableOptionKey`), not panicked. *Integrity* is this increment's security property here, because an annotation now **drives translation** — a set, a scale, an opaque or numeric treatment, a preserved unknown enum value — rather than merely populating an `opt/3` fact, so a spoofed or malformed one could change behaviour, not only report a declaration. The control is **total validation at the policy door**: `policy::annotate` (the gen stage's option-resolution step) resolves every applied `(keryx.*)` option against its target's kind, form, and presence into the `Mapping`, and a mis-targeted, malformed, or profile-gated option — `(keryx.scale)` or `(keryx.opaque)` on a non-float, `(keryx.set)` on a non-repeated field, a scale exponent past its cap, `(keryx.unknown)` on a closed enum, the deferred `CLINGCON` — is a **structured diagnostic at the annotated element's locus, never a panic and never a silent mis-lowering**, so the `Mapping` a hostile set yields is a faithful one or a diagnosis, never one that mis-serialises. The new adversarial value surfaces the vocabulary opens are each defended on both seams: a scaled or opaque float, a `NATIVE_CHECKED` integer, and a preserved `unknown(N)` are checked at the inbound `lower` — a non-finite or off-grid float, an out-of-range integer, an unknown value on a non-preserving enum, each refused — and re-checked outbound at reassembly; a set's members are ordered by `Symbol::Ord`, the canonical form keryx adds over a repeated field protobuf does not canonicalise. Admission itself stays the file-name heuristic; replacing it with true extension identity is an additive follow-up, and `policy::annotate` is the surface at which this property is held.
 - **Instruments.** The two totality generators; the deep-nesting test (attaching per the depth property); the allocation-budget test; a same-process clean-decode-after-fault test (the global-pool argument).
 
 ### `.proto`-source door — `descriptor::source::compile(files, includes)` — shipped
@@ -135,17 +135,17 @@ Each door: its input, its trust in the typical deployment, the foreign code it i
 
 - **Input.** An `.lp` module to admit against the generated signature. **Foreign code.** themelios `parse`/`raise` — the outbound door's `.lp` crossing, contained there (`Dependency::Themelios`), branch (a) for the same reason. **Status.** *Increment 6*, built to this model.
 
-### Overlay door — Increment 5
+### Overlay door — Increment 8
 
-- **Input.** A TOML overlay merged into the schema model's annotations. **Status.** *Increment 5*, built to this model.
+- **Input.** A TOML overlay merged into the schema model's annotations. **Status.** *Increment 8*, built to this model.
 
 ### Protoc-plugin door — Increment 6
 
 - **Input.** A `CodeGeneratorRequest` on stdin from `protoc`/`buf`, decoded in `keryx-protoc` before any keryx-core door — untrusted bytes carrying the full descriptor closure and a parameter string. **Status.** *Increment 6*; a door in this model's own vocabulary, built to it when the plugin lands.
 
-### Manifest-read door — Increment 5
+### Manifest-read door — Increment 8
 
-- **Input.** A manifest read from disk (`keryx diff <old-manifest>`) — keryx-owned text, but under *regardless of embedding* every input is defended. **Status.** *Increment 5*, built to this model.
+- **Input.** A manifest read from disk (`keryx diff <old-manifest>`) — keryx-owned text, but under *regardless of embedding* every input is defended. **Status.** *Increment 8*, built to this model.
 
 *Not doors.* The CLI's own `std::fs` reads of the paths it is given are adapter-level plumbing, not surfaces that admit adversarial structure; they are named here so the omission is deliberate.
 
@@ -158,9 +158,9 @@ Each door: its input, its trust in the typical deployment, the foreign code it i
 | payload | binary, textproto, JSON | binary, textproto, JSON | **yes** | decode, text parse, and JSON deserialization contained (defense-in-depth, no known trigger); ceiling 99 — binding at the walk for binary (the engine's limit beyond), at the pre-parse guard for textproto (ahead of the engine's unbounded parser, counted in message values — conservative for map entries and expanded `Any`; the parse on a keryx-sized thread), and for JSON at the walk for a chain of singular message fields beneath the deserializer's own container count, which binds first for repeated and map-of-message chains (about 63 levels — conservative, never permissive; the deserialization on a keryx-sized thread) |
 | outbound (answer set → message) | `Vec<Symbol>`; `.lp` text | binary, textproto, JSON; `.lp` read; `keryx emit` | **yes** (the answer set defended as the payload is) | the `.lp` read contained at themelios (`Dependency::Themelios`; branch (a) — the parser bounds its own nesting, the raise is total; defense-in-depth, no known trigger); the encode contained at prost-reflect (`Dependency::ProstReflect`; `serde_json` named for the JSON form), its one panic axis foreclosed per site by the validating setter after the inverse §6 lowering, its abort axis pre-empted by the reused ceiling 99 at the reassembly walk before any message is built and by the encode on a keryx-sized thread |
 | `.lp` admission | text | Increment 6 | — | the outbound door's themelios crossing, extended |
-| overlay | TOML | Increment 5 | — | — |
+| overlay | TOML | Increment 8 | — | — |
 | protoc plugin | `CodeGeneratorRequest` | Increment 6 | — | separate crate |
-| manifest read | manifest text | Increment 5 | — | keryx-owned |
+| manifest read | manifest text | Increment 8 | — | keryx-owned |
 
 ## Open — named here, settled elsewhere
 
@@ -168,7 +168,7 @@ Still open, by measurement or by a later increment:
 
 - **Cost acceptability** — whether the Θ(*n*·*d*) allocation and the quadratic cycle analysis (`recursion::mark`) are acceptable against a deployment's limits (measurement). Name qualification is no longer among these — it is bounded (property 2).
 - **Proto2 `required` completeness, outbound (Increment 4)** — `emit.lp` emits totality for implicit-presence fields only, the `Mapping`'s totality not yet distinguishing a proto2 `required` field from an explicit-presence one; so a `required` field's completeness is unchecked at Increment 4, at solve time and at reassembly alike — a message omitting one is produced, faithful to the answer set that omitted it (an under-representation, never a misrepresentation; property 4). Committed future, not a boundary: the `Mapping` widened so the obligation is emitted and enforced — full proto2 and proto3 outbound parity — in a later increment.
-- **Increment-5 obligations carried** — option-admission *integrity* re-arises when an annotation gains meaning (held today because none is consumed); the overlay, manifest-read, and protoc-plugin doors are built to this model as they land.
+- **Later doors** — the **overlay** and **manifest-read** doors re-home to **Increment 8** (overlays and `keryx diff` deferred past the annotation vocabulary); the **protoc-plugin** door remains **Increment 6**. Each is built to this model as it lands. (Option-admission *integrity* is no longer carried forward — it is discharged by this increment's policy-door validation, the *named vector* above.)
 
 **Answered or settled** — at the hardening pass and, where marked, at the inbound codec or by the outbound door, now built (recorded at the doors above; ledgered here so the list is complete):
 
