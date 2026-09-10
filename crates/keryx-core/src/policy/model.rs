@@ -88,8 +88,18 @@ pub enum ScalarTreatment {
     /// `int32`, `sint32`, `sfixed32`, `uint32`, `fixed32` — native clingo integer
     /// (uint32/fixed32 range-checked downstream).
     Native,
-    /// `int64`, `uint64`, `fixed64`, `sfixed64`, `sint64` — decimal-string constant.
+    /// `int64`, `uint64`, `fixed64`, `sfixed64`, `sint64` — decimal-string constant; also
+    /// `uint32`/`fixed32` under `(keryx.numeric) = DECIMAL_STRING`, whose top-bit values a native
+    /// clingo `i32` cannot carry (Increment 5).
     DecimalString,
+    /// A 64-bit integer (`int64`/`sint64`/`sfixed64`/`uint64`/`fixed64`) or 64-bit map key under
+    /// `(keryx.numeric) = NATIVE_CHECKED` — lowered to a **native clingo integer** rather than the
+    /// §6 default decimal string, so clingo arithmetic applies to it, range-checked to the engine's
+    /// `i32` width at both ends (`ValueOutOfRange` outside it). An unsigned 64-bit kind
+    /// (`uint64`/`fixed64`) also carries the `emit.lp` non-negative range obligation the unsigned
+    /// natives do; `NATIVE_CHECKED` on `uint32`/`fixed32` coincides with `Native` (a no-op admit),
+    /// and 32-bit signed kinds are already native.
+    NativeChecked,
     /// `float`, `double` — no default; an annotation is required. Unannotated, the codec's
     /// scalar policy refuses the field (`UnannotatedFloat`, Increment 3); the annotations that
     /// discharge the refusal, `(keryx.scale)` and `(keryx.opaque)`, are Increment 5.

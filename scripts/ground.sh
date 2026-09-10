@@ -189,6 +189,31 @@ $model" ;;
 esac
 echo "ground: crossmap — SAT; UNSAT on a negative map key; key-range violation derived"
 
+# numeric (NATIVE_CHECKED, §6): a 64-bit integer under (keryx.numeric) = NATIVE_CHECKED lowers to a
+# native clingo integer, so an unsigned uint64 field carries the non-negative range obligation a
+# native uint32 does — proven at the grounder, not only in the text goldens. A Meter with a
+# non-negative total is SAT under strict; one with a negative total is UNSAT under strict and, under
+# diagnostic, SAT with the total range violation derived at the field's path. The signed int64
+# balance carries no range obligation (a native value may be negative).
+numeric=$work/numeric
+mkdir -p "$numeric"
+"$KERYX" gen "$fixtures/numeric.proto" -I "$fixtures" -o "$numeric" --shape both 2> "$numeric/gen.log" \
+  || fail "keryx gen numeric.proto failed:
+$(cat "$numeric/gen.log")"
+ground "$numeric/keryx.metering.emit.lp"
+ground "$numeric/keryx.metering.emit-diagnostic.lp"
+printf '%s\n' 'emit_meter(m0).' 'meter(m0).' 'total(m0, 5).' 'balance(m0, -3).' > "$numeric/answer.lp"
+printf '%s\n' 'emit_meter(m0).' 'meter(m0).' 'total(m0, -1).' 'balance(m0, -3).' > "$numeric/negative.lp"
+solve sat "$numeric/keryx.metering.emit.lp" "$numeric/answer.lp"
+solve unsat "$numeric/keryx.metering.emit.lp" "$numeric/negative.lp"
+solve sat "$numeric/keryx.metering.emit-diagnostic.lp" "$numeric/negative.lp"
+case "$model" in
+  *'violates("keryx.metering.Meter.total",m0)'*) ;;
+  *) fail "the numeric diagnostic theory did not derive the range violation:
+$model" ;;
+esac
+echo "ground: numeric — SAT; UNSAT on a negative NATIVE_CHECKED unsigned value; range violation derived"
+
 # The feature examples (examples/<name>) — inbound-focused, so the gate is that the generated
 # outbound theory grounds clean, not an answer-set solve.
 grounds_clean enum "$root/examples/enum/signals.proto" "$root/examples/enum" signals.v1
