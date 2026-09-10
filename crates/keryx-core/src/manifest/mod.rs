@@ -4,7 +4,7 @@
 //! field/value, binding the fully-qualified proto path and field number to the emitted
 //! name/arity/shape and recording qualifier/escape divergence. A pure, deterministic
 //! function of the [`Mapping`] (P3); *write* only at present — read/diff (`keryx diff`) is
-//! Increment 5. The final grammar is open (spec §32 item 7); this is the v0 form.
+//! Increment 8. The final grammar is open (spec §32 item 7); this is the v0 form.
 //!
 //! [`Mapping`]: crate::policy::model::Mapping
 
