@@ -1,9 +1,9 @@
 //! The proto2 example (§5, §7.4): documentation by example and a regression suite in one, in the
 //! `thermal_example` mould. proto2 is a first-class input — it compiles, shreds, and generates a
 //! vocabulary. A proto2 enum is a **closed** sort (vs proto3's open); `optional` is partial,
-//! `repeated` a sequence. NOTE: keryx does not yet distinguish proto2 `required` from `optional` —
-//! both render `partial` today (the `LEGACY_REQUIRED` totality is being finalized) — so this suite
-//! pins the current, honest rendering.
+//! `repeated` a sequence, and `required` is totality-obliged outbound (`Totality::Required`,
+//! rendered `required`): the `emit.lp` totality obligation and the manifest word distinguish it
+//! from `optional` (full proto2/proto3 parity), while its inbound presence is read like `optional`'s.
 
 use std::path::{Path, PathBuf};
 

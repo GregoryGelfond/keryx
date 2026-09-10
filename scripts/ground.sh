@@ -194,7 +194,28 @@ echo "ground: crossmap — SAT; UNSAT on a negative map key; key-range violation
 grounds_clean enum "$root/examples/enum/signals.proto" "$root/examples/enum" signals.v1
 grounds_clean oneof "$root/examples/oneof/dispatch.proto" "$root/examples/oneof" dispatch.v1
 grounds_clean map "$root/examples/map/inventory.proto" "$root/examples/map" inventory.v1 catalog.v1
-grounds_clean proto2 "$root/examples/proto2/order.proto" "$root/examples/proto2" orders.v1
+# proto2 (E1, #1): a proto2 `required` field carries an outbound totality obligation, so the
+# generated theory both grounds clean and enforces completeness. An `Order` naming its `required`
+# id is SAT under strict; one omitting id is UNSAT under strict and, under diagnostic, SAT with the
+# id totality violation derived at the field's path — full proto2/proto3 outbound parity.
+proto2=$work/proto2
+mkdir -p "$proto2"
+"$KERYX" gen "$root/examples/proto2/order.proto" -I "$root/examples/proto2" -o "$proto2" --shape both \
+  2> "$proto2/gen.log" || fail "keryx gen order.proto failed:
+$(cat "$proto2/gen.log")"
+ground "$proto2/orders.v1.emit.lp"
+ground "$proto2/orders.v1.emit-diagnostic.lp"
+printf '%s\n' 'emit_order(o0).' 'order(o0).' 'id(o0, "PO-1").' > "$proto2/answer.lp"
+printf '%s\n' 'emit_order(o0).' 'order(o0).' > "$proto2/missing.lp"
+solve sat "$proto2/orders.v1.emit.lp" "$proto2/answer.lp"
+solve unsat "$proto2/orders.v1.emit.lp" "$proto2/missing.lp"
+solve sat "$proto2/orders.v1.emit-diagnostic.lp" "$proto2/missing.lp"
+case "$model" in
+  *'violates("orders.v1.Order.id",o0)'*) ;;
+  *) fail "the proto2 diagnostic theory did not derive the required-field violation:
+$model" ;;
+esac
+echo "ground: proto2 — SAT with the required id; UNSAT omitting it; required-field violation derived"
 
 # config — the computed example (examples/config): the generated theory grounds clean, and the
 # consuming tool's model.lp, over the shredded config, derives a Report that satisfies the theory.

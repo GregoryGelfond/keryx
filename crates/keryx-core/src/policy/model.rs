@@ -103,18 +103,21 @@ pub enum ScalarTreatment {
 }
 
 /// A field's resolved totality (spec §5): the presence classification stage 1 makes.
-/// `Total` for IMPLICIT (the atom always exists); `Partial` for EXPLICIT and
-/// `LEGACY_REQUIRED`. `emit.lp` emits a totality obligation for `Total` alone: the model does
-/// not tell `LEGACY_REQUIRED` from EXPLICIT, so proto2 `required` completeness is unenforced
-/// outbound at Increment 4 — an omission faithful to the answer set, not a misrepresentation
-/// (`docs/proto-support.md`) — until the distinction is carried here (a committed follow-up,
-/// not a boundary).
+/// `Total` for IMPLICIT (the atom always exists); `Partial` for EXPLICIT; `Required` for
+/// `LEGACY_REQUIRED` (proto2 `required`). `emit.lp` emits a totality obligation for `Total` and
+/// `Required` alike, so a proto2 `required` field's completeness is enforced outbound — full
+/// proto2/proto3 parity — while inbound a `Required` field is read as partial, its presence
+/// taken from the message (§5); the signature and manifest render it `required`
+/// (`docs/proto-support.md`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Totality {
-    /// IMPLICIT presence — total on its sort.
+    /// IMPLICIT presence — total on its sort; the atom always exists.
     Total,
-    /// EXPLICIT or `LEGACY_REQUIRED` presence — partial.
+    /// EXPLICIT presence — partial; the atom exists only when the field is set.
     Partial,
+    /// `LEGACY_REQUIRED` (proto2 `required`) — partial inbound (presence read from the message),
+    /// totality-obliged outbound (`emit.lp` emits the same obligation `Total` gets).
+    Required,
 }
 
 /// Which relational view (if any) `emit::views` generates for a field (spec §13.2).

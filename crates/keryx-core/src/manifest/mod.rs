@@ -227,13 +227,14 @@ fn declared(value: &ValueMapping) -> String {
 }
 
 /// The manifest's totality word (spec §13.4, §5): `total` for `Totality::Total`, `partial`
-/// for `Totality::Partial` — the fidelity the `Mapping` carries, `LEGACY_REQUIRED` folded into
-/// `partial`; its distinct outbound totality obligation is neither recorded here nor yet
-/// emitted by `emit.lp` (`policy::model::Totality`, a committed follow-up).
+/// for `Totality::Partial`, `required` for `Totality::Required` (proto2 `required`) — the
+/// fidelity the `Mapping` carries. A `required` field is partial inbound but totality-obliged
+/// outbound, the obligation `emit.lp` emits (`policy::model::Totality`).
 fn totality_word(totality: Totality) -> &'static str {
     match totality {
         Totality::Total => "total",
         Totality::Partial => "partial",
+        Totality::Required => "required",
     }
 }
 
@@ -317,6 +318,7 @@ mod tests {
     fn totality_word_matches_total_and_partial() {
         assert_eq!(totality_word(Totality::Total), "total");
         assert_eq!(totality_word(Totality::Partial), "partial");
+        assert_eq!(totality_word(Totality::Required), "required");
     }
 
     #[test]

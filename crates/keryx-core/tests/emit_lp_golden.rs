@@ -63,11 +63,11 @@ golden!(
     "golden/obligations.emit-diagnostic.lp"
 );
 
-// Totality is IMPLICIT-only: a proto2 `required` field and a proto2 `optional` one are both
-// partial to the mapping, so both get functionality and neither a totality obligation —
-// `required` completeness is unenforced outbound until the mapping carries the distinction.
-// The unreferenced enum still gets its membership table: the table is the enum's own, so a
-// field in another package can hold its values to it.
+// A proto2 `required` field is totality-obliged outbound (E1): it gets functionality *and*
+// totality, where a proto2 `optional` (EXPLICIT) field gets functionality alone — the mapping
+// carries the distinction (`Totality::Required`), full proto2/proto3 parity; its inbound signature
+// stays partial. The unreferenced enum still gets its membership table: the table is the enum's
+// own, so a field in another package can hold its values to it.
 golden!(
     required_strict,
     "proto2.proto",
@@ -80,6 +80,27 @@ golden!(
     emit::emit_diagnostic,
     "golden/proto2.emit-diagnostic.lp"
 );
+
+// E1 (#1): a proto2 `required` field is totality-obliged outbound — it mints the presence
+// witness and carries the totality constraint an IMPLICIT (`Total`) field does, which an EXPLICIT
+// (`optional`) one does not. Its inbound signature stays partial (presence read from the message);
+// only the outbound obligation is added.
+#[test]
+fn a_proto2_required_field_carries_the_outbound_totality_obligation() {
+    let strict = emit::emit_strict(&unit_of("proto2.proto")).expect("emits");
+    assert!(
+        strict.contains("has_id(P) :- id(P, _)."),
+        "the required `id` field mints its presence witness:\n{strict}"
+    );
+    assert!(
+        strict.contains("not has_id(P)."),
+        "the required `id` field carries the totality obligation:\n{strict}"
+    );
+    assert!(
+        !strict.contains("not has_quantity(P)."),
+        "the optional `quantity` field carries no totality obligation:\n{strict}"
+    );
+}
 
 // The closure over every message-typed form on one parent sort — a singular field, a sequence,
 // a map, and a message-typed oneof arm — each reaching its occupant through the safe idiom: the

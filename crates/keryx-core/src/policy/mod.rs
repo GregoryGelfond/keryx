@@ -273,12 +273,13 @@ fn generated_auxiliaries(unit: &Unit) -> BTreeMap<(String, u32), String> {
         for field in sort.fields() {
             let arity = match field.form() {
                 EmitForm::Function | EmitForm::OneofArm { .. }
-                    if field.view().is_none() && field.presence() == Totality::Total =>
+                    if field.view().is_none()
+                        && matches!(field.presence(), Totality::Total | Totality::Required) =>
                 {
-                    1 // the presence witness `has_f(P)` (emit_lp::singular)
+                    1 // the presence witness `has_f(P)` (emit_lp::singular) — `Total`/`Required`
                 }
                 EmitForm::Sequence => 2, // the index witness `has_f(P, I)` (emit_lp::sequence)
-                _ => continue, // a message view, a partial singular, a map, or a set: no witness
+                _ => continue, // a message view, an EXPLICIT partial, a map, or a set: no witness
             };
             auxiliaries.insert(
                 (names::witness(field.predicate()).as_str().to_owned(), arity),

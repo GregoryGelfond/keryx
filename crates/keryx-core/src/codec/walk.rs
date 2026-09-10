@@ -372,7 +372,9 @@ impl<'m, 'a> Walker<'m, 'a> {
         for field in sort.fields() {
             let present = match field.presence() {
                 Totality::Total => true,
-                Totality::Partial => work.message.is_present(field.number()),
+                // A `Required` field is partial inbound — its presence is read from the message,
+                // exactly as an EXPLICIT `Partial` one is; only its outbound obligation differs.
+                Totality::Partial | Totality::Required => work.message.is_present(field.number()),
             };
             if !present {
                 continue;

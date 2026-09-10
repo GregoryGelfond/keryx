@@ -259,6 +259,8 @@ Sorts, occupancy, and the signature. In the raw clingo target the signature is a
 %   dock | locker : oneof handoff           (partial, exclusive)
 ```
 
+The presence word reads: **(total)** an IMPLICIT field, always present; **(partial)** an EXPLICIT one, present only when set; **(required)** a proto2 `required` field — read as partial inbound (its presence taken from the message), but totality-obliged outbound, so `emit.lp` obliges its presence exactly as a `(total)` field's (§5, §13.3). So `(required)` reads unambiguously against `(total)`/`(partial)`: it is the outbound obligation, not a change of inbound presence.
+
 Doc comments from the `.proto` (`SourceCodeInfo`, §20) ride along verbatim above the entries they document — the spec author's prose becomes the model writer's documentation.
 
 #### 13.2 `<pkg>.views.lp` (additive; included by default)
@@ -275,7 +277,7 @@ Views are generated, never hand-edited; they are additive vocabulary (P4) and an
 
 #### 13.3 `<pkg>.emit.lp`
 
-The serializability theory (§12.2), generated as two variants rather than parameterized by a `#const`: `<pkg>.emit.lp` is the strict theory and `<pkg>.emit-diagnostic.lp` the diagnostic one — each a client of `core.lp`, opening with `#include "<pkg>.core.lp".` as `views.lp` does — so a project loads the one it means by name. `keryx gen --shape strict|diagnostic|both` selects which is written (`strict`, the production default, when unstated), and the manifest's header records the choice in its `shape` column (§13.4; Appendix B). (Realised by `keryx gen` as of Increment 4's theory generation, with its reassembler (§12.3): the root markers and reachability closure of §12.1 and the obligations of §12.2 in both modes, golden-tested and grounder-checked — with one obligation not yet emitted: the totality of a `LEGACY_REQUIRED` field, which the mapping does not yet tell from EXPLICIT presence, so a proto2 `required` field's completeness is unenforced outbound at present — a committed follow-up, recorded in `docs/proto-support.md`.)
+The serializability theory (§12.2), generated as two variants rather than parameterized by a `#const`: `<pkg>.emit.lp` is the strict theory and `<pkg>.emit-diagnostic.lp` the diagnostic one — each a client of `core.lp`, opening with `#include "<pkg>.core.lp".` as `views.lp` does — so a project loads the one it means by name. `keryx gen --shape strict|diagnostic|both` selects which is written (`strict`, the production default, when unstated), and the manifest's header records the choice in its `shape` column (§13.4; Appendix B). (Realised by `keryx gen` as of Increment 4's theory generation, with its reassembler (§12.3): the root markers and reachability closure of §12.1 and the obligations of §12.2 in both modes, golden-tested and grounder-checked — the totality of a `LEGACY_REQUIRED` (proto2 `required`) field among the obligations, the `Mapping` carrying it as `Totality::Required`, emitted and enforced (the strict theory's UNSAT, the reassembler's `ShapeViolation`) — full proto2/proto3 outbound parity (`docs/proto-support.md`).)
 
 #### 13.4 The manifest — `<pkg>.keryx-manifest`
 

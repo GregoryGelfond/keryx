@@ -3,7 +3,7 @@ schema-hash -  package orders.v1  target clingo  profile -  shape strict  keryx 
 orders.v1.Ledger  sort  ledger/1
 orders.v1.Ledger.orders #1 fam  orders/2 -> order  order  seq ; view orders/3
 orders.v1.Order  sort  order/1
-orders.v1.Order.id #1 fn  id/2  string  partial
+orders.v1.Order.id #1 fn  id/2  string  required
 orders.v1.Order.quantity #2 fn  quantity/2  int32  partial
 orders.v1.Order.tags #3 fam  tags/3  string  seq
 orders.v1.Order.grade #4 fn  grade/2  grade  partial

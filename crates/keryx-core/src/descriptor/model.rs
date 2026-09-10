@@ -297,10 +297,9 @@ pub enum Presence {
     Implicit,
     /// The field has a value only when set; the function is partial (§5).
     Explicit,
-    /// `LEGACY_REQUIRED`; treated as `Explicit` for translation, with an
-    /// outbound totality obligation (§5) the theory does not yet emit — the mapping
-    /// folds it into `Totality::Partial` (`policy::model::Totality`, a committed
-    /// follow-up).
+    /// `LEGACY_REQUIRED`; partial inbound (presence read from the message, like `Explicit`),
+    /// with an outbound totality obligation (§5) the theory emits — the mapping carries it as
+    /// `Totality::Required` (`policy::model::Totality`), full proto2/proto3 outbound parity.
     LegacyRequired,
 }
 
