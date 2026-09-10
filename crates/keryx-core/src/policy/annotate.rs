@@ -78,7 +78,7 @@ fn reject_enum(enumeration: &Enum, detail: &str) -> Diagnostic {
 /// option. An option applied to a different category is a mis-target ([`reject_foreign_options`]) —
 /// reachable only on a crafted descriptor set, since protoc enforces the extendee, but the door's
 /// option admission is a file-name heuristic, so keryx validates the category itself.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Category {
     Field,
     Message,
@@ -711,6 +711,49 @@ mod tests {
             Category::Field,
         )
         .expect("an unregistered key is left alone");
+    }
+
+    #[test]
+    fn key_category_matches_the_registry() {
+        // The `key_category` table is hand-mirrored against `proto/keryx/options.proto`; this makes
+        // the mirror mechanical (as `the_reserved_auxiliary_set_equals_what_emit_lp_mints` does for
+        // the auxiliary set). Compiling a fixture that imports the registry pulls in
+        // `keryx/options.proto` with its extension definitions; every keryx extension must be
+        // classified by `key_category` as the category it extends, so a registry key added without a
+        // `key_category` entry — or mis-categorised — fails here rather than silently losing its
+        // cross-category defence.
+        use prost_reflect::DescriptorPool;
+
+        let pool =
+            DescriptorPool::decode(keryx_test_support::compile_fixture("options.proto").as_slice())
+                .expect("the options fixture decodes");
+        let mut seen = 0;
+        for extension in pool.all_extensions() {
+            if extension.parent_file().name() != "keryx/options.proto" {
+                continue;
+            }
+            let key = extension
+                .full_name()
+                .strip_prefix("keryx.")
+                .expect("a keryx registry extension is keryx-prefixed")
+                .to_owned();
+            let expected = match extension.containing_message().full_name() {
+                "google.protobuf.FieldOptions" => Category::Field,
+                "google.protobuf.MessageOptions" => Category::Message,
+                "google.protobuf.EnumOptions" => Category::Enum,
+                other => panic!("keryx.{key} extends an unexpected message `{other}`"),
+            };
+            assert_eq!(
+                key_category(&key),
+                Some(expected),
+                "key_category misclassifies the registry extension keryx.{key}"
+            );
+            seen += 1;
+        }
+        assert_eq!(
+            seen, 13,
+            "expected the 13 keryx registry extensions, saw {seen} — key_category and the registry have drifted"
+        );
     }
 
     // --- (keryx.set): repeated-only ---
