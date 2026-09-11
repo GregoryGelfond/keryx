@@ -330,8 +330,9 @@ fn float_treatment(field: &Field, target: Scalar, default: ScalarTreatment) -> S
 /// The scalar treatment of a field's value under its `(keryx.scale)`/`(keryx.opaque)`/
 /// `(keryx.numeric)` annotations: the §6 default, or the `(keryx.scale)`/`(keryx.opaque)` override
 /// ([`float_treatment`]) or the `(keryx.numeric)` override ([`numeric_treatment`]), plus any
-/// diagnostics. `(keryx.numeric)` on a **map** targets the key, not the value ([`key_treatment`]), so
-/// a map field's value keeps its §6 default here.
+/// diagnostics. On a **map**, `(keryx.numeric)` targets the key ([`key_treatment`]), not the value, so
+/// a map value takes no numeric override here; its `(keryx.scale)`/`(keryx.opaque)` float override —
+/// which cannot target a key (proto forbids a float map key) — is resolved here as for any float value.
 pub(super) fn field_treatment(
     field: &Field,
     scalar: Scalar,
@@ -342,13 +343,15 @@ pub(super) fn field_treatment(
     if let Some(diagnostics) = Diagnostics::collect(rejections) {
         return Err(diagnostics);
     }
-    // `(keryx.numeric)` on a map targets the key (§7.2, `key_treatment`), so a map field's value
-    // keeps its §6 default; a non-map field's value takes a float or numeric override.
+    // `(keryx.numeric)` on a map targets the key (§7.2, `key_treatment`), so a map value takes no
+    // numeric override here; but `(keryx.scale)`/`(keryx.opaque)` cannot target a key — proto forbids
+    // a float map key — so on a map they target the *value*, and its float lowering is resolved here
+    // (a non-float map value keeps its §6 default, `float_treatment` returning it unchanged).
     if matches!(field.shape(), FieldShape::Map { .. }) {
-        return Ok(default);
+        return Ok(float_treatment(field, scalar, default));
     }
-    // A float field takes a scale/opaque override, an integer field a numeric one; neither applies to
-    // the other kind (validated), so the two resolutions compose.
+    // A non-map float field takes a scale/opaque override, an integer field a numeric one; neither
+    // applies to the other kind (validated), so the two resolutions compose.
     Ok(numeric_treatment(
         field,
         scalar,
@@ -742,6 +745,36 @@ mod tests {
             MapKey::Int64,
         )
         .expect("NATIVE_CHECKED on an int64 key is applicable");
+    }
+
+    #[test]
+    fn scale_and_opaque_on_a_map_float_value_resolve_to_the_float_treatment() {
+        // On a map, `(keryx.numeric)` targets the key (`key_treatment`), but `(keryx.scale)`/
+        // `(keryx.opaque)` cannot target a key — proto forbids a float map key — so on a map they
+        // target the *value*. A `map<K, float/double>` value under one of them takes the float
+        // lowering, not the §6 default (which would leave it `NeedsAnnotation` and refuse every
+        // value at codec time, naming the annotation already present).
+        let scaled = field_treatment(
+            &map(
+                MapKey::String,
+                Scalar::Double,
+                vec![ann("scale", AnnotationValue::Int(2))],
+            ),
+            Scalar::Double,
+        )
+        .expect("scale on a map's double value is applicable");
+        assert_eq!(scaled, ScalarTreatment::FixedPoint { scale: 2 });
+
+        let opaque = field_treatment(
+            &map(
+                MapKey::Int64,
+                Scalar::Float,
+                vec![ann("opaque", AnnotationValue::Bool(true))],
+            ),
+            Scalar::Float,
+        )
+        .expect("opaque on a map's float value is applicable");
+        assert_eq!(opaque, ScalarTreatment::OpaqueFloat);
     }
 
     #[test]
