@@ -49,24 +49,26 @@ pub enum EmitForm {
     },
 }
 
-/// A field value's emitted treatment (spec §6, §4.1). A scalar's *default* §6
-/// classification, or a reference to the referent's emitted sort predicate. The scalar
+/// A field value's emitted treatment (spec §6, §4.1). A scalar's *resolved* §6 classification —
+/// the default, or the `(keryx.numeric)`/`(keryx.scale)`/`(keryx.opaque)` override `policy::annotate`
+/// resolved (Increment 5) — or a reference to the referent's emitted sort predicate. The scalar
 /// classification is what the inbound codec's scalar policy lowers a payload value under
-/// (`codec::scalar::lower`), what `emit.lp` reads for the one obligation the theory states over
-/// a scalar — the unsigned range of a `uint32`/`fixed32` under the native treatment — and what
-/// the reassembler is to invert outbound (spec §12.3, Increment 4); the signature and the
-/// views do not read it (the signature shows the proto type; the views concern message
-/// fields).
+/// (`codec::scalar::lower`), what `emit.lp` reads for the range obligations the theory states over a
+/// scalar — the unsigned range of a `uint32`/`fixed32` under the native treatment, and of a
+/// `uint64`/`fixed64` under `NATIVE_CHECKED` (Increment 5) — and what the reassembler is to invert
+/// outbound (spec §12.3, Increment 4); the signature and the views do not read it (the signature
+/// shows the proto type; the views concern message fields).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ValueMapping {
-    /// A scalar — its proto `kind` (the §13.1 signature shows the proto type) and its §6
-    /// default `treatment` (consumed by the inbound codec's scalar policy, by `emit.lp`'s
-    /// unsigned-range obligation, and by the reassembler's inverse policy at Increment 4; not
-    /// read by the signature or the views).
+    /// A scalar — its proto `kind` (the §13.1 signature shows the proto type) and its resolved
+    /// `treatment` (the §6 default or an Increment-5 annotation override; consumed by the inbound
+    /// codec's scalar policy, by `emit.lp`'s unsigned-range obligation, and by the reassembler's
+    /// inverse policy at Increment 4; not read by the signature or the views).
     Scalar {
         /// The proto scalar kind (for the signature).
         kind: Scalar,
-        /// The §6 default treatment classification.
+        /// The resolved treatment — the §6 default, or the `(keryx.numeric)`/`(keryx.scale)`/
+        /// `(keryx.opaque)` override the policy door resolved (Increment 5).
         treatment: ScalarTreatment,
     },
     /// A message occupant — carries the referent message's sort predicate.
@@ -75,13 +77,14 @@ pub enum ValueMapping {
     Enum(Name),
 }
 
-/// The §6 default treatment of a scalar — the classification the codec's scalar policy
-/// (`codec::scalar::lower`, Increment 3) lowers a payload value under, where the range check
-/// and the float refusal are enforced; the annotation overrides that change a field's
-/// treatment (`(keryx.numeric)`, `(keryx.scale)`, `(keryx.opaque)`) are Increment 5. The
-/// families follow §6: the machine-int family is `Native` (uint32/fixed32 carry a range
-/// obligation the policy checks); the 64-bit family is `DecimalString`; float/double have
-/// no default (`NeedsAnnotation` — refused unannotated).
+/// A scalar's emitted treatment — the §6 default classification the codec's scalar policy
+/// (`codec::scalar::lower`, Increment 3) lowers a payload value under (where the range check and the
+/// float refusal are enforced), or the Increment-5 annotation override that changes it
+/// (`(keryx.numeric)` → `NativeChecked`/`DecimalString`, `(keryx.scale)` → `FixedPoint`,
+/// `(keryx.opaque)` → `OpaqueFloat`), resolved at the policy door. The §6 default families: the
+/// machine-int family is `Native` (uint32/fixed32 carry a range obligation the policy checks); the
+/// 64-bit family is `DecimalString`; float/double have no default (`NeedsAnnotation` — refused
+/// unannotated).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ScalarTreatment {

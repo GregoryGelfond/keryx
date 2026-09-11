@@ -181,9 +181,14 @@ fn lower_opaque(scalar: Scalar, f: f64, at: &str) -> Result<Term, Diagnostic> {
     Ok(terms::text(&decimal))
 }
 
-/// `10ⁿ` as an exact `f64`, for `n ≤ SCALE_MAX = 9` (validated at the policy door before any power is
-/// formed): `10⁹ < u32::MAX` and `10ⁿ` for `n ≤ 22` is exact in `f64`, so the `From` conversion is
-/// lossless and the `u32` exponentiation cannot overflow.
+/// `10ⁿ` as an exact `f64`. **Precondition: `n ≤ SCALE_MAX = 9`, not guarded here** — it is
+/// discharged by the sole source of the `scale` passed in: `policy::annotate::float_treatment`
+/// constructs `ScalarTreatment::FixedPoint { scale }` only after `field_treatment` has validated
+/// `0 ≤ scale ≤ 9` at the policy door, and that `FixedPoint` is the only origin of the `scale`
+/// reaching the two callers, [`lower_fixed_point`] and [`raise_fixed_point`]. Within the precondition
+/// `10⁹ < u32::MAX` and `10ⁿ` for `n ≤ 22` is exact in `f64`, so the `u32` exponentiation cannot
+/// overflow and the `From` conversion is lossless. **A new caller must re-establish `n ≤ 9`**, or
+/// `10u32.pow(n)` overflows — a debug panic, a silently wrong wrapping multiply in release.
 fn power_of_ten(n: u32) -> f64 {
     f64::from(10u32.pow(n))
 }
