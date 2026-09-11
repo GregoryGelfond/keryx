@@ -1,0 +1,16 @@
+syntax = "proto3";
+package keryx.money;
+
+import "keryx/options.proto";
+
+// Float and 64-bit fields carried under the Increment-5 scalar treatments, for the byte-for-byte
+// round trip (property 4): a scaled float ((keryx.scale)), an opaque double ((keryx.opaque)), a
+// NATIVE_CHECKED unsigned counter, and a scaled map float *value* — the annotation on a map field
+// targets the value, since a float cannot be a map key. Each on-grid, in-range value shredded to
+// facts and reassembled is the payload again.
+message Amount {
+  float ratio = 1 [(keryx.scale) = 3];
+  double note = 2 [(keryx.opaque) = true];
+  uint64 count = 3 [(keryx.numeric) = NATIVE_CHECKED];
+  map<string, float> factors = 4 [(keryx.scale) = 2];
+}
