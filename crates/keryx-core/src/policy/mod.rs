@@ -350,6 +350,15 @@ fn build_enum(
     let strip = names::enum_strip(enumeration);
     let mut values = Vec::new();
     for value in enumeration.values() {
+        // Option-admission integrity, the fourth annotated category (§21.3): no keryx option extends
+        // an enum value (Appendix A extends only field/message/enum options), so any keryx-keyed
+        // option on one is a mis-target here — validated even though protoc forbids the extendee,
+        // because the descriptor door admits an option by its declaring file name, not identity.
+        annotate::reject_foreign_options(
+            value.path.as_str(),
+            &value.options,
+            annotate::Category::EnumValue,
+        )?;
         values.push(names::enum_constant(value, strip)?);
     }
     // Within-enum constant injectivity (§7.4, §6): after the prefix-strip fallback two
@@ -904,6 +913,24 @@ mod tests {
         assert_malformed_at(
             &m_schema(vec![message("M", vec![])], vec![enumeration]),
             "m.E",
+        );
+    }
+
+    #[test]
+    fn a_keryx_option_on_an_enum_value_is_refused_through_map() {
+        // A keryx option on an enum *value* — pins `reject_foreign_options(Category::EnumValue)` in
+        // `build_enum`'s per-value loop. No registry extension targets an enum value, so any
+        // keryx-keyed option on one is a mis-target at the value's locus (reachable only on a crafted
+        // descriptor set, the surface the file-name admission heuristic leaves open).
+        let mut enumeration = level_enum("E");
+        enumeration.values[0].options = vec![ann(
+            "numeric",
+            AnnotationValue::Enum("NATIVE_CHECKED".to_owned()),
+        )];
+        let locus = enumeration.values[0].path.as_str().to_owned();
+        assert_malformed_at(
+            &m_schema(vec![message("M", vec![])], vec![enumeration]),
+            &locus,
         );
     }
 }
