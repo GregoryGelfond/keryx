@@ -224,3 +224,25 @@ fn a_gauge_round_trips_its_enums_and_maps_in_all_three_formats() {
         assert_round_trips_in(&codec, "Gauge", "emit_gauge", &payload, format);
     }
 }
+
+#[test]
+fn the_annotated_scalar_treatments_round_trip_in_all_three_formats() {
+    // `floats.proto`'s `Amount`: the Increment-5 scalar treatments on both codec ends — a scaled
+    // `float` (`(keryx.scale)`), an opaque `double` (`(keryx.opaque)`), a `NATIVE_CHECKED` unsigned
+    // counter, and a scaled `map<string, float>` *value* (the annotation on a map targets the value,
+    // a float being no legal map key). Each on-grid, in-range value shredded to facts and reassembled
+    // is the payload again, in every output form — the byte-for-byte round trip (property 4) the float
+    // honesty rests on, proven end to end past the `scalar` unit tests.
+    let codec = fixture_codec("floats.proto");
+    let mut payload = Vec::new();
+    wire::float(1, 1.5, &mut payload); // ratio: on the grid at scale 3 (1500 / 1000)
+    wire::double(2, 2.5, &mut payload); // note: opaque, the decimal "2.5"
+    wire::uint64(3, 5, &mut payload); // count: native-checked, within clingo's i32
+    let mut entry = Vec::new();
+    delimited(1, b"k", &mut entry); // factors key "k"
+    wire::float(2, 1.25, &mut entry); // factors value: on the grid at scale 2 (125 / 100)
+    delimited(4, &entry, &mut payload);
+    for format in FORMATS {
+        assert_round_trips_in(&codec, "Amount", "emit_amount", &payload, format);
+    }
+}
