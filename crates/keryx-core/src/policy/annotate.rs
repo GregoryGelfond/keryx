@@ -101,14 +101,18 @@ fn reject_enum(enumeration: &Enum, detail: &str) -> Diagnostic {
 }
 
 /// The element category a keryx option extends (§15, Appendix A): a field, a message, or an enum
-/// option. An option applied to a different category is a mis-target ([`reject_foreign_options`]) —
-/// reachable only on a crafted descriptor set, since protoc enforces the extendee, but the door's
-/// option admission is a file-name heuristic, so keryx validates the category itself.
+/// option. `EnumValue` is the fourth annotated category — an enum's *values* — which **no** registry
+/// extension targets (Appendix A extends only field/message/enum options), so on an enum value every
+/// keryx-keyed option is foreign. An option applied to a category other than the one it extends is a
+/// mis-target ([`reject_foreign_options`]) — reachable only on a crafted descriptor set, since protoc
+/// enforces the extendee, but the door's option admission is a file-name heuristic, so keryx
+/// validates the category itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Category {
     Field,
     Message,
     Enum,
+    EnumValue,
 }
 
 impl Category {
@@ -118,6 +122,7 @@ impl Category {
             Category::Field => "a field",
             Category::Message => "a message",
             Category::Enum => "an enum",
+            Category::EnumValue => "an enum value",
         }
     }
 }
@@ -125,7 +130,9 @@ impl Category {
 /// The element category a known keryx option key extends (Appendix A), or `None` for a key that is
 /// not a registered keryx option — which stays an `opt/3` fact (the file-name heuristic admits it,
 /// but it drives no translation, so it is faithfully reported, not a mis-target). Kept in step with
-/// the registry (`crates/keryx-core/proto/keryx/options.proto`).
+/// the registry (`crates/keryx-core/proto/keryx/options.proto`). No key maps to
+/// [`Category::EnumValue`]: no registry extension targets an enum value, so on one every known keryx
+/// key is foreign ([`reject_foreign_options`]).
 fn key_category(key: &str) -> Option<Category> {
     match key {
         "set" | "numeric" | "scale" | "opaque" | "zero_field" | "default" | "mirror" => {
@@ -138,11 +145,12 @@ fn key_category(key: &str) -> Option<Category> {
 }
 
 /// Refuse a known keryx option applied to the wrong element category (§15): an enum option on a
-/// field, a field option on an enum, and so on. Each is a mis-target at the element's locus, so
-/// `policy::annotate` validates *every* applied option against its target's kind — not only the
-/// options its own category consumes — the F4c rule across element categories. A within-category
-/// mis-application (`(keryx.set)` on a singular field) is the per-option validator's, not this
-/// pass's; an unregistered key is left alone (an `opt/3` fact, driving no translation).
+/// field, a field option on an enum, or any keryx option on an enum value (no registry extension
+/// targets one). Each is a mis-target at the element's locus, so `policy::annotate` validates
+/// *every* applied option against its target's category — not only the options its own category
+/// consumes — the classification rule across element categories. A within-category mis-application
+/// (`(keryx.set)` on a singular field) is the per-option validator's, not this pass's; an
+/// unregistered key is left alone (an `opt/3` fact, driving no translation).
 pub(super) fn reject_foreign_options(
     path: &str,
     options: &[Annotation],
@@ -1050,6 +1058,41 @@ mod tests {
             seen, 13,
             "expected the 13 keryx registry extensions, saw {seen} — key_category and the registry have drifted"
         );
+    }
+
+    #[test]
+    fn any_keryx_option_on_an_enum_value_is_a_mis_target() {
+        // No registry extension targets an enum value (Appendix A extends only field/message/enum
+        // options), so every keryx-keyed option on an enum value is a cross-category mis-target —
+        // reachable only on a crafted descriptor set, the surface the file-name heuristic leaves open.
+        for annotation in [
+            ann(
+                "numeric",
+                AnnotationValue::Enum("NATIVE_CHECKED".to_owned()),
+            ),
+            ann("scale", AnnotationValue::Int(2)),
+            ann("set", AnnotationValue::Bool(true)),
+            ann("unknown", AnnotationValue::Enum("PRESERVE".to_owned())),
+        ] {
+            let (kind, locus) = kind_at_locus(reject_foreign_options(
+                "m.E.V",
+                &[annotation],
+                Category::EnumValue,
+            ));
+            assert_eq!(kind, DiagnosticKind::MalformedOption);
+            assert_eq!(locus, "m.E.V");
+        }
+    }
+
+    #[test]
+    fn an_unregistered_option_on_an_enum_value_is_left_alone() {
+        // As on any element, an unregistered key stays an `opt/3` fact (it drives no translation).
+        reject_foreign_options(
+            "m.E.V",
+            &[ann("bogus", AnnotationValue::Bool(true))],
+            Category::EnumValue,
+        )
+        .expect("an unregistered key is left alone");
     }
 
     // --- (keryx.set): repeated-only ---
