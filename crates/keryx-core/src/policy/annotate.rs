@@ -320,19 +320,25 @@ fn float_treatment(field: &Field, target: Scalar, default: ScalarTreatment) -> S
     if !is_float(target) {
         return default;
     }
+    // The last matching annotation wins, as `numeric_treatment` reads its own — so the two resolvers
+    // share one precedence. A duplicate option is reachable only on a crafted set, and `scale`/`opaque`
+    // are mutually exclusive (rejected together in `validate_value_options`), so at most one *kind*
+    // reaches here; iterating rather than returning on the first keeps the precedence identical.
+    let mut treatment = default;
     for annotation in field.options() {
         if annotation.key == "scale"
             && let AnnotationValue::Int(n) = annotation.value
         {
             let scale =
                 u32::try_from(n).expect("(keryx.scale) exponent validated to 0..=SCALE_MAX");
-            return ScalarTreatment::FixedPoint { scale };
-        }
-        if annotation.key == "opaque" && matches!(annotation.value, AnnotationValue::Bool(true)) {
-            return ScalarTreatment::OpaqueFloat;
+            treatment = ScalarTreatment::FixedPoint { scale };
+        } else if annotation.key == "opaque"
+            && matches!(annotation.value, AnnotationValue::Bool(true))
+        {
+            treatment = ScalarTreatment::OpaqueFloat;
         }
     }
-    default
+    treatment
 }
 
 /// The scalar treatment of a field's value under its `(keryx.scale)`/`(keryx.opaque)`/
@@ -659,6 +665,25 @@ mod tests {
             Scalar::Double,
         ));
         assert_eq!(kind, DiagnosticKind::MalformedOption);
+    }
+
+    #[test]
+    fn the_last_scale_annotation_wins_as_numeric_does() {
+        // A duplicate option is reachable only on a crafted set; `float_treatment` takes the *last*
+        // matching annotation, as `numeric_treatment` does, so the two resolvers share one
+        // precedence. Both values are validated (`0..=SCALE_MAX`), so this is not a rejection.
+        let treatment = field_treatment(
+            &singular(
+                Scalar::Double,
+                vec![
+                    ann("scale", AnnotationValue::Int(2)),
+                    ann("scale", AnnotationValue::Int(4)),
+                ],
+            ),
+            Scalar::Double,
+        )
+        .expect("a repeated scale is validated and resolved");
+        assert_eq!(treatment, ScalarTreatment::FixedPoint { scale: 4 });
     }
 
     // --- (keryx.numeric): integer-only; no-op vs mis-target (F4c) ---
