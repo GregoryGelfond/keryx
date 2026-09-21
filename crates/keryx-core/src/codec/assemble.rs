@@ -38,7 +38,7 @@ use crate::descriptor::RetainedPool;
 use crate::descriptor::model::Scalar;
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use crate::policy::model::{
-    EmitForm, FieldMapping, Mapping, SortMapping, Totality, Unit, ValueMapping,
+    EmitForm, EnumMapping, FieldMapping, Mapping, SortMapping, Totality, Unit, ValueMapping,
 };
 use crate::policy::names;
 
@@ -605,14 +605,21 @@ impl Assembler<'_, '_> {
         else {
             return Err(term_mismatch(at, "an enum value is not a constant"));
         };
-        if !arguments.is_empty() {
-            return Err(term_mismatch(at, "an enum value is not a constant"));
-        }
         let enumeration = self
             .index
             .enum_of(referent)
             .expect("every enum referent of the mapping is an enum of its index")
             .in_mapping(self.mapping);
+        // §7.4: a PRESERVE open enum admits the escape term `unknown(N)`, raising it to the wire
+        // number `N`. A 0-ary symbol takes the declared-constant path below; only a `PRESERVE`
+        // enum's `unknown(N)` reaches this branch, so a declared value named `*_UNKNOWN` (the
+        // 0-ary constant) is untouched.
+        if enumeration.preserve() && name.as_str() == names::UNKNOWN_FUNCTOR {
+            return preserved_number(field, enumeration, arguments);
+        }
+        if !arguments.is_empty() {
+            return Err(term_mismatch(at, "an enum value is not a constant"));
+        }
         enumeration
             .values()
             .iter()
@@ -802,6 +809,34 @@ fn duplicate_singular(field: &FieldMapping) -> Diagnostic {
 /// `ShapeViolation`: a total (implicit-presence) field with no value.
 fn missing_total(field: &FieldMapping) -> Diagnostic {
     shape(field, "a total or required field is missing its value")
+}
+
+/// The wire number a PRESERVE enum's escape term `unknown(N)` raises to (spec §7.4, §12.3): its
+/// single integer argument `N`, refused as a `ShapeViolation` when `N` names a declared value —
+/// the model must spell that value with its constant, keeping term↔wire injective — or when the
+/// term is not the shape `unknown(<integer>)`.
+fn preserved_number(
+    field: &FieldMapping,
+    enumeration: &EnumMapping,
+    arguments: &[Symbol],
+) -> Result<Value, Diagnostic> {
+    let [Symbol::Number(number)] = arguments else {
+        return Err(shape(
+            field,
+            "an unknown enum value carries one integer, `unknown(N)`",
+        ));
+    };
+    if enumeration
+        .values()
+        .iter()
+        .any(|value| value.number() == *number)
+    {
+        return Err(shape(
+            field,
+            "an unknown enum value names a declared number; the model must use its constant",
+        ));
+    }
+    Ok(Value::EnumNumber(*number))
 }
 
 /// Whether `occupant`'s parent spine — each term's first argument, followed inward — reaches a

@@ -8,7 +8,7 @@
 
 use crate::diagnostics::Diagnostics;
 use crate::emit::{build, doc_line, render, signature};
-use crate::policy::model::Unit;
+use crate::policy::model::{Unit, ValueMapping};
 
 /// Render one generation unit's `core.lp` (spec §13.1). Total (§6).
 ///
@@ -66,6 +66,27 @@ pub fn core(unit: &Unit) -> Result<String, Diagnostics> {
                 enumeration.predicate().clone(),
                 [build::apply(value.constant().clone(), Vec::new())],
             )));
+        }
+    }
+    // Under `(keryx.unknown) = PRESERVE`, admit the escape term `unknown(N)` to the value sort —
+    // one rule per enum-valued field of a preserve enum (§7.4), `signal(unknown(N)) :- f(_, …,
+    // unknown(N)).`, `N` bound only through the field atom so the rule grounds safe.
+    for sort in unit.sorts() {
+        for field in sort.fields() {
+            let ValueMapping::Enum(referent) = field.value() else {
+                continue;
+            };
+            let Some(enumeration) = unit.enumeration(referent) else {
+                continue;
+            };
+            if enumeration.preserve() {
+                statements.push(build::escape_admission(
+                    enumeration.predicate().clone(),
+                    field.predicate().clone(),
+                    field.arity(),
+                    doc_line(None, &signature::enumeration(enumeration)),
+                ));
+            }
         }
     }
     render(statements)

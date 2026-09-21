@@ -336,10 +336,10 @@ fn build_enum(
     enumeration: &Enum,
     sorts: &BTreeMap<String, qualify::Qualified>,
 ) -> Result<EnumMapping, Diagnostics> {
-    // Option-admission integrity (§21.3): validate `(keryx.unknown)` against the enum's openness at
+    // Option-admission integrity (§21.3): resolve `(keryx.unknown)` against the enum's openness at
     // the policy door — a `PRESERVE` on a closed enum is a mis-target diagnostic here, never a silent
-    // no-op. The resolved flag is consumed on `EnumMapping` in the PRESERVE task (Increment 5).
-    annotate::enum_preserve(enumeration)?;
+    // no-op. The resolved flag rides on the `EnumMapping` below, where the codec and emit read it.
+    let preserve = annotate::enum_preserve(enumeration)?;
     // And a keryx option on the wrong element category — a field or message option on this enum — is
     // a mis-target here.
     annotate::reject_foreign_options(
@@ -389,6 +389,7 @@ fn build_enum(
         qualifier: resolved.qualifier.clone(),
         escaped: resolved.escaped,
         openness: enumeration.openness(),
+        preserve,
         doc: enumeration.doc().map(str::to_owned),
         values,
     })

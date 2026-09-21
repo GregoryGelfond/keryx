@@ -45,6 +45,7 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use crate::policy::model::{
     EmitForm, EnumMapping, FieldMapping, Mapping, SortMapping, Totality, ValueMapping,
 };
+use crate::policy::names;
 use crate::terms;
 
 /// The uniform payload nesting ceiling (spec §8, §26; the threat model's property 3): the deepest
@@ -555,8 +556,8 @@ impl<'m, 'a> Walker<'m, 'a> {
 
     /// The constant an enum value's wire `number` lowers to (spec §7.4): the declared value of
     /// that number in the referent enum's mapping — the first in `values()` iteration order, should
-    /// an alias share the number — or `UnknownEnumValue` at `at` for a number the enum does not
-    /// declare.
+    /// an alias share the number. A number the enum does not declare is the escape term
+    /// `unknown(number)` under `(keryx.unknown) = PRESERVE`, else `UnknownEnumValue` at `at`.
     fn enum_constant(&self, predicate: &Name, number: i32, at: &str) -> Result<Term, Diagnostic> {
         // `Index::build` resolved every referent of the mapping before any walk.
         let enumeration = self
@@ -564,12 +565,25 @@ impl<'m, 'a> Walker<'m, 'a> {
             .enum_of(predicate)
             .expect("every enum referent of the mapping is an enum of its index")
             .in_mapping(self.mapping);
-        enumeration
+        if let Some(value) = enumeration
             .values()
             .iter()
             .find(|value| value.number() == number)
-            .map(|value| terms::apply(value.constant().clone(), Vec::new()))
-            .ok_or_else(|| unknown_enum_value(enumeration, number, at))
+        {
+            // A declared number lowers to its constant, so `unknown(N)` arises only for a
+            // genuinely undeclared `N`.
+            Ok(terms::apply(value.constant().clone(), Vec::new()))
+        } else if enumeration.preserve() {
+            // §7.4: a PRESERVE open enum carries an undeclared wire number as the escape term
+            // `unknown(number)` — `number` a ground `i32` here; in the theory it is bound only
+            // through the field atom that carries it (the admission rules emit adds).
+            Ok(terms::apply(
+                Name::new(names::UNKNOWN_FUNCTOR).expect("`unknown` is an identifier"),
+                vec![terms::int(number)],
+            ))
+        } else {
+            Err(unknown_enum_value(enumeration, number, at))
+        }
     }
 
     /// Emit one fact `predicate(arguments…)` as its head symbol, through themelios's own

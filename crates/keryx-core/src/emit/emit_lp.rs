@@ -131,6 +131,28 @@ fn theory(unit: &Unit, mode: Mode) -> Vec<WithProvenance<Statement>> {
     for enumeration in unit.enums() {
         statements.extend(membership_table(enumeration));
     }
+    // Under `(keryx.unknown) = PRESERVE`, admit the escape term `unknown(N)` to the membership
+    // table — one rule per enum-valued field of a preserve enum (§7.4, §12.2), `ok_signal(unknown(N))
+    // :- f(_, …, unknown(N)).`, satisfying the membership obligation for `V = unknown(N)`; `N` is
+    // bound only through the field atom so the rule grounds safe.
+    for sort in unit.sorts() {
+        for field in sort.fields() {
+            let ValueMapping::Enum(referent) = field.value() else {
+                continue;
+            };
+            let Some(enumeration) = unit.enumeration(referent) else {
+                continue;
+            };
+            if enumeration.preserve() {
+                statements.push(build::escape_admission(
+                    names::member(enumeration.predicate()),
+                    field.predicate().clone(),
+                    field.arity(),
+                    doc(Kind::Membership, &signature::enumeration(enumeration)),
+                ));
+            }
+        }
+    }
     statements.extend(
         obligations
             .into_iter()

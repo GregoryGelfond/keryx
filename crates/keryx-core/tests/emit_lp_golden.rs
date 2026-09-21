@@ -183,3 +183,31 @@ fn crossmap_diagnostic() {
         include_str!("golden/gmap.emit-diagnostic.lp")
     );
 }
+
+// §7.4: under `(keryx.unknown) = PRESERVE`, the escape term `unknown(N)` is admitted to both the
+// value sort (`core.lp`) and the membership table (`emit.lp`), one rule per enum-valued field, `N`
+// bound only through that field's atom so grounding instantiates it over exactly the `unknown(N)`
+// terms the answer set carries. A singular field's rule anonymizes the parent (`f(_, unknown(N))`);
+// a repeated field's rule anonymizes the parent and the index too (`f(_, _, unknown(N))`).
+#[test]
+fn preserve_admits_the_escape_term_to_the_sort_and_the_membership_table() {
+    let unit = unit_of("preserve.proto");
+    let core = emit::core(&unit).expect("core");
+    assert!(
+        core.contains("signal(unknown(N)) :- current(_, unknown(N))."),
+        "singular admission missing from core.lp:\n{core}"
+    );
+    assert!(
+        core.contains("signal(unknown(N)) :- history(_, _, unknown(N))."),
+        "repeated admission missing from core.lp:\n{core}"
+    );
+    let theory = emit::emit_strict(&unit).expect("emit");
+    assert!(
+        theory.contains("ok_signal(unknown(N)) :- current(_, unknown(N))."),
+        "singular admission missing from emit.lp:\n{theory}"
+    );
+    assert!(
+        theory.contains("ok_signal(unknown(N)) :- history(_, _, unknown(N))."),
+        "repeated admission missing from emit.lp:\n{theory}"
+    );
+}

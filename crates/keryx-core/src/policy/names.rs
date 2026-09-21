@@ -62,6 +62,15 @@ const REACH: &str = "reach";
 /// it. One string.
 const VIOLATES: &str = "violates";
 
+/// The open-enum escape functor (spec §7.4) — `unknown(N)` carries an undeclared wire number of a
+/// `PRESERVE` enum, spelled by the codec (the term the shred lowers to and the reassembler raises)
+/// and by emit (the value-sort and membership admission rules). Deliberately **not** in
+/// [`RESERVED`]: a declared value named `*_UNKNOWN` lowers to the zero-arity constant `unknown`,
+/// which coexists with this arity-1 escape term (the reassembler routes a 0-ary symbol to the
+/// declared-constant lookup, a 1-ary `unknown(N)` to the preserve branch — sound by arity). One
+/// string, so the codec and emit cannot spell it two ways.
+pub(crate) const UNKNOWN_FUNCTOR: &str = "unknown";
+
 /// The response-root marker prefix (spec §12.1) — a sort's marker is `emit_<sort>`:
 /// [`escape_reserved`] keeps a schema-derived name off the prefix, and [`marker`] derives
 /// from it. One string.
