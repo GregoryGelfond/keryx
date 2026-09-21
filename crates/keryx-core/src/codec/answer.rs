@@ -38,7 +38,9 @@ pub fn raise_answer_set(text: &str) -> Result<Vec<Symbol>, Diagnostics> {
     // `Send + Sync + 'static` data (themelios-program `lib.rs`, its crate contract), and the syntax
     // parse interns only within the one `GreenNodeBuilder` minted per call (rowan's per-builder
     // `NodeCache`; themelios-syntax keeps no `static`/`thread_local`/locked cache) and reads no
-    // filesystem — so the `AssertUnwindSafe` is sound. (themelios `653ca5b`.)
+    // filesystem — so the `AssertUnwindSafe` is sound. These premises are re-owned at the pinned
+    // themelios revision by the threat model's dependency catalogue (the manifest names the rev),
+    // not restamped here.
     let raised = contain(Dependency::Themelios, "reading an answer set", || {
         raise_source(&source, Dialect::Clingo)
     })?;
