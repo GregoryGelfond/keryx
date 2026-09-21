@@ -1,3 +1,6 @@
+level(high).
+level(low).
+level(unspecified).
 %! calibration : reading -> int32  (partial)
 #defined calibration/2.
 %! sort detail/1

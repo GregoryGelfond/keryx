@@ -1,3 +1,6 @@
+grade(a).
+grade(b).
+grade(unspecified).
 %! A proto2 enum — a closed sort (§7.4): a number it does not declare is invalid.
 %! enum grade/1  (closed)
 #defined grade/1.

@@ -140,6 +140,14 @@ pub(super) fn fact(head: Atom, doc: String) -> WithProvenance<Statement> {
     )
 }
 
+/// A fact `head.` with no `%!` doc — a ground member of a data-defined sort, `e(c).` (spec
+/// §7.4): the enclosing `#defined e/1` already carries the sort's signature line, so the fact
+/// itself needs none (as [`include`] carries none). The `%!` line would only repeat the sort's
+/// signature once per value.
+pub(super) fn fact_bare(head: Atom) -> WithProvenance<Statement> {
+    WithProvenance::new(Statement::Rule(Rule::fact(head)), Provenance::empty())
+}
+
 /// The atom under default negation, `not p(…)`. Default negation is a property of a body
 /// occurrence, so the result is a [`BodyElement`] and never reaches a head.
 pub(super) fn not_atom(atom: Atom) -> BodyElement {
