@@ -148,6 +148,40 @@ pub(super) fn fact_bare(head: Atom) -> WithProvenance<Statement> {
     WithProvenance::new(Statement::Rule(Rule::fact(head)), Provenance::empty())
 }
 
+/// The open-enum escape term `unknown(argument)` (spec §7.4) — the one function name emit spells
+/// that is not a `Name` from the `Mapping`: [`crate::policy::names::UNKNOWN_FUNCTOR`], a fixed
+/// compile-time identifier, so the `expect` is a discharged invariant like [`var`]'s. `argument`
+/// is the value the term carries — the variable `N` an admission rule binds through its body atom.
+pub(super) fn unknown(argument: Term) -> Term {
+    apply(
+        Name::new(crate::policy::names::UNKNOWN_FUNCTOR).expect("`unknown` is a valid identifier"),
+        vec![argument],
+    )
+}
+
+/// A `PRESERVE` enum's escape-admission rule (spec §7.4): `head(unknown(N)) :- f(_, …, unknown(N)).`
+/// — `head` is the value sort `e` (in `core.lp`) or the membership table `ok_e` (in `emit.lp`), and
+/// `f` is the enum-valued field predicate of arity `field_arity`, with `unknown(N)` in its value
+/// position (the last argument) and every other position anonymous. `N` is bound **only** through
+/// that body atom — a positive literal over the `#defined` field predicate — so grounding
+/// instantiates the rule over exactly the finite set of `unknown(N)` terms the answer set contains
+/// (a bare `head(unknown(N)).` fact with a free `N` would range over clingo's integers, unsafe).
+pub(super) fn escape_admission(
+    head: Name,
+    field_predicate: Name,
+    field_arity: u32,
+    doc: String,
+) -> WithProvenance<Statement> {
+    let escape = unknown(var("N"));
+    let mut body_args: Vec<Term> = (1..field_arity).map(|_| anonymous()).collect();
+    body_args.push(escape.clone());
+    rule(
+        atom(head, [escape]),
+        vec![positive(atom(field_predicate, body_args))],
+        doc,
+    )
+}
+
 /// The atom under default negation, `not p(…)`. Default negation is a property of a body
 /// occurrence, so the result is a [`BodyElement`] and never reaches a head.
 pub(super) fn not_atom(atom: Atom) -> BodyElement {

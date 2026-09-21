@@ -401,6 +401,7 @@ mod tests {
             qualifier: Vec::new(),
             escaped: false,
             openness: Openness::Open,
+            preserve: false,
             doc: None,
             values: vec![EnumValueMapping {
                 proto_name: "LEVEL_LOW".to_owned(),
@@ -504,6 +505,7 @@ mod tests {
             qualifier: Vec::new(),
             escaped: false,
             openness: Openness::Closed,
+            preserve: false,
             doc: None,
             values: vec![],
         };

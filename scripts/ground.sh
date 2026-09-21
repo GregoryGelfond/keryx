@@ -214,6 +214,32 @@ $model" ;;
 esac
 echo "ground: numeric — SAT; UNSAT on a negative NATIVE_CHECKED unsigned value; range violation derived"
 
+# preserve ((keryx.unknown) = PRESERVE, §7.4): an undeclared wire number of an open enum is carried
+# as the escape term unknown(N). The value-sort and membership admission rules ground clean — N is
+# bound only through the field atom, so grounding is safe (a bare unknown(N) fact would be unsafe) —
+# and a Panel whose current is unknown(99) is SAT under strict: the admission rule derives
+# ok_signal(unknown(99)), satisfying the membership obligation. The enum example's Phase is open but
+# NOT PRESERVE, so it has no such rule; the same shape (phase unknown(99)) is UNSAT under strict — the
+# symmetric loud default at the theory level, matching the reassembler's outbound refusal.
+preserve=$work/preserve
+mkdir -p "$preserve"
+"$KERYX" gen "$fixtures/preserve.proto" -I "$fixtures" -o "$preserve" --shape both 2> "$preserve/gen.log" \
+  || fail "keryx gen preserve.proto failed:
+$(cat "$preserve/gen.log")"
+ground "$preserve/keryx.preserve.emit.lp"
+ground "$preserve/keryx.preserve.emit-diagnostic.lp"
+printf '%s\n' 'emit_panel(p0).' 'panel(p0).' 'current(p0, unknown(99)).' > "$preserve/answer.lp"
+solve sat "$preserve/keryx.preserve.emit.lp" "$preserve/answer.lp"
+signals=$work/signals
+mkdir -p "$signals"
+"$KERYX" gen "$root/examples/enum/signals.proto" -I "$root/examples/enum" -o "$signals" --shape both \
+  2> "$signals/gen.log" || fail "keryx gen signals.proto failed:
+$(cat "$signals/gen.log")"
+printf '%s\n' 'emit_light(l0).' 'light(l0).' 'intersection(l0, "x").' 'phase(l0, unknown(99)).' \
+  > "$signals/unknown.lp"
+solve unsat "$signals/signals.v1.emit.lp" "$signals/unknown.lp"
+echo "ground: preserve — admission rules ground safe; SAT with unknown(N); non-PRESERVE unknown(N) is UNSAT"
+
 # The feature examples (examples/<name>) — inbound-focused, so the gate is that the generated
 # outbound theory grounds clean, not an answer-set solve.
 grounds_clean enum "$root/examples/enum/signals.proto" "$root/examples/enum" signals.v1

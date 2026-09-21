@@ -327,6 +327,7 @@ pub struct EnumMapping {
     pub(crate) qualifier: Vec<String>,
     pub(crate) escaped: bool,
     pub(crate) openness: Openness,
+    pub(crate) preserve: bool,
     pub(crate) doc: Option<String>,
     pub(crate) values: Vec<EnumValueMapping>,
 }
@@ -361,6 +362,16 @@ impl EnumMapping {
     #[must_use]
     pub fn openness(&self) -> Openness {
         self.openness
+    }
+
+    /// Whether the enum preserves unknown wire values under `(keryx.unknown) = PRESERVE` (§7.4):
+    /// an undeclared wire number lowers to `unknown(N)` rather than a refusal, and the theory
+    /// admits `unknown(N)` to both the value sort and the membership table. Resolved at the
+    /// policy door ([`crate::policy`]); a `PRESERVE` on a closed enum was already a mis-target
+    /// there, so this is `true` only on an open enum.
+    #[must_use]
+    pub fn preserve(&self) -> bool {
+        self.preserve
     }
 
     /// The doc comment, if the descriptor carried one.
@@ -447,6 +458,14 @@ impl Unit {
     #[must_use]
     pub fn enums(&self) -> &[EnumMapping] {
         &self.enums
+    }
+
+    /// The enum whose sort predicate is `predicate` — the referent an enum-valued field names
+    /// (`ValueMapping::Enum`, §7.4), so emit can read its resolved `preserve` flag without the
+    /// codec's `Index`. A linear scan of the unit's enums (their count is small).
+    #[must_use]
+    pub(crate) fn enumeration(&self, predicate: &Name) -> Option<&EnumMapping> {
+        self.enums.iter().find(|e| e.predicate() == predicate)
     }
 }
 
@@ -603,6 +622,7 @@ mod tests {
             qualifier: Vec::new(),
             escaped: false,
             openness: Openness::Open,
+            preserve: false,
             doc: Some("the sample enum".to_owned()),
             values: vec![EnumValueMapping {
                 proto_name: "ACTIVE".to_owned(),
