@@ -31,6 +31,21 @@ golden!(
     emit::core,
     "golden/proto3.core.lp"
 );
+// §7.4: `core.lp` materializes each enum's value domain as a populated sort — one ground fact
+// `e(c)` per declared constant, so a model quantifies over the enum's values directly, as it
+// does a message sort's occupants (§4). The honorary `#defined e/1`, which carries the sort's
+// signature line, sits redundant-but-harmless beside the facts that now define the predicate.
+#[test]
+fn an_enum_value_domain_is_a_populated_sort() {
+    let core = emit::core(&unit_of("proto3.proto")).expect("emits");
+    for fact in ["level(unspecified).", "level(low).", "level(high)."] {
+        assert!(core.contains(fact), "missing `{fact}` in\n{core}");
+    }
+    assert!(
+        core.contains("#defined level/1."),
+        "the honorary signature stays:\n{core}"
+    );
+}
 golden!(
     proto3_views,
     "proto3.proto",

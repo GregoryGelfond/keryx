@@ -1,3 +1,7 @@
+phase(caution).
+phase(go).
+phase(stop).
+phase(unspecified).
 %! A corridor of lights — a sequence.
 %! sort corridor/1
 %! lights : corridor × index -> light  (sequence)

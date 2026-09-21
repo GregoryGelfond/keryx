@@ -49,11 +49,24 @@ pub fn core(unit: &Unit) -> Result<String, Diagnostics> {
         }
     }
     for enumeration in unit.enums() {
+        // The honorary `#defined e/1` carries the enum's signature line (§13.1) — redundant-but-
+        // harmless beside the facts below, which now define the same predicate.
         statements.push(build::defined(
             enumeration.predicate().clone(),
             1,
             doc_line(enumeration.doc(), &signature::enumeration(enumeration)),
         ));
+        // Materialize the value domain as a populated sort (§7.4): one ground fact `e(c)` per
+        // declared constant, so a model may quantify over the enum's values directly — a
+        // conditional literal `f(P, V) : e(V)`, a constraint ranging over every value — exactly
+        // as it quantifies over a message sort's occupants (§4). This is core.lp's own
+        // model-facing sort, distinct from emit.lp's outbound membership table `ok_e` (§12.2).
+        for value in enumeration.values() {
+            statements.push(build::fact_bare(build::atom(
+                enumeration.predicate().clone(),
+                [build::apply(value.constant().clone(), Vec::new())],
+            )));
+        }
     }
     render(statements)
 }
