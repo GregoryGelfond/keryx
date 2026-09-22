@@ -16,9 +16,12 @@
 //!
 //! **Two phases, an explicit heap stack, no native recursion (the threat model's property 3,
 //! branch (b)).** Discovery walks top-down from the root on a managed stack, refusing an occupant
-//! chain past [`walk::NESTING_CEILING`] (`ReassembledTooDeep`) *before* anything is built, and
-//! plans each occupant's fields — raising each scalar once ([`scalar::raise`]), resolving each enum,
-//! ordering each sequence, keying each map — collecting every refusal. The build then runs only if
+//! chain past [`walk::NESTING_CEILING`] (`ReassembledTooDeep`) — and a provenance-shared set-member
+//! expansion past the answer set's atom count (`ReassembledTooLarge`, bounding a DAG) — *before*
+//! anything is built, and plans each occupant's fields — raising each scalar once
+//! ([`scalar::raise`]), resolving each enum, ordering each sequence, keying each map, joining each
+//! `(keryx.set)` through its membership atoms (each member re-checked an occupant of its element
+//! sort, §7.1) — collecting every refusal. The build then runs only if
 //! discovery found none (every message or every diagnosis, never partial — property 4): it
 //! constructs each occupant bottom-up (children before parents, discovery order reversed) into a
 //! [`engine::Building`] and encodes the root in the wire form `format` names — the binary wire, the

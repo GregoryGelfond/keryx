@@ -243,3 +243,29 @@ fn a_set_member_shared_across_two_fields_reassembles_totally_never_panics() {
     // xs (field 1) and ys (field 2) each carry one empty `Node` — the shared member copied per field.
     assert_eq!(out.messages()[0].bytes(), vec![0x0A, 0x00, 0x12, 0x00]);
 }
+
+#[test]
+fn a_self_cycle_set_member_is_refused_by_a_bounded_limit_never_looped() {
+    // Termination (spec §12.3): a message-set member named by provenance can be an ancestor — here a
+    // `Node` that is its own kid, a cycle a path-term occupant could never form. Reassembly is
+    // bounded, not structural: a tight cycle exceeds the atom-count budget (`ReassembledTooLarge`),
+    // a deep one the nesting ceiling (`ReassembledTooDeep`) — either way a bounded refusal, never a
+    // loop or a hang.
+    let codec = sets_codec();
+    let answer = vec![
+        atom("emit_node", vec![constant("r")]),
+        atom("node", vec![constant("r")]),
+        atom("kids", vec![constant("r"), constant("r")]),
+    ];
+    let error = codec
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect_err("a self-cycle set member is refused, never looped");
+    assert!(
+        error.iter().any(|d| matches!(
+            d.kind(),
+            keryx_core::diagnostics::DiagnosticKind::ReassembledTooLarge
+                | keryx_core::diagnostics::DiagnosticKind::ReassembledTooDeep
+        )),
+        "a cycle is refused by a bounded limit, never looped or panicked"
+    );
+}
