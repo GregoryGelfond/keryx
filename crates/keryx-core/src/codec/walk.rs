@@ -462,22 +462,15 @@ impl<'m, 'a> Walker<'m, 'a> {
                     }
                 }
             }
-            (
-                EmitForm::Set,
-                FieldValue::Scalar(_)
-                | FieldValue::Message(_)
-                | FieldValue::Elements(_)
-                | FieldValue::Entries(_),
-            ) => unreachable!(
-                "`{}` maps to the `(keryx.set)` membership form, which the policy does not produce until the annotation is read; shredding it is a keryx error",
-                field.proto().as_str()
-            ),
+            (EmitForm::Set, FieldValue::Elements(elements)) => {
+                self.set(work, field, elements, children);
+            }
             (
                 EmitForm::Function | EmitForm::OneofArm { .. },
                 FieldValue::Elements(_) | FieldValue::Entries(_),
             )
             | (
-                EmitForm::Sequence,
+                EmitForm::Sequence | EmitForm::Set,
                 FieldValue::Scalar(_) | FieldValue::Message(_) | FieldValue::Entries(_),
             )
             | (
@@ -487,6 +480,52 @@ impl<'m, 'a> Walker<'m, 'a> {
                 "the value of `{}` has the shape of its field's form, the mapping and the decoded tree deriving from one descriptor pool; a mismatch is a keryx error",
                 field.proto().as_str()
             ),
+        }
+    }
+
+    /// Shred a `(keryx.set)` field (spec §7.1). A scalar (or enum) set is the binary membership
+    /// relation `f(P, V)` with no index — identical terms are one atom, so duplicates collapse.
+    /// A message set's members are the positional occupants `f(P, i)` a sequence gives them — their
+    /// occupancy atom and fields discharged when each occupant's work item is popped (`slot`) —
+    /// each linked to the parent by a membership atom `f(P, f(P, i))`. Emitting that link inbound
+    /// lands a shredded set in the same membership representation a model asserts and the
+    /// reassembler reads (§7.1, §12.3), so the round trip reads back what it wrote.
+    fn set(
+        &mut self,
+        work: &Work<'a>,
+        field: &'m FieldMapping,
+        elements: Vec<Element<'a>>,
+        children: &mut Vec<Work<'a>>,
+    ) {
+        let parent = &work.parent;
+        if matches!(field.value(), ValueMapping::Message(_)) {
+            for (position, element) in elements.into_iter().enumerate() {
+                let Ok(index) = i32::try_from(position) else {
+                    self.diagnostics.push(index_out_of_range(field));
+                    break;
+                };
+                // The membership atom `f(P, f(P, i))` links the positional occupant into the set;
+                // the occupant's own occupancy atom and fields are emitted when its work item is
+                // popped by `slot`, exactly a sequence element's.
+                let occupant = terms::apply(
+                    field.predicate().clone(),
+                    vec![parent.clone(), terms::int(index)],
+                );
+                self.emit(field.predicate(), vec![parent.clone(), occupant]);
+                self.slot(
+                    work,
+                    field,
+                    vec![parent.clone(), terms::int(index)],
+                    element,
+                    children,
+                );
+            }
+        } else {
+            // A scalar or enum set: `f(P, V)`, no index — `slot` lowers the value under the field's
+            // §6 treatment, and identical membership atoms are one (duplicates collapse).
+            for element in elements {
+                self.slot(work, field, vec![parent.clone()], element, children);
+            }
         }
     }
 
@@ -662,9 +701,9 @@ mod tests {
     use themelios_program::prelude::*;
 
     use super::{Index, NESTING_CEILING, Work, run};
-    use crate::codec::engine;
+    use crate::codec::{Facts, engine};
     use crate::descriptor::{self, RECURSION_LIMIT, RetainedPool};
-    use crate::diagnostics::{Diagnostic, DiagnosticKind};
+    use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics};
     use crate::policy::{self, EmitForm, FieldMapping, Mapping, Totality, ValueMapping};
     use crate::terms;
 
@@ -703,6 +742,25 @@ mod tests {
         bytes
     }
 
+    /// The obligations fixture's mapping and pool — its `Gauge` carries a `repeated int32 samples`,
+    /// a scalar sequence a test sets to `Set` for a scalar-set shred.
+    fn obligations() -> (Mapping, RetainedPool) {
+        let (schema, pool) =
+            descriptor::ingest_retaining(&keryx_test_support::compile_fixture("obligations.proto"))
+                .expect("the fixture ingests");
+        (policy::map(&schema).expect("maps"), pool)
+    }
+
+    /// A `Gauge` with `samples = [7, 3, 7]` on the wire (field 3, `int32`) — a duplicate among the
+    /// values, to pin that a scalar set collapses it.
+    fn gauge_with_samples() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for value in [7, 3, 7] {
+            encoding::int32::encode(3, &value, &mut bytes);
+        }
+        bytes
+    }
+
     /// The field of `mapping` at the fully-qualified `path`, for a test to alter — the mapping
     /// being the policy's, no public door constructs an inconsistent one.
     fn field_mut<'m>(mapping: &'m mut Mapping, path: &str) -> &'m mut FieldMapping {
@@ -728,12 +786,27 @@ mod tests {
 
     /// As [`run_from`], over any schema's mapping and pool.
     fn run_over(
-        (mut mapping, pool): (Mapping, RetainedPool),
+        units: (Mapping, RetainedPool),
         depth: usize,
         root_type: &str,
         bytes: &[u8],
         alter: impl FnOnce(&mut Mapping),
     ) -> Result<usize, Vec<DiagnosticKind>> {
+        shred(units, depth, root_type, bytes, alter)
+            .map(|facts| facts.symbols().len())
+            .map_err(|diagnostics| diagnostics.iter().map(Diagnostic::kind).collect())
+    }
+
+    /// The `Facts` of walking `bytes` (an instance of `root_type`) over `(mapping, pool)` after
+    /// `alter` — the shared shred a fact-*count* assertion ([`run_over`]) or a fact-*content* one
+    /// ([`shred_lp`]) reads.
+    fn shred(
+        (mut mapping, pool): (Mapping, RetainedPool),
+        depth: usize,
+        root_type: &str,
+        bytes: &[u8],
+        alter: impl FnOnce(&mut Mapping),
+    ) -> Result<Facts, Diagnostics> {
         alter(&mut mapping);
         let index = Index::build(&mapping).expect("the index builds");
         let sort = index.root(&mapping, root_type).expect("the root resolves");
@@ -751,8 +824,21 @@ mod tests {
                 depth,
             },
         )
-        .map(|facts| facts.symbols().len())
-        .map_err(|diagnostics| diagnostics.iter().map(Diagnostic::kind).collect())
+    }
+
+    /// The rendered `.lp` facts of walking `bytes` over `(mapping, pool)` after `alter`, whitespace
+    /// stripped so a content assertion reads the atoms free of the renderer's spacing.
+    fn shred_lp(
+        units: (Mapping, RetainedPool),
+        root_type: &str,
+        bytes: &[u8],
+        alter: impl FnOnce(&mut Mapping),
+    ) -> String {
+        let lp = shred(units, 0, root_type, bytes, alter)
+            .expect("the shred succeeds")
+            .render()
+            .expect("the facts render");
+        lp.chars().filter(|c| !c.is_whitespace()).collect()
     }
 
     /// Walk the one-reading batch from the root, over a mapping `alter` may have changed.
@@ -911,13 +997,57 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "shredding it is a keryx error")]
-    fn the_set_form_is_a_discharged_can_t_happen_not_a_silent_wildcard() {
-        // The policy never produces `Set` until `(keryx.set)` is read (Increment 5): reaching the
-        // arm is a keryx error, loud — never a sequence shredded as a set or vice versa.
-        let _ = walk_batch(|mapping| {
-            field_mut(mapping, "thermal.v1.ReadingBatch.readings").form = EmitForm::Set;
+    fn a_message_set_shreds_to_occupancy_and_a_membership_atom() {
+        // The set form's inbound half (§7.1): a message set's members are the positional occupants
+        // `f(P, i)` a sequence gives them — the occupancy atom `reading(readings(r0,0))` and the
+        // element's own fields — each linked to the parent by the membership atom
+        // `readings(r0, readings(r0,0))`, so the shred lands in the same membership representation a
+        // model asserts and the reassembler reads. Driven by a directly-set `Set` form, the policy
+        // not producing it until the annotation is read (Increment 5's last task).
+        let lp = shred_lp(thermal(), "ReadingBatch", &one_reading_batch(), |mapping| {
+            let field = field_mut(mapping, "thermal.v1.ReadingBatch.readings");
+            field.form = EmitForm::Set;
+            field.arity = 2;
         });
+        assert!(
+            lp.contains("reading(readings(r0,0))"),
+            "occupancy of the member:\n{lp}"
+        );
+        assert!(
+            lp.contains("readings(r0,readings(r0,0))"),
+            "membership atom links the occupant into the set:\n{lp}"
+        );
+        assert!(
+            lp.contains("sensor(readings(r0,0),\"s-101\")")
+                && lp.contains("temp_c(readings(r0,0),44)"),
+            "the member's own fields ride on its occupant term:\n{lp}"
+        );
+    }
+
+    #[test]
+    fn a_scalar_set_shreds_to_the_binary_relation_with_duplicates_collapsed() {
+        // A scalar set drops the sequence's index (§4.1, §7.1): `samples(r0, V)` at arity 2, no
+        // index — and identical values are one atom, so `samples = [7, 3, 7]` yields `samples(r0,7)`
+        // once and `samples(r0,3)` once (the duplicate collapses at rendering, P3).
+        let lp = shred_lp(obligations(), "Gauge", &gauge_with_samples(), |mapping| {
+            let field = field_mut(mapping, "keryx.obligations.Gauge.samples");
+            field.form = EmitForm::Set;
+            field.arity = 2;
+        });
+        assert_eq!(
+            lp.matches("samples(r0,7)").count(),
+            1,
+            "the duplicate value collapses to one membership atom:\n{lp}"
+        );
+        assert_eq!(
+            lp.matches("samples(r0,3)").count(),
+            1,
+            "the distinct value is its own membership atom:\n{lp}"
+        );
+        assert!(
+            !lp.contains("samples(r0,0,") && !lp.contains("samples(r0,1,"),
+            "a scalar set carries no index argument:\n{lp}"
+        );
     }
 
     #[test]
