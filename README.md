@@ -57,19 +57,39 @@ hot(B, R) :- readings(B, _, R), temp_c(R, T), T > 100.   % ⊢ hot(b, readings(b
 ```
 
 Solve that with **your own clingo**, and keryx turns the answer set **back into a
-`Batch`**. keryx never runs the solver. `gen` and `facts` — the schema-to-vocabulary and
-payload-to-facts halves above — are real today; the reassembly that turns the answer set
-back into a `Batch` arrives with the first end-to-end path.
+`Batch`** — byte-for-byte the payload you started from. keryx never runs the solver.
 
 ## Status
 
-Under construction. The compiler (`keryx gen`, `keryx explain`) and the inbound codec
-(`keryx facts`, binary, textproto, and JSON payloads) are built; outbound reassembly,
-annotations, and `.lp` admission follow. The worked [`examples/`](examples/) are a guided
-tour — six runnable examples covering schema to vocabulary and payloads to facts, with the
-thermal and config walkthroughs closing the round trip. See
-[`docs/design/architecture.md`](docs/design/architecture.md) for the build plan
-and [`docs/specification.md`](docs/specification.md) for the full design.
+keryx translates **proto2 and proto3** schemas and messages in both directions, on all
+three wire forms:
+
+- **`keryx gen`** / **`keryx explain`** — a schema becomes the ASP vocabulary
+  (`core.lp`, `views.lp`, `emit.lp`, and a manifest), and the mapping is inspectable.
+- **`keryx facts`** — a message becomes ground facts (binary, textproto, or JSON payload).
+- **`keryx emit`** — an answer set becomes a message again, a byte-for-byte round trip in
+  every format.
+- **Annotations** give a field or enum its precise ASP treatment, validated at the policy
+  door (a mis-targeted or malformed option is a structured diagnostic, never a silent
+  mis-lowering): `(keryx.numeric)` for integer width, `(keryx.scale)` / `(keryx.opaque)`
+  for floats, and `(keryx.unknown) = PRESERVE` to carry an open enum's unknown wire values
+  through translation. A proto2 `required` field carries its outbound totality obligation —
+  full proto2/proto3 parity.
+
+**Not yet:**
+
+- **Set semantics** (`(keryx.set)`) — the annotation is reserved but not yet wired.
+- **`views.lp` usage descriptions** — the projection views carry their signature line today;
+  the schema-composed usage prose is in progress.
+- **Editions** (2023, 2024) — an editions schema is refused with a specific diagnostic,
+  since keryx's descriptor engine has no editions support yet; it becomes a drop-in when the
+  engine does. keryx branches on *resolved features*, not syntax era, so editions land
+  without a redesign. See [`docs/proto-support.md`](docs/proto-support.md).
+
+The worked [`examples/`](examples/) are a guided tour — six runnable examples covering schema
+to vocabulary and payloads to facts, with the thermal and config walkthroughs closing the
+round trip. See [`docs/design/architecture.md`](docs/design/architecture.md) for the design
+overview and [`docs/specification.md`](docs/specification.md) for the full specification.
 
 ## Built on
 
