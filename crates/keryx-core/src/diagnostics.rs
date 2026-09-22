@@ -222,8 +222,8 @@ pub enum DiagnosticKind {
     /// decimal-string constant) — and the detail carries that two-choice fix-it (architecture
     /// §6). §6 makes the *field* the error, not the value, so an unannotated float field is
     /// refused whenever the walk reaches it, its materialised zero included (§5). Named at the
-    /// offending field's path. The inbound scalar policy's, Increment 3; the annotations that
-    /// discharge it are Increment 5's option vocabulary.
+    /// offending field's path. The inbound scalar policy raises it; `(keryx.scale)` or
+    /// `(keryx.opaque)` on the field discharges it.
     UnannotatedFloat,
     /// A finite `float`/`double` value is off the grid its `(keryx.scale) = n` declares: the scaled
     /// integer `m = round(f · 10ⁿ)` does not re-divide to the exact input double

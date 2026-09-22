@@ -107,9 +107,9 @@ mod tests {
     }
 
     /// A unit whose one composite sort carries two `(keryx.set)` fields — a scalar set `tags` and a
-    /// message set `items` — built by hand because `policy::annotate` does not yet produce
-    /// `EmitForm::Set` (Increment 5's last task turns that on); the gen artifacts are exercised over
-    /// the form directly, as the codec tests do.
+    /// message set `items` — built by hand so the gen artifacts are exercised over the set form over a
+    /// minimal unit directly, as the codec tests do, independent of the annotation path that produces
+    /// the form in the pipeline.
     fn container_with_two_sets() -> Unit {
         let set_field = |proto: &str, pred: &str, value: ValueMapping, number: i32| FieldMapping {
             proto: FqName::new(proto),

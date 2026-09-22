@@ -398,9 +398,8 @@ impl<'m, 'a> Walker<'m, 'a> {
     }
 
     /// Lower one present field under its form (§4.1, §7): the value's shape is the form's — a
-    /// singular value for a function or `oneof` arm, elements for a sequence, entries for a map —
-    /// since the mapping and the tree derive from one pool; the `Set` form is reserved (§7.1,
-    /// Increment 5) and never produced by the policy. Both are discharged at their arms.
+    /// singular value for a function or `oneof` arm, elements for a sequence or set, entries for a
+    /// map — since the mapping and the tree derive from one pool. Each form is discharged at its arm.
     fn field(
         &mut self,
         work: &Work<'a>,
@@ -1002,8 +1001,8 @@ mod tests {
         // `f(P, i)` a sequence gives them — the occupancy atom `reading(readings(r0,0))` and the
         // element's own fields — each linked to the parent by the membership atom
         // `readings(r0, readings(r0,0))`, so the shred lands in the same membership representation a
-        // model asserts and the reassembler reads. Driven by a directly-set `Set` form, the policy
-        // not producing it until the annotation is read (Increment 5's last task).
+        // model asserts and the reassembler reads. Driven by a directly-set `Set` form, exercising
+        // the shred over a minimal mapping independent of the annotation path that produces the form.
         let lp = shred_lp(thermal(), "ReadingBatch", &one_reading_batch(), |mapping| {
             let field = field_mut(mapping, "thermal.v1.ReadingBatch.readings");
             field.form = EmitForm::Set;

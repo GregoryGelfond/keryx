@@ -110,8 +110,7 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 /// - `kind` is a function of the field's `EmitForm` alone: `fn` (singular), `fam` (repeated
 ///   or map), `oneof` (an oneof arm, regardless of what its value is — a message-typed arm is
 ///   still `oneof`, never demoted to `fn`), `rel` (a `(keryx.set)` membership relation,
-///   Appendix B's shape; `EmitForm::Set` is reserved and never produced at present, so this arm is
-///   presently unreachable but correctly labeled).
+///   Appendix B's shape).
 /// - `target` is a function of the field's `ValueMapping` alone: `-> <target>` names the
 ///   referent sort only for a message-typed occupant (an enum referent shows only in
 ///   `<declared>` — §13.4's occupant-vs-declared distinction).
@@ -121,7 +120,7 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 /// noting the view predicate (`views.lp`, §13.2) a model author joins on. `<declared>` is the
 /// proto-declared type regardless of `kind`/target
 /// (`declared`). `<descriptor>` is the family's shape — `seq` (sequence), `map<key>` (map), or
-/// `set` (a `(keryx.set)` membership relation, reserved at present) — or, for a singular field or
+/// `set` (a `(keryx.set)` membership relation) — or, for a singular field or
 /// oneof arm, its `Totality` (§5), not the finer presence — the fidelity the `Mapping` carries: a
 /// proto2 `required` field renders `required` (not folded into `partial`), its distinct outbound
 /// totality obligation emitted by `emit.lp` (`policy::model::Totality` — full proto2/proto3
@@ -474,9 +473,9 @@ mod tests {
 
     #[test]
     fn field_line_labels_a_set_form_as_rel() {
-        // `EmitForm::Set` is reserved for `(keryx.set)` membership relations (Appendix B) and
-        // never produced by `policy` at present, but `kind`'s match is exhaustive over every
-        // `EmitForm` variant with no wildcard, so this label is already correct today.
+        // A `(keryx.set)` membership relation (Appendix B) labels `rel`: `kind`'s match is
+        // exhaustive over every `EmitForm` variant with no wildcard, so the label is read straight
+        // off the form.
         let field = FieldMapping {
             proto: FqName::new("keryx.t.Tags.name"),
             number: 1,

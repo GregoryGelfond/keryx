@@ -258,7 +258,7 @@ fn the_annotated_scalar_treatments_round_trip_in_all_three_formats() {
 
 #[test]
 fn a_set_annotated_field_round_trips_in_all_forms() {
-    // AlertSet.alerts carries `(keryx.set)` (§28, F10): an AlertSet shreds to its occupancy and
+    // AlertSet.alerts carries `(keryx.set)` (§28): an AlertSet shreds to its occupancy and
     // membership facts and reassembles to the payload again — then shreds back to the same facts —
     // in binary, textproto, and JSON. AlertSet is wire-identical to ReadingBatch and Alert to
     // Reading, so the wire helpers serve both.
@@ -271,7 +271,7 @@ fn a_set_annotated_field_round_trips_in_all_forms() {
 
 #[test]
 fn a_model_computed_set_reassembles_its_members_by_provenance() {
-    // The set form's reason to exist (§4.1, §28), and the outbound half F10 turns on: a model
+    // The set form's reason to exist (§4.1, §28), and the outbound half set production turns on: a model
     // *computing* a set names its members functionally, by their own provenance — occupancy
     // `alert(al(N))` and membership `alerts(out, al(N))` — not positional occupants. The
     // membership-join reach binds each member whatever its functor, the reassembler reads the

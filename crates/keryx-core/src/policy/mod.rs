@@ -301,8 +301,8 @@ fn first_generated_collision(unit: &Unit) -> Option<Diagnostic> {
 /// and must be updated with them. That the two agree is not left to discipline: the test
 /// `the_reserved_auxiliary_set_equals_what_emit_lp_mints` asserts this set equals the `has_`/`ok_`
 /// heads `emit_strict` actually emits, so a desync fails a test rather than silently corrupting the
-/// theory — Increment 5's `(keryx.set)` and annotation-driven treatments move arities across exactly
-/// this surface.
+/// theory — `(keryx.set)` and the annotation-driven treatments move arities across exactly this
+/// surface.
 fn generated_auxiliaries(unit: &Unit) -> BTreeMap<(String, u32), String> {
     // Owned keys: an auxiliary name is a fresh `Name`.
     let mut auxiliaries: BTreeMap<(String, u32), String> = BTreeMap::new();
@@ -741,8 +741,9 @@ mod tests {
         // `names::member`; the form→arity classification is hand-mirrored against
         // `emit_lp::{singular,sequence,membership_table}`. This test makes that mirror mechanical —
         // for every fixture unit, the reserved set must equal the `has_`/`ok_` heads `emit_strict`
-        // actually emits, so a future desync (Increment 5 moves arities across this surface) fails
-        // here rather than silently under-reserving (theory corruption) or over-refusing.
+        // actually emits, so a desync — as when `(keryx.set)` or an annotation treatment moves an
+        // arity across this surface — fails here rather than silently under-reserving (theory
+        // corruption) or over-refusing.
         use std::collections::BTreeSet;
 
         use keryx_test_support as support;
@@ -808,9 +809,9 @@ mod tests {
         // A `(keryx.set)` field mints neither a presence/index witness (`has_`) nor an enum
         // membership table (`ok_`): its reach and its member-occupancy obligation carry no such
         // auxiliary (§7.1, §12.2). Both sides of the mirror stay empty for it — the reserved set
-        // (this fn's `_ => continue`) and the emitted heads alike — built by hand, `annotate` not
-        // yet producing `EmitForm::Set`, so a future arm that reserved or emitted one for a set
-        // would fail here rather than desync silently until a set fixture exists.
+        // (this fn's `_ => continue`) and the emitted heads alike — built by hand over a minimal
+        // unit, so an arm that reserved or emitted an auxiliary for a set would fail here rather than
+        // desync silently.
         use themelios_program::Name;
 
         use crate::emit;
