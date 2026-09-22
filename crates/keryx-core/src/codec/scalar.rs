@@ -1317,7 +1317,7 @@ mod tests {
                 Symbol::String("DEAD".to_owned()),
                 TermTypeMismatch,
             ),
-            // A float/double field is reachable outbound (F6) — a diagnostic, never a panic.
+            // A float/double field is reachable outbound — a diagnostic, never a panic.
             (
                 Scalar::Float,
                 NeedsAnnotation,

@@ -11,7 +11,7 @@
 //! mis-lowering (arch §6; threat-model property 4). The codec (`walk`/`assemble`/`scalar`) and
 //! `emit` dispatch on the resolved `Mapping`, never on an `Annotation` (threat-model.md).
 //!
-//! **The classification rule (F4c), applied uniformly:** an *inapplicable* option — one that can
+//! **The classification rule, applied uniformly:** an *inapplicable* option — one that can
 //! never have its intended effect on this target (`scale`/`opaque` on a non-float, `set` on a
 //! non-repeated field, `PRESERVE` on a closed enum, `numeric` on a non-integer) — is a **mis-target
 //! diagnostic**; an option whose effect *coincides with the target's default* (`DECIMAL_STRING` on a
@@ -21,7 +21,7 @@
 //!
 //! Per option, its **positive production** (the `ScalarTreatment`/`EmitForm` override an applicable
 //! annotation resolves to) lands in that option's own task, so no commit carries a `Mapping` variant
-//! that is producible but unhandled (F5). This module establishes the framework, the validation
+//! that is producible but unhandled. This module establishes the framework, the validation
 //! table, the classification rule, and the default-and-no-op path; the scalar-value overrides land
 //! here — `(keryx.numeric)` → `NativeChecked`/`DecimalString`, `(keryx.scale)`/`(keryx.opaque)` →
 //! `FixedPoint`/`OpaqueFloat` — while an option not yet lowered (a set on a repeated field) resolves
@@ -59,7 +59,7 @@ fn is_integer(scalar: Scalar) -> bool {
 /// Whether a scalar kind is a 64-bit integer — the target `(keryx.numeric) = NATIVE_CHECKED`
 /// overrides to a native clingo integer (§6). Its §6 default is a decimal string, so this is where
 /// `NATIVE_CHECKED` differs from the default; on a 32-bit integer `NATIVE_CHECKED` coincides with the
-/// native default (a no-op, F4c).
+/// native default (a no-op).
 fn is_64_bit(scalar: Scalar) -> bool {
     matches!(
         scalar,
@@ -70,7 +70,7 @@ fn is_64_bit(scalar: Scalar) -> bool {
 /// Whether a scalar kind is a 32-bit unsigned integer (`uint32`/`fixed32`) — the target
 /// `(keryx.numeric) = DECIMAL_STRING` overrides to a decimal string (§6): its top-bit values a
 /// native `i32` cannot carry, where the §6 default `Native` would refuse them. On a 64-bit kind
-/// `DECIMAL_STRING` coincides with the default (a no-op, F4c).
+/// `DECIMAL_STRING` coincides with the default (a no-op).
 fn is_32_bit_unsigned(scalar: Scalar) -> bool {
     matches!(scalar, Scalar::Uint32 | Scalar::Fixed32)
 }
@@ -266,7 +266,7 @@ fn validate_value_options(field: &Field, target: Option<Scalar>, rejections: &mu
         }
     }
     // `(keryx.scale)` and `(keryx.opaque)` are two different float lowerings; a float field may take
-    // at most one (F4b). On a non-float each is already a mis-target above, so the conflict is gated
+    // at most one. On a non-float each is already a mis-target above, so the conflict is gated
     // to a float target, where both would otherwise be admissible.
     if target.is_some_and(is_float)
         && field
@@ -286,7 +286,7 @@ fn validate_value_options(field: &Field, target: Option<Scalar>, rejections: &mu
 }
 
 /// The scalar treatment a validated `(keryx.numeric)` annotation resolves to for a `target` integer
-/// kind, given its §6 `default` — the two positive overrides, else the default unchanged (F4c). A
+/// kind, given its §6 `default` — the two positive overrides, else the default unchanged. A
 /// `NATIVE_CHECKED` on a 64-bit kind → `NativeChecked` (a native clingo integer, where the §6 default
 /// is a decimal string); a `DECIMAL_STRING` on a `uint32`/`fixed32` → `DecimalString` (the top-bit
 /// carry, where the §6 default `Native` would refuse it). Every other admitted case coincides with
@@ -315,7 +315,7 @@ fn numeric_treatment(field: &Field, target: Scalar, default: ScalarTreatment) ->
 /// `FixedPoint { scale: n }` (`n` validated `0..=SCALE_MAX` at the door), `(keryx.opaque) = true` →
 /// `OpaqueFloat`. A non-float `target` keeps its `default` (the two options mis-target there, refused
 /// in [`validate_value_options`]). Called only after validation admits the field; `scale`/`opaque`
-/// are mutually exclusive (F4b), so at most one fires.
+/// are mutually exclusive, so at most one fires.
 fn float_treatment(field: &Field, target: Scalar, default: ScalarTreatment) -> ScalarTreatment {
     if !is_float(target) {
         return default;
@@ -375,7 +375,7 @@ pub(super) fn field_treatment(
 
 /// Validate the scalar-value options on a **message- or enum-valued** field, where none of
 /// `(keryx.scale)`/`(keryx.opaque)`/`(keryx.numeric)` can apply — each present one is a mis-target
-/// diagnostic (the F4c rule, applied uniformly). Called for every non-scalar-valued field as
+/// diagnostic (the classification rule, applied uniformly). Called for every non-scalar-valued field as
 /// [`field_form`] is called for every field's `(keryx.set)`, so a mis-placed scalar-value option is
 /// refused rather than silently dropped. Produces no treatment (the field has no scalar value).
 pub(super) fn reject_nonscalar_options(field: &Field) -> Result<(), Diagnostics> {
@@ -386,7 +386,7 @@ pub(super) fn reject_nonscalar_options(field: &Field) -> Result<(), Diagnostics>
 
 /// The emit form of a field under `(keryx.set)`. Returns `default` (the §7 form) plus any
 /// diagnostics; the positive `EmitForm::Set` production for a set-annotated repeated field lands in
-/// the set vertical's last task (Slice 4).
+/// the set vertical, a later increment.
 pub(super) fn field_form(field: &Field, default: EmitForm) -> Result<EmitForm, Diagnostics> {
     let is_repeated = matches!(field.shape(), FieldShape::Repeated { .. });
     let mut rejections = Vec::new();
@@ -577,7 +577,7 @@ mod tests {
         )
     }
 
-    // --- (keryx.scale) / (keryx.opaque): float-only (F4c inapplicable → mis-target) ---
+    // --- (keryx.scale) / (keryx.opaque): float-only (inapplicable → mis-target) ---
 
     #[test]
     fn scale_on_a_non_float_field_is_a_mis_target() {
@@ -687,7 +687,7 @@ mod tests {
         assert_eq!(treatment, ScalarTreatment::FixedPoint { scale: 4 });
     }
 
-    // --- (keryx.numeric): integer-only; no-op vs mis-target (F4c) ---
+    // --- (keryx.numeric): integer-only; no-op vs mis-target ---
 
     #[test]
     fn native_checked_on_uint32_is_a_no_op_admit() {
@@ -914,7 +914,7 @@ mod tests {
         }
     }
 
-    // --- scale/opaque/numeric on message/enum-valued fields: F4c applied uniformly (mis-target) ---
+    // --- scale/opaque/numeric on message/enum-valued fields: the classification rule applied uniformly (mis-target) ---
 
     #[test]
     fn scale_on_a_message_field_is_a_mis_target() {
@@ -1137,7 +1137,7 @@ mod tests {
 
     #[test]
     fn set_on_a_repeated_field_admits_today_as_the_sequence_default() {
-        // Applicable (repeated) but not yet produced: Slice 4 turns on `EmitForm::Set`; the default
+        // Applicable (repeated) but not yet produced: a later increment turns on `EmitForm::Set`; the default
         // `Sequence` stands here.
         let form = field_form(
             &repeated(

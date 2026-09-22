@@ -5,7 +5,7 @@
 //! shape class (6): an answer set that does not read, carries a term that does not lower to its
 //! field, or is not one the theory admits is distinct from a file that cannot be read (`Input`, 3),
 //! a schema that builds no codec (`Schema`, 4), a `--root` that does not resolve to one message
-//! (`Usage`, 2), and a contained engine fault (`Dependency`, 7). One message reaches stdout (F9):
+//! (`Usage`, 2), and a contained engine fault (`Dependency`, 7). One message reaches stdout:
 //! `--root Type` narrows several roots to the one it carries. The outbound mirror of the `facts`
 //! suite; its fixtures are its own — a thermal-shaped schema compiled here (through `support`), the
 //! reassembling answer sets generated from a shred or hand-written over the schema's vocabulary.
@@ -40,7 +40,7 @@ temp_c(readings(r0, 0), 1).
 ";
 
 /// Two roots of different types — a `ReadingBatch` and a `Tally` — so `--root Type` has something
-/// to narrow, and its absence is the F9 ambiguity.
+/// to narrow, and its absence is the selection ambiguity.
 const BATCH_AND_TALLY: &str = "\
 emit_reading_batch(r0).
 reading_batch(r0).
