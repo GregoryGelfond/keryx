@@ -29,6 +29,8 @@ reach(X) :- emit_reading_batch(X).
 :- alert(P), reach(P), not has_temp_c(P).
 %! occupancy of alerts : alert_set -> alert  (set)
 :- alert_set(P), alerts(P, E), reach(P), not alert(E).
+%! occupancy of emit_alert_set : alert_set  (root)
+:- alerts(P, _), emit_alert_set(P), not alert_set(P).
 %! occupancy of emit_alert : alert  (root)
 :- emit_alert(P), sensor(P, _), not alert(P).
 %! occupancy of emit_alert : alert  (root)

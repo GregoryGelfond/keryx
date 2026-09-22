@@ -638,7 +638,18 @@ fn exclusivity(sort: &SortMapping) -> Vec<Obligation> {
 /// `g` of the sort. The diagnostic head names the sort's path: the violation is the root's.
 fn root_occupancy(sort: &SortMapping, field: &FieldMapping) -> Option<Obligation> {
     let p = build::var("P");
-    let present = witness(field, p.clone())?;
+    // The presence atom the obligation negates. For every form but a set this is the field's
+    // occupancy witness; a set has no *totality* witness (`witness` is `None`), but a present
+    // membership atom `f(P, _)` (arity 2, the member anonymous) *is* a presence for occupancy — a
+    // marked root carrying set members must carry its sort atom exactly as one carrying any other
+    // field must (arch §7, spec §12.2). `occurrence`/`witness` cannot serve for a set: on a *message*
+    // set they would build `<child>(f(P))`, an access-path occupant a set — named by membership, not
+    // an access path — has no such thing as; so the witness is the field predicate on `[P, _]` for a
+    // scalar and a message set alike.
+    let present = match field.form() {
+        EmitForm::Set => build::atom(field.predicate().clone(), [p.clone(), build::anonymous()]),
+        _ => witness(field, p.clone())?,
+    };
     let marker = names::marker(sort.predicate());
     let body = vec![
         build::positive(build::atom(marker.clone(), [p.clone()])),
@@ -718,9 +729,13 @@ fn occurrence(field: &FieldMapping, subject: Term, place: Option<Term>) -> Atom 
     }
 }
 
-/// The atom witnessing that `field` is present on `subject` at all — [`occurrence`] with the
-/// place anonymous — or `None` for a set, whose obligations are Increment 5's (see
-/// [`sort_obligations`]).
+/// The atom witnessing that `field` is present on `subject`, for the occupancy obligations
+/// ([`slot_occupancy`], and [`root_occupancy`] for every form but a set) — [`occurrence`] with the
+/// place anonymous. `None` for a set: a set has no totality obligation, and its occupancy presence is
+/// the membership atom `f(P, _)`, which `occurrence` cannot build (on a message set it would name
+/// `<child>(f(P))`, an access-path occupant a set has none of) — so [`root_occupancy`] forms the set
+/// presence itself, and [`slot_occupancy`] needs none: a nested set-bearer is reached through its own
+/// occupancy atom, so the strict theory and the reassembler agree there without one.
 fn witness(field: &FieldMapping, subject: Term) -> Option<Atom> {
     let place = match field.form() {
         EmitForm::Function | EmitForm::OneofArm { .. } => None,
@@ -735,7 +750,8 @@ fn witness(field: &FieldMapping, subject: Term) -> Option<Atom> {
 /// referenced or not: the table is the enum's own, so a field in another package holds its
 /// values to it when the packages' `emit.lp` files load together, as their `core.lp` files
 /// do for a cross-package sort. Only declared constants are serializable (§7.4); the
-/// `unknown(N)` admission under `(keryx.unknown) = PRESERVE` is Increment 5's.
+/// `(keryx.unknown) = PRESERVE` admits an `unknown(N)` escape through a separate mechanism, not this
+/// table.
 fn membership_table(enumeration: &EnumMapping) -> Vec<WithProvenance<Statement>> {
     let table = names::member(enumeration.predicate());
     let line = signature::enumeration(enumeration);
@@ -769,8 +785,8 @@ mod tests {
     }
 
     /// A unit whose `Container` carries a message set `items` (→ `item`) and an unsigned scalar set
-    /// `codes` (`uint32`), built by hand — `annotate` does not yet produce `EmitForm::Set` (Increment
-    /// 5's last task turns that on), so the form's obligations are exercised over it directly.
+    /// `codes` (`uint32`), built by hand so the set form's obligations are exercised over a minimal
+    /// unit directly, independent of the annotation path that produces the form in the pipeline.
     fn container_with_sets() -> Unit {
         let set_field = |proto: &str, pred: &str, value: ValueMapping, number: i32| FieldMapping {
             proto: FqName::new(proto),
@@ -901,6 +917,25 @@ mod tests {
                 "violates(\"keryx.t.Container.codes\",P):-codes(P,V),container(P),reach(P),V<0."
             ),
             "scalar-set range violation names the field path:\n{diagnostic}"
+        );
+    }
+
+    #[test]
+    fn a_set_bearing_root_is_obliged_to_carry_its_sort_atom() {
+        // Root occupancy (arch §7, spec §12.2): a marked root carrying a field atom must carry its
+        // sort atom, or a strict-SAT answer set would not be serializable — a set root found via its
+        // marker alone (nothing else forces `container`) would otherwise escape the guarantee. A set
+        // has no *totality* witness, but its membership atom `f(P, _)` is a presence for occupancy, so
+        // the obligation fires when members are present without the sort atom (an empty set carrying
+        // its sort atom passes). A message set and a scalar set oblige it alike.
+        let strict = compact(&emit_strict(&container_with_sets()).expect("emits"));
+        assert!(
+            strict.contains(":-emit_container(P),items(P,_),notcontainer(P)."),
+            "message-set root occupancy:\n{strict}"
+        );
+        assert!(
+            strict.contains(":-codes(P,_),emit_container(P),notcontainer(P)."),
+            "scalar-set root occupancy:\n{strict}"
         );
     }
 }
