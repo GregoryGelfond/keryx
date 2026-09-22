@@ -128,6 +128,41 @@ fn a_set_member_of_a_different_sort_is_refused_not_built_as_the_element_sort() {
 }
 
 #[test]
+fn a_provenance_shared_set_member_dag_is_refused_in_bounded_work() {
+    // Bounded work (threat model property 2; property 1's "never hangs"): a message-set member is
+    // named by its own provenance, so an adversarial answer set can name one occupant a member of
+    // many parents — a DAG the un-budgeted walk would re-expand once per path, exponentially in
+    // depth. keryx bounds the reassembly by the answer set's own atom count and refuses a walk that
+    // would exceed it. This lattice — both `Node`s of each level are members of both `Node`s of the
+    // level above — expands to 2^depth occupants from O(depth) atoms, so a naive walk hangs; the
+    // budget refuses it after atom-count expansions. Depth is well under the nesting ceiling, so it
+    // is the width budget (not the depth ceiling) that fires.
+    let codec = sets_codec();
+    let depth = 12; // ~8k expansions unbounded; refused after ~6*depth atoms with the budget.
+    let node = |name: &str| atom("node", vec![constant(name)]);
+    let kid = |parent: &str, child: &str| atom("kids", vec![constant(parent), constant(child)]);
+    let mut answer = vec![atom("emit_node", vec![constant("p0")]), node("p0")];
+    for level in 0..depth {
+        let (pn, qn) = (format!("p{}", level + 1), format!("q{}", level + 1));
+        answer.push(node(&pn));
+        answer.push(node(&qn));
+        for parent in [format!("p{level}"), format!("q{level}")] {
+            answer.push(kid(&parent, &pn));
+            answer.push(kid(&parent, &qn));
+        }
+    }
+    let error = codec
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect_err("a provenance-shared set-member DAG is refused, not expanded exponentially");
+    assert!(
+        error
+            .iter()
+            .any(|d| d.kind() == keryx_core::diagnostics::DiagnosticKind::ReassembledTooLarge),
+        "the DAG is refused with ReassembledTooLarge (bounded work), never expanded"
+    );
+}
+
+#[test]
 fn a_proto2_required_field_omitted_is_a_shape_violation_outbound() {
     // A proto2 `required` field is totality-obliged outbound (#1), so an answer set naming an
     // `Order` root but omitting its `required` id is refused at reassembly (`ShapeViolation`) — the

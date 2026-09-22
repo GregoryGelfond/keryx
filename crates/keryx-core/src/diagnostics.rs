@@ -301,6 +301,18 @@ pub enum DiagnosticKind {
     /// whole-answer-set locus, stating the depth and the ceiling and nothing of the answer set. The
     /// reassembler's, Increment 4.
     ReassembledTooDeep,
+    /// An answer set drives the reassembly walk to expand more message occupants than the answer
+    /// set's own atom count bounds — the mark of a *provenance-shared* set-member DAG or cycle: a
+    /// `(keryx.set)` message member is named by its own provenance (§7.1), not an access path rooted
+    /// at its parent, so one occupant can be named a member of many parents, which every other
+    /// message form forbids by construction. The un-budgeted walk would re-expand such a shared
+    /// occupant once per path — exponential in depth. A faithful reassembly instantiates at most one
+    /// message occupant per occupancy atom (plus the root marker), so the atom count bounds the
+    /// expansions; the walk refuses past it *before* any message is built or encoded, so the door
+    /// holds bounded work and never hangs (the threat model's properties 2 and 1). A door-admission
+    /// policy, the total-work sibling of `ReassembledTooDeep`. Named at the whole-answer-set locus.
+    /// The reassembler's.
+    ReassembledTooLarge,
     /// `.lp` text a caller gave the outbound door (`keryx emit` reading a fixture or a solver's
     /// written model) did not raise to the answer set's facts: a themelios parse diagnostic, or a
     /// statement that is not a fact. The whole-input locus (no finer path); themelios's own message is
@@ -355,6 +367,7 @@ impl DiagnosticKind {
             DiagnosticKind::TermTypeMismatch => "term_type_mismatch",
             DiagnosticKind::ShapeViolation => "shape_violation",
             DiagnosticKind::ReassembledTooDeep => "reassembled_too_deep",
+            DiagnosticKind::ReassembledTooLarge => "reassembled_too_large",
             DiagnosticKind::UnreadableAnswerSet => "unreadable_answer_set",
             DiagnosticKind::UnrepresentableJson => "unrepresentable_json",
         }
@@ -730,6 +743,10 @@ mod tests {
             "reassembled_too_deep"
         );
         assert_eq!(
+            DiagnosticKind::ReassembledTooLarge.as_str(),
+            "reassembled_too_large"
+        );
+        assert_eq!(
             DiagnosticKind::UnreadableAnswerSet.as_str(),
             "unreadable_answer_set"
         );
@@ -773,6 +790,7 @@ mod tests {
             | DiagnosticKind::TermTypeMismatch
             | DiagnosticKind::ShapeViolation
             | DiagnosticKind::ReassembledTooDeep
+            | DiagnosticKind::ReassembledTooLarge
             | DiagnosticKind::UnreadableAnswerSet
             | DiagnosticKind::UnrepresentableJson => {}
         }

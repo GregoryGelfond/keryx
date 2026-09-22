@@ -63,6 +63,11 @@ pub(crate) struct SlotIndex<'a> {
     markers: Vec<(SortRef, &'a Symbol)>,
     violations: Vec<&'a Symbol>,
     orphans: Vec<Diagnostic>,
+    /// The answer set's atom count — the reassembly walk's expansion budget. A faithful reassembly
+    /// instantiates at most one message occupant per occupancy atom (plus a root marker), each a
+    /// distinct atom, so a walk that expands more occupants than this is a provenance-shared
+    /// set-member DAG (§7.1) the walk refuses rather than expand exponentially (bounded work).
+    atoms: usize,
 }
 
 impl<'a> SlotIndex<'a> {
@@ -188,6 +193,7 @@ impl<'a> SlotIndex<'a> {
             markers,
             violations,
             orphans,
+            atoms: answer_set.len(),
         }
     }
 
@@ -230,6 +236,11 @@ impl<'a> SlotIndex<'a> {
             .get(sort)
             .is_some_and(|occupants| occupants.contains(occupant))
     }
+
+    /// The reassembly walk's expansion budget — the answer set's atom count (see the `atoms` field).
+    fn atom_count(&self) -> usize {
+        self.atoms
+    }
 }
 
 /// Rebuild one message — the `sort` instance named by the `root` occupant — from the answer set,
@@ -239,9 +250,11 @@ impl<'a> SlotIndex<'a> {
 ///
 /// # Errors
 ///
-/// `ReassembledTooDeep` past the ceiling; `ShapeViolation` for a duplicate singular, a non-dense
-/// sequence, a oneof with two arms, a missing total field, or a present `violates` atom naming this
-/// root's occupants; `TermTypeMismatch`/`ValueOutOfRange`/`UnknownEnumValue`/`UnannotatedFloat` for
+/// `ReassembledTooDeep` past the depth ceiling; `ReassembledTooLarge` when the expansion exceeds the
+/// answer set's atom count (a provenance-shared set-member DAG); `ShapeViolation` for a duplicate
+/// singular, a non-dense sequence, a oneof with two arms, a missing total field, or a present
+/// `violates` atom naming this root's occupants;
+/// `TermTypeMismatch`/`ValueOutOfRange`/`UnknownEnumValue`/`UnannotatedFloat` for
 /// a value that does not lower to its field's type; `UnrepresentableJson` for a well-known-type
 /// value canonical JSON cannot represent (the JSON form only); `DependencyFault` for a contained
 /// encode fault.
@@ -261,6 +274,7 @@ pub(crate) fn assemble(
         diagnostics: Vec::new(),
         plans: Vec::new(),
         too_deep: false,
+        too_large: false,
     };
     walker.discover(root.clone(), sort);
     if let Some(diagnostics) = Diagnostics::collect(std::mem::take(&mut walker.diagnostics)) {
@@ -322,6 +336,9 @@ struct Assembler<'m, 'a> {
     plans: Vec<Plan>,
     /// Whether the ceiling has been diagnosed: once per reassemble, the locus the whole answer set.
     too_deep: bool,
+    /// Whether the expansion budget has been diagnosed: once per reassemble, at the whole-answer-set
+    /// locus, when a provenance-shared set-member DAG expands past what the atom count bounds.
+    too_large: bool,
 }
 
 impl Assembler<'_, '_> {
@@ -340,6 +357,17 @@ impl Assembler<'_, '_> {
             if work.depth > walk::NESTING_CEILING {
                 self.refuse_depth(sort, work.depth);
                 continue;
+            }
+            // Bounded work (threat model property 2; property 1's "never hangs"): a faithful
+            // reassembly plans at most one message occupant per occupancy atom (plus the root
+            // marker), so the atom count bounds the plans. Expanding past it is a provenance-shared
+            // set-member DAG (§7.1) — a member named as a member of many parents, which the walk would
+            // otherwise re-expand once per path, exponentially in depth — so refuse it rather than
+            // expand it. The total-work sibling of the depth ceiling above; stop the walk (nothing is
+            // built past a diagnostic, §6).
+            if self.plans.len() > self.slots.atom_count() {
+                self.refuse_budget(sort);
+                break;
             }
             let mut fields = Vec::new();
             for field in sort.fields() {
@@ -744,6 +772,26 @@ impl Assembler<'_, '_> {
             built.insert(plan.occupant, building.into_value());
         }
         unreachable!("at least the root occupant was planned")
+    }
+
+    /// Refuse a reassembly that expands more occupants than the answer set's atom count bounds:
+    /// `ReassembledTooLarge` at the whole-answer-set locus, once per reassemble; the walk stops and
+    /// nothing is built. The total-work sibling of [`Assembler::refuse_depth`] — a provenance-shared
+    /// set-member DAG (§7.1) would otherwise re-expand a shared occupant once per path, exponentially.
+    fn refuse_budget(&mut self, sort: &SortMapping) {
+        if self.too_large {
+            return;
+        }
+        self.too_large = true;
+        self.diagnostics.push(Diagnostic::new(
+            DiagnosticKind::ReassembledTooLarge,
+            Locus::whole(),
+            format!(
+                "reassembling a `{}` occupant expanded more message occupants than the answer set's {} atoms bound — the mark of a provenance-shared set-member cycle or DAG; keryx refuses it rather than expand it exponentially",
+                sort.proto().as_str(),
+                self.slots.atom_count()
+            ),
+        ));
     }
 
     /// Refuse an occupant past the ceiling: `ReassembledTooDeep` at the whole-answer-set locus, once
