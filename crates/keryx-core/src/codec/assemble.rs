@@ -273,8 +273,8 @@ pub(crate) fn assemble(
         slots,
         diagnostics: Vec::new(),
         plans: Vec::new(),
+        next_id: 0,
         too_deep: false,
-        too_large: false,
     };
     walker.discover(root.clone(), sort);
     if let Some(diagnostics) = Diagnostics::collect(std::mem::take(&mut walker.diagnostics)) {
@@ -284,22 +284,27 @@ pub(crate) fn assemble(
 }
 
 /// One occupant to rebuild: the message `sort` instance under `occupant`, at `depth` below its root.
+/// `id` is the plan instance's identity — unique per reference, so a `(keryx.set)` member shared by
+/// two parents (§7.1) is two instances the build consumes independently, never one it removes twice.
 struct Discover {
     occupant: Symbol,
     sort: SortRef,
     depth: usize,
+    id: usize,
 }
 
-/// A planned occupant — its `occupant` term, its `sort`, and how to set each of its fields — built
-/// by discovery, consumed by the build in reverse (children before parents).
+/// A planned occupant — its `sort`, its instance `id`, and how to set each of its fields — built by
+/// discovery, consumed by the build in reverse (children before parents). Keyed by `id`, not by the
+/// occupant term, so two references to one shared occupant are two independent built messages.
 struct Plan {
-    occupant: Symbol,
     sort: SortRef,
     fields: Vec<Planned>,
+    id: usize,
 }
 
 /// How one field is set on its message: a raised scalar/enum value, a sequence of them, a map of
-/// them, or a message slot whose value is the child occupant's built message (looked up by term).
+/// them, or a message slot whose value is the child instance's built message (drawn by its plan `id`,
+/// unique per reference, so a shared occupant's two references draw two copies).
 enum Planned {
     Value {
         number: i32,
@@ -315,15 +320,15 @@ enum Planned {
     },
     Message {
         number: i32,
-        child: Symbol,
+        child: usize,
     },
     Messages {
         number: i32,
-        children: Vec<Symbol>,
+        children: Vec<usize>,
     },
     MessageMap {
         number: i32,
-        entries: Vec<(MapKey, Symbol)>,
+        entries: Vec<(MapKey, usize)>,
     },
 }
 
@@ -334,11 +339,10 @@ struct Assembler<'m, 'a> {
     slots: &'m SlotIndex<'a>,
     diagnostics: Vec<Diagnostic>,
     plans: Vec<Plan>,
+    /// The next plan-instance id ([`Discover::id`]); handed out per reference so each is unique.
+    next_id: usize,
     /// Whether the ceiling has been diagnosed: once per reassemble, the locus the whole answer set.
     too_deep: bool,
-    /// Whether the expansion budget has been diagnosed: once per reassemble, at the whole-answer-set
-    /// locus, when a provenance-shared set-member DAG expands past what the atom count bounds.
-    too_large: bool,
 }
 
 impl Assembler<'_, '_> {
@@ -347,10 +351,12 @@ impl Assembler<'_, '_> {
     /// pushed so a parent's plan is recorded before its descendants' — the build then reverses the
     /// order to construct children first.
     fn discover(&mut self, root: Symbol, sort: SortRef) {
+        let id = self.fresh_id();
         let mut stack = vec![Discover {
             occupant: root,
             sort,
             depth: 0,
+            id,
         }];
         while let Some(work) = stack.pop() {
             let sort = work.sort.in_mapping(self.mapping);
@@ -374,11 +380,18 @@ impl Assembler<'_, '_> {
                 self.plan_field(&work, field, &mut fields, &mut stack);
             }
             self.plans.push(Plan {
-                occupant: work.occupant,
                 sort: work.sort,
                 fields,
+                id: work.id,
             });
         }
+    }
+
+    /// A fresh plan-instance id, unique per reference ([`Discover::id`]).
+    fn fresh_id(&mut self) -> usize {
+        let id = self.next_id;
+        self.next_id += 1;
+        id
     }
 
     /// Plan one field from its slot under the form the mapping fixes (§4.1, §7): a singular value, a
@@ -649,27 +662,31 @@ impl Assembler<'_, '_> {
         }
     }
 
-    /// Push a message slot's child occupant for discovery (the occupant term `f(P[, I | K])`), and
-    /// return it for the parent's plan. The referent sort is resolved from the mapping (`Index` built
-    /// it before any walk), so a message field always names a sort — a miss is a keryx error,
-    /// discharged loud (as `walk::run` discharges the same inbound), never carried into the build.
+    /// Push a message slot's child occupant `f(P[, I | K])` for discovery, and return its fresh plan
+    /// instance `id` for the parent's plan — unique per reference, so two references to one shared
+    /// occupant (§7.1) are two instances the build draws independently. The referent sort is resolved
+    /// from the mapping (`Index` built it before any walk), so a message field always names a sort — a
+    /// miss is a keryx error, discharged loud (as `walk::run` discharges the same inbound), never
+    /// carried into the build.
     fn plan_child(
         &mut self,
         work: &Discover,
         referent: &Name,
         occupant: &Symbol,
         stack: &mut Vec<Discover>,
-    ) -> Symbol {
+    ) -> usize {
         let sort = self
             .index
             .sort_of(referent)
             .expect("every message referent of the mapping is a sort of its index");
+        let id = self.fresh_id();
         stack.push(Discover {
             occupant: occupant.clone(),
             sort,
             depth: work.depth + 1,
+            id,
         });
-        occupant.clone()
+        id
     }
 
     /// Raise one scalar or enum entry to its value (the inverse §6 policy), or collect its refusal.
@@ -745,12 +762,12 @@ impl Assembler<'_, '_> {
     }
 
     /// Build the discovered tree bottom-up — children before parents, discovery order reversed — and
-    /// encode the root. Runs only when discovery found no diagnosis (property 4). Each occupant's
-    /// built message is a `Value::Message` its parent's message field draws by term; the last plan
-    /// (the root, first discovered) is encoded.
+    /// encode the root. Runs only when discovery found no diagnosis (property 4). Each plan's built
+    /// message is a `Value::Message` its parent's message field draws by that plan's instance `id`
+    /// (unique per reference); the last plan (the root, first discovered) is encoded.
     fn build(self, pool: &RetainedPool, format: PayloadFormat) -> Result<Vec<u8>, Diagnostics> {
         let mapping = self.mapping;
-        let mut built: BTreeMap<Symbol, Value> = BTreeMap::new();
+        let mut built: BTreeMap<usize, Value> = BTreeMap::new();
         // Children before parents: discovery recorded each parent before its descendants, so the
         // reversed order builds the deepest occupants first, each already holding its children in
         // `built`. The last built — the root, discovered first — is encoded, not stored. A setter
@@ -769,7 +786,7 @@ impl Assembler<'_, '_> {
             if plans.peek().is_none() {
                 return engine::encode(building, format);
             }
-            built.insert(plan.occupant, building.into_value());
+            built.insert(plan.id, building.into_value());
         }
         unreachable!("at least the root occupant was planned")
     }
@@ -779,10 +796,7 @@ impl Assembler<'_, '_> {
     /// nothing is built. The total-work sibling of [`Assembler::refuse_depth`] — a provenance-shared
     /// set-member DAG (§7.1) would otherwise re-expand a shared occupant once per path, exponentially.
     fn refuse_budget(&mut self, sort: &SortMapping) {
-        if self.too_large {
-            return;
-        }
-        self.too_large = true;
+        // Called once per reassemble: `discover` breaks the walk the moment the budget is exceeded.
         self.diagnostics.push(Diagnostic::new(
             DiagnosticKind::ReassembledTooLarge,
             Locus::whole(),
@@ -814,12 +828,14 @@ impl Assembler<'_, '_> {
 }
 
 /// Set one planned field on its message. A scalar/enum value or a list/map of them goes straight to
-/// the validating setter; a message field draws its child's built message from `built` (built first,
-/// the discovery order reversed) — removed, since each child has one parent.
+/// the validating setter; a message field draws its child's built message from `built` by the child's
+/// plan-instance `id` (built first, the discovery order reversed) — removed, since each reference is
+/// its own instance, so a shared occupant's two references are two ids removed once each, never one
+/// removed twice.
 fn set_planned(
     building: &mut Building,
     planned: Planned,
-    built: &mut BTreeMap<Symbol, Value>,
+    built: &mut BTreeMap<usize, Value>,
     sort: &SortMapping,
 ) -> Result<(), Diagnostic> {
     let at = |number: i32| field_path(sort, number);
