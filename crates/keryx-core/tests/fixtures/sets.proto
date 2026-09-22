@@ -35,3 +35,12 @@ message Holder {
 message Node {
   repeated Node kids = 1 [(keryx.set) = true];
 }
+
+// A message with TWO set fields of the same element type: one occupant can be named a member of both
+// fields at once (§7.1, "shared across parents"). The reassembler must build each reference as its
+// own instance — a member shared across the two fields reassembles into each, never panicking on a
+// double-consumed occupant.
+message Pair {
+  repeated Node xs = 1 [(keryx.set) = true];
+  repeated Node ys = 2 [(keryx.set) = true];
+}

@@ -217,3 +217,29 @@ fn a_broken_answer_set_is_every_diagnosis_never_a_partial_reassembly() {
         "the duplicate is a shape violation"
     );
 }
+#[test]
+fn a_set_member_shared_across_two_fields_reassembles_totally_never_panics() {
+    // Totality (threat model property 1, "never panics"): a message-set member is named by its own
+    // provenance, so one occupant can be a member of two set fields at once (spec §7.1, "may be shared
+    // across parents … instantiates once per reference"). The build draws each reference by its own
+    // plan-instance id, so a shared occupant is two independent built messages — never one removed
+    // twice. `Pair.xs` and `Pair.ys` both name the same `Node` `c`; it reassembles to a `Pair` holding
+    // `c` in each field, and the door does not panic on this adversary-reachable shape. (A single-set
+    // shared member — a diamond — already reassembled; this pins the two-field case, where the old
+    // occupant-term keying overwrote and double-removed.)
+    let codec = sets_codec();
+    let answer = vec![
+        atom("emit_pair", vec![constant("r")]),
+        atom("pair", vec![constant("r")]),
+        atom("node", vec![constant("c")]),
+        atom("xs", vec![constant("r"), constant("c")]),
+        atom("ys", vec![constant("r"), constant("c")]),
+    ];
+    let out = codec
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect("a member shared across two set fields reassembles, never panics");
+    assert_eq!(out.messages().len(), 1);
+    assert_eq!(out.messages()[0].type_name(), "keryx.sets.Pair");
+    // xs (field 1) and ys (field 2) each carry one empty `Node` — the shared member copied per field.
+    assert_eq!(out.messages()[0].bytes(), vec![0x0A, 0x00, 0x12, 0x00]);
+}
