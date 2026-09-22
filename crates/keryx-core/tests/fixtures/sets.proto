@@ -26,3 +26,12 @@ message Empty {}
 message Holder {
   repeated Empty items = 1 [(keryx.set) = true];
 }
+
+// A recursive node whose children are a set of nodes. A message-set member is named by its own
+// provenance (spec §7.1), so an answer set can name one occupant a member of many parents — a DAG,
+// which the access-path forms forbid by construction. The reassembler must expand such a shape in
+// bounded work, refusing a DAG that would expand past the answer set's atom count rather than
+// re-expand a shared occupant once per path (exponentially).
+message Node {
+  repeated Node kids = 1 [(keryx.set) = true];
+}
