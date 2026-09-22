@@ -4,7 +4,7 @@ thermal.v1.Alert  sort  alert/1
 thermal.v1.Alert.sensor #1 fn  sensor/2  string  total
 thermal.v1.Alert.temp_c #2 fn  temp_c/2  int32  total
 thermal.v1.AlertSet  sort  alert_set/1
-thermal.v1.AlertSet.alerts #1 fam  alerts/2 -> alert  alert  seq ; view alerts/3
+thermal.v1.AlertSet.alerts #1 rel  alerts/2 -> alert  alert  set
 thermal.v1.Reading  sort  reading/1
 thermal.v1.Reading.sensor #1 fn  sensor/2  string  total
 thermal.v1.Reading.temp_c #2 fn  temp_c/2  int32  total

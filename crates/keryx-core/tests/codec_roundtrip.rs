@@ -46,6 +46,15 @@ fn marker(sort_marker: &str, root: &str) -> Symbol {
     }
 }
 
+/// A positive atom `pred(args…)`.
+fn atom(pred: &str, arguments: Vec<Symbol>) -> Symbol {
+    Symbol::Function {
+        name: Name::new(pred).expect("an identifier"),
+        arguments,
+        sign: Sign::Positive,
+    }
+}
+
 #[test]
 fn a_payload_shredded_and_reassembled_is_the_payload_again() {
     // `ReadingBatch { repeated Reading readings }` with two readings: shred it to facts under the
@@ -245,4 +254,55 @@ fn the_annotated_scalar_treatments_round_trip_in_all_three_formats() {
     for format in FORMATS {
         assert_round_trips_in(&codec, "Amount", "emit_amount", &payload, format);
     }
+}
+
+#[test]
+fn a_set_annotated_field_round_trips_in_all_forms() {
+    // AlertSet.alerts carries `(keryx.set)` (§28, F10): an AlertSet shreds to its occupancy and
+    // membership facts and reassembles to the payload again — then shreds back to the same facts —
+    // in binary, textproto, and JSON. AlertSet is wire-identical to ReadingBatch and Alert to
+    // Reading, so the wire helpers serve both.
+    let codec = thermal_codec();
+    let payload = wire::batch(&[wire::reading("s-1", 1), wire::reading("s-2", 2)]);
+    for format in FORMATS {
+        assert_round_trips_in(&codec, "AlertSet", "emit_alert_set", &payload, format);
+    }
+}
+
+#[test]
+fn a_model_computed_set_reassembles_its_members_by_provenance() {
+    // The set form's reason to exist (§4.1, §28), and the outbound half F10 turns on: a model
+    // *computing* a set names its members functionally, by their own provenance — occupancy
+    // `alert(al(N))` and membership `alerts(out, al(N))` — not positional occupants. The
+    // membership-join reach binds each member whatever its functor, the reassembler reads the
+    // membership atoms and orders members by `Symbol::Ord`, and re-checks each well-sorted; a
+    // sequence's occupancy-join could reach none of them.
+    let codec = thermal_codec();
+    let al = |n: i32| atom("al", vec![Symbol::Number(n)]);
+    let alert = |n: i32, sensor: &str, temp: i32| {
+        vec![
+            atom("alert", vec![al(n)]),
+            atom("sensor", vec![al(n), Symbol::String(sensor.to_owned())]),
+            atom("temp_c", vec![al(n), Symbol::Number(temp)]),
+            atom("alerts", vec![constant("out"), al(n)]),
+        ]
+    };
+    let mut answer = vec![
+        marker("emit_alert_set", "out"),
+        atom("alert_set", vec![constant("out")]),
+    ];
+    // Provenance `al(1)` asserted before `al(0)`: the order must come from `Symbol::Ord`, not the
+    // answer set.
+    answer.extend(alert(1, "s-2", 2));
+    answer.extend(alert(0, "s-1", 1));
+    let out = codec
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect("the model-computed set reassembles");
+    assert_eq!(out.messages().len(), 1);
+    assert_eq!(out.messages()[0].type_name(), "thermal.v1.AlertSet");
+    assert_eq!(
+        out.messages()[0].bytes(),
+        wire::batch(&[wire::reading("s-1", 1), wire::reading("s-2", 2)]),
+        "members serialize in Symbol::Ord order of their provenance occupants: al(0) before al(1)"
+    );
 }

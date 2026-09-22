@@ -55,8 +55,7 @@ Two things to note in the schema itself:
   meaning fixed by which sort the first argument inhabits. The generated vocabulary reflects
   this — a single declaration carrying *both* sorts' signatures.
 - **`AlertSet.alerts` carries `[(keryx.set) = true]`**, keryx's annotation vocabulary
-  (spec Appendix A). See the scope note at the bottom for what it does — and does not yet —
-  mean.
+  (spec Appendix A). See the scope note at the bottom for what it means.
 
 Editions is transliterated to proto3 here (the pure-Rust front-door compiler does not yet
 cover editions; spec §31). proto3's implicit scalars resolve exactly as an edition-2023
@@ -130,9 +129,11 @@ downstream model can range over the elements of a sequence by sort:
 readings(P, I, E) :- reading(E), E = readings(P, I).
 ```
 
-`readings` and `alerts` each get a **sequence** view (their elements are messages —
-`Reading`, `Alert`). The scalar fields `sensor` and `temp_c` need no view. A project that wants
-only the functional canon can exclude this file (spec §13.2); `core.lp` stands on its own.
+`readings` gets a **sequence** view (its elements are indexed messages). `alerts`, a
+`(keryx.set)` membership relation, gets **no** view — its membership `alerts/2` is a base
+relation a model asserts, not a projection over occupancy (spec §7.1). The scalar fields
+`sensor` and `temp_c` need no view. A project that wants only the functional canon can exclude
+this file (spec §13.2); `core.lp` stands on its own.
 
 ### `thermal.v1.emit.lp` — the serializability theory (spec §13.3)
 
@@ -170,14 +171,14 @@ The number↔name binding: every proto path and field number, and the emitted pr
 arity, and shape it maps to.
 
 ```
-thermal.v1.AlertSet.alerts #1 fam  alerts/2 -> alert  alert  seq ; view alerts/3
+thermal.v1.AlertSet.alerts #1 rel  alerts/2 -> alert  alert  set
 ```
 
-The record's own arity, `alerts/2`, is the occupant access-path term keryx keys facts on
-(spec §4.1); `; view alerts/3` names the relational view in `views.lp`. This is the contract a
-later revision of the schema is checked against — the record of what each element *became*, so
-a rename, a renumber, or a treatment change is a visible, reviewable diff rather than a silent
-break (schema-diff checking lands at Increment 5).
+The `rel` kind and `set` descriptor mark `alerts/2` a `(keryx.set)` membership relation (spec
+§7.1) — arity 2, and no `; view` clause, a set having no `views.lp` projection. This is the
+contract a later revision of the schema is checked against — the record of what each element
+*became*, so a rename, a renumber, or a treatment change (a sequence becoming a set, say) is a
+visible, reviewable diff rather than a silent break (schema-diff checking is a later increment).
 
 ### `thermal.v1.facts.lp` — the ground facts (spec §11)
 
@@ -252,15 +253,14 @@ solves — and this example runs the whole of keryx's bridge around it.
   protobuf text format (`.txtpb`), and the protobuf JSON mapping (`.json`) — every payload form
   spec §26 names — nesting in each bounded at the same ceiling: text ahead of its parser, JSON
   beneath its deserializer's own count.
-- **`(keryx.set)` is inert at this stage.** keryx ingests the annotation (it appears as an `opt/3`
-  descriptor fact) but does not yet read it for translation, so `AlertSet.alerts` is generated
-  as a **sequence**, exactly like `ReadingBatch.readings` — `alerts/2` with a sequence view
-  `alerts/3`.
-  Set semantics — order- and multiplicity-insensitive membership — arrive with annotation
-  reading at Increment 5, at which point `alerts` becomes a membership relation. Until then the
-  alert half of the round trip stays open: a natural `overheating/1` model emits membership, not
-  the dense indices a sequence needs, so `emit` closes the `ReadingBatch` round trip here and the
-  `AlertSet` one when `(keryx.set)` gains meaning.
+- **`(keryx.set)` is honored.** keryx reads the annotation and generates `AlertSet.alerts` as a
+  **membership relation** `alerts/2` — no sequence view, order- and multiplicity-insensitive (spec
+  §7.1) — not the sequence `ReadingBatch.readings` is. A model computing a set names its members
+  functionally by their own provenance (`alert(al(R))` occupancy, `alerts(out, al(R))` membership —
+  the natural `overheating` shape, not the dense indices a sequence needs), and `emit` closes the
+  `AlertSet` round trip byte-for-byte, its members serialized in clingo's total symbol order
+  (identical answer set ⇒ identical bytes). A message set keeps distinct occupants for equal
+  payloads — a multiset — until element-content collapse under `(keryx.value)`.
 - **`emit.lp` is generated and reassembly is real.** The theory above is what `gen` writes today,
   and the repository's grounding gate runs it under clingo — the facts of `batch.binpb`, exported
   under `emit_reading_batch(r0)`, satisfy it, and a second `sensor` on a reading refutes it.

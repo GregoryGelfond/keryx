@@ -1,0 +1,16 @@
+syntax = "proto3";
+package keryx.sets;
+
+import "keryx/options.proto";
+
+// A tag — the element type of a set of messages.
+message Tag {
+  string label = 1;
+}
+
+// A record carrying a scalar set and a message set, both `(keryx.set)`-annotated (spec §7.1):
+// each is a membership relation, not a sequence.
+message Record {
+  repeated string names = 1 [(keryx.set) = true]; // a scalar set: names(P, V)
+  repeated Tag tags = 2 [(keryx.set) = true];     // a message set: tags(P, E)
+}

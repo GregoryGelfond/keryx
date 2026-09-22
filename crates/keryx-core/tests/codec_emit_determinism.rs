@@ -119,6 +119,39 @@ fn the_atom_order_does_not_change_the_output() {
 }
 
 #[test]
+fn a_set_reassembles_identically_under_any_atom_order() {
+    // A `(keryx.set)` field is a set of atoms — order-free. A model-computed AlertSet (membership
+    // atoms `alerts(out, al(N))` over provenance occupants) and its exact reverse reassemble to
+    // byte-identical output in every form: members ordered by `Symbol::Ord`, the canonical set
+    // serialization (§7.1, §26).
+    let codec = thermal_codec();
+    let al = |n: i32| atom("al", vec![Symbol::Number(n)]);
+    let alert = |n: i32, sensor: &str, temp: i32| {
+        vec![
+            atom("alert", vec![al(n)]),
+            atom("sensor", vec![al(n), Symbol::String(sensor.to_owned())]),
+            atom("temp_c", vec![al(n), Symbol::Number(temp)]),
+            atom("alerts", vec![constant("out"), al(n)]),
+        ]
+    };
+    let mut answer = vec![
+        atom("emit_alert_set", vec![constant("out")]),
+        atom("alert_set", vec![constant("out")]),
+    ];
+    answer.extend(alert(0, "s-1", 1));
+    answer.extend(alert(1, "s-2", 2));
+    let mut reversed = answer.clone();
+    reversed.reverse();
+    for format in FORMATS {
+        assert_eq!(
+            shape(&codec, &answer, format),
+            shape(&codec, &reversed, format),
+            "a set reassembles identically regardless of atom order"
+        );
+    }
+}
+
+#[test]
 fn a_maps_entries_reassemble_in_key_order_in_every_form() {
     // A `Gauge` with a three-entry `counts` map: the map atoms arrive unordered (the engine's map is
     // a hash map), so byte-identical output across two atom orders is the sort-by-key keryx applies

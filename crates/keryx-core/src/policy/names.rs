@@ -276,7 +276,11 @@ fn shape(
         }
         FieldShape::Repeated { value } => {
             let mapped = value_mapping(field, value, sort_of)?;
-            (annotate::field_form(field, EmitForm::Sequence)?, 3, mapped)
+            let form = annotate::field_form(field, EmitForm::Sequence)?;
+            // A set's membership relation is arity 2 (`f(P, V)` / `f(P, E)`), a sequence's indexed
+            // family arity 3 (`f(P, I, V)`) — the member or value in the last argument either way.
+            let arity = if matches!(form, EmitForm::Set) { 2 } else { 3 };
+            (form, arity, mapped)
         }
         FieldShape::Map { key, value } => {
             let mapped = value_mapping(field, value, sort_of)?;
