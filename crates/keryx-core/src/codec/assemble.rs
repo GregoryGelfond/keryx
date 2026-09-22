@@ -49,13 +49,17 @@ use crate::policy::names;
 /// per reassemble over the whole answer set (`'a`), holding references into it.
 pub(crate) struct SlotIndex<'a> {
     slots: BTreeMap<(Name, Symbol), Vec<&'a Symbol>>,
-    /// The occupants an occupancy atom declares — the terms `t` for which some sort atom `u(t)` is
-    /// present. A `(keryx.set)` message member, named only by a membership atom `f(P, E)`, must be
-    /// one of these to be well-sorted; the reassembler's mode-free half of the set-member occupancy
-    /// obligation re-checks it here (§7.1, §12.3), since its first-argument-spine orphan pass does
-    /// not reach a member named by its own provenance. Marker roots are *not* added (a marker is not
-    /// a sort atom); a root's own sort atom is obliged by `emit.lp`'s root occupancy.
-    occupants: BTreeSet<&'a Symbol>,
+    /// The occupants each sort atom declares — for a sort predicate `u`, the terms `t` for which
+    /// `u(t)` is present. A `(keryx.set)` message member, named only by a membership atom `f(P, E)`,
+    /// must be an occupant of the *element* sort `<child>` to be well-sorted (spec §7.1: "requires
+    /// `<child>(E)` present"); the reassembler's mode-free half of the set-member occupancy obligation
+    /// re-checks it here against that sort ([`SlotIndex::is_occupant_of`], mirroring `emit.lp`'s
+    /// `not <child>(E)` — §7.1, §12.3), since its first-argument-spine orphan pass does not reach a
+    /// member named by its own provenance. Keyed by sort so the check is the *element* sort's, never
+    /// "an occupant of some sort" — a member declared an occupant of a different sort is refused, not
+    /// built as the element sort. Marker roots are *not* added (a marker is not a sort atom); a root's
+    /// own sort atom is obliged by `emit.lp`'s root occupancy.
+    occupancies: BTreeMap<Name, BTreeSet<&'a Symbol>>,
     markers: Vec<(SortRef, &'a Symbol)>,
     violations: Vec<&'a Symbol>,
     orphans: Vec<Diagnostic>,
@@ -108,7 +112,7 @@ impl<'a> SlotIndex<'a> {
         // missing its occupancy atom — is a refused orphan (real dropped data); one descending from
         // no marker is the model's private business (§12.1), ignored, never refused.
         let mut declared: BTreeSet<&Symbol> = BTreeSet::new();
-        let mut occupants: BTreeSet<&'a Symbol> = BTreeSet::new();
+        let mut occupancies: BTreeMap<Name, BTreeSet<&'a Symbol>> = BTreeMap::new();
         let mut marker_roots: BTreeSet<&'a Symbol> = BTreeSet::new();
         let mut field_parents: Vec<(&'a Symbol, &'a Symbol)> = Vec::new();
 
@@ -128,10 +132,15 @@ impl<'a> SlotIndex<'a> {
                     marker_roots.insert(root);
                 }
             } else if index.sort_of(name).is_some() {
-                // An occupancy atom `u(occupant)`: file the occupant under its (functor, parent).
+                // An occupancy atom `u(occupant)`: file the occupant under its (functor, parent), and
+                // record it under its sort `u` (`name`) so the set-member re-check is the *element*
+                // sort's (spec §7.1), not "an occupant of some sort".
                 if let [occupant] = arguments.as_slice() {
                     declared.insert(occupant);
-                    occupants.insert(occupant);
+                    occupancies
+                        .entry(name.clone())
+                        .or_default()
+                        .insert(occupant);
                     if let Symbol::Function {
                         name: field,
                         arguments: occupant_args,
@@ -175,7 +184,7 @@ impl<'a> SlotIndex<'a> {
 
         SlotIndex {
             slots,
-            occupants,
+            occupancies,
             markers,
             violations,
             orphans,
@@ -211,11 +220,15 @@ impl<'a> SlotIndex<'a> {
             .map_or(&[], Vec::as_slice)
     }
 
-    /// Whether `occupant` has a sort atom in the answer set — the set-member occupancy re-check
-    /// (§7.1): a `(keryx.set)` message member named by a membership atom is well-sorted only when
-    /// some `u(occupant)` declares it.
-    fn is_occupant(&self, occupant: &Symbol) -> bool {
-        self.occupants.contains(occupant)
+    /// Whether `occupant` is declared an occupant of the sort `sort` — the set-member occupancy
+    /// re-check (§7.1): a `(keryx.set)` message member named by a membership atom `f(P, E)` is
+    /// well-sorted only when its *element* sort declares it (`<child>(E)` present), the mode-free
+    /// mirror of `emit.lp`'s `not <child>(E)`. Keyed by sort, so a member declared an occupant of a
+    /// *different* sort does not pass — it is refused, never built as the element sort.
+    fn is_occupant_of(&self, sort: &Name, occupant: &Symbol) -> bool {
+        self.occupancies
+            .get(sort)
+            .is_some_and(|occupants| occupants.contains(occupant))
     }
 }
 
@@ -485,10 +498,10 @@ impl Assembler<'_, '_> {
     /// its members the second argument of each membership atom (a member occupant, a `Function`) —
     /// the shredded case's positional occupants co-file here from occupancy too, told apart by their
     /// `Number` second argument and skipped, the membership atom naming the same member. Each member
-    /// is re-checked well-sorted (`is_occupant`) — the mode-free half of the set-member occupancy
-    /// obligation `emit.lp` carries (§12.2), the reassembler's own orphan pass not reaching a member
-    /// named by its own provenance — and refused (`ShapeViolation`) when it is not, never silently
-    /// built as an empty message.
+    /// is re-checked well-sorted against the *element* sort (`is_occupant_of`) — the mode-free half of
+    /// the set-member occupancy obligation `emit.lp` carries as `not <child>(E)` (§7.1, §12.2), the
+    /// reassembler's own orphan pass not reaching a member named by its own provenance — and refused
+    /// (`ShapeViolation`) when it is not, never silently built as an empty or wrong-sort message.
     fn plan_set(
         &mut self,
         work: &Discover,
@@ -509,7 +522,7 @@ impl Assembler<'_, '_> {
             members.dedup();
             let mut children = Vec::with_capacity(members.len());
             for member in members {
-                if self.slots.is_occupant(member) {
+                if self.slots.is_occupant_of(referent, member) {
                     children.push(self.plan_child(work, referent, member, stack));
                 } else {
                     self.diagnostics.push(shape(
@@ -1047,7 +1060,8 @@ mod tests {
     }
 
     /// Assemble the one root of `answer` over `(mapping, pool)` after `alter`: the set tests alter a
-    /// repeated field to `Set`, the policy not producing the form until the annotation is read.
+    /// repeated field to `Set` directly, exercising reassembly over a minimal mapping independent of
+    /// the annotation path that produces the form in the pipeline.
     fn reassemble_altered(
         units: (Mapping, RetainedPool),
         alter: impl FnOnce(&mut Mapping),
