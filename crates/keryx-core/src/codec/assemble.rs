@@ -286,6 +286,14 @@ pub(crate) fn assemble(
     walker.build(pool, format)
 }
 
+/// A plan instance's identity — one per message-slot reference, handed out by [`Assembler::fresh_id`]
+/// and the key `built` draws by. A distinct type from the other counts and indices the walk carries
+/// (a field number, a nesting depth, an atom count), so the compiler keeps them from being confused
+/// for one another; that two references to one shared occupant get two ids is what lets the build
+/// consume each independently rather than remove one term twice (§7.1, §12.3).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct PlanId(usize);
+
 /// One occupant to rebuild: the message `sort` instance under `occupant`, at `depth` below its root.
 /// `id` is the plan instance's identity — unique per reference, so a `(keryx.set)` member shared by
 /// two parents (§7.1) is two instances the build consumes independently, never one it removes twice.
@@ -293,7 +301,7 @@ struct Discover {
     occupant: Symbol,
     sort: SortRef,
     depth: usize,
-    id: usize,
+    id: PlanId,
 }
 
 /// A planned occupant — its `sort`, its instance `id`, and how to set each of its fields — built by
@@ -302,7 +310,7 @@ struct Discover {
 struct Plan {
     sort: SortRef,
     fields: Vec<Planned>,
-    id: usize,
+    id: PlanId,
 }
 
 /// How one field is set on its message: a raised scalar/enum value, a sequence of them, a map of
@@ -323,15 +331,15 @@ enum Planned {
     },
     Message {
         number: i32,
-        child: usize,
+        child: PlanId,
     },
     Messages {
         number: i32,
-        children: Vec<usize>,
+        children: Vec<PlanId>,
     },
     MessageMap {
         number: i32,
-        entries: Vec<(MapKey, usize)>,
+        entries: Vec<(MapKey, PlanId)>,
     },
 }
 
@@ -391,8 +399,8 @@ impl Assembler<'_, '_> {
     }
 
     /// A fresh plan-instance id, unique per reference ([`Discover::id`]).
-    fn fresh_id(&mut self) -> usize {
-        let id = self.next_id;
+    fn fresh_id(&mut self) -> PlanId {
+        let id = PlanId(self.next_id);
         self.next_id += 1;
         id
     }
@@ -677,7 +685,7 @@ impl Assembler<'_, '_> {
         referent: &Name,
         occupant: &Symbol,
         stack: &mut Vec<Discover>,
-    ) -> usize {
+    ) -> PlanId {
         let sort = self
             .index
             .sort_of(referent)
@@ -770,7 +778,7 @@ impl Assembler<'_, '_> {
     /// (unique per reference); the last plan (the root, first discovered) is encoded.
     fn build(self, pool: &RetainedPool, format: PayloadFormat) -> Result<Vec<u8>, Diagnostics> {
         let mapping = self.mapping;
-        let mut built: BTreeMap<usize, Value> = BTreeMap::new();
+        let mut built: BTreeMap<PlanId, Value> = BTreeMap::new();
         // Children before parents: discovery recorded each parent before its descendants, so the
         // reversed order builds the deepest occupants first, each already holding its children in
         // `built`. The last built — the root, discovered first — is encoded, not stored. A setter
@@ -838,7 +846,7 @@ impl Assembler<'_, '_> {
 fn set_planned(
     building: &mut Building,
     planned: Planned,
-    built: &mut BTreeMap<usize, Value>,
+    built: &mut BTreeMap<PlanId, Value>,
     sort: &SortMapping,
 ) -> Result<(), Diagnostic> {
     let at = |number: i32| field_path(sort, number);
