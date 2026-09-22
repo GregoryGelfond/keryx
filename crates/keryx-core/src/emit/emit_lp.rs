@@ -179,11 +179,19 @@ fn frame(unit: &Unit) -> Vec<WithProvenance<Statement>> {
             line,
         ));
         for field in sort.fields() {
-            // Exactly a message-typed field has a slot the closure crosses: `FieldMapping::view`
-            // yields the view kind together with the referent sort predicate iff the value is a
-            // message (and the form is not `Set`), so the child sort is in hand here.
+            // A message-typed field has a slot the closure crosses. A singular, sequence, or map
+            // field's occupant is an access-path term, so `FieldMapping::view` yields its view kind
+            // and referent and the closure joins on occupancy (`step`). A message *set*'s members
+            // are named by their own provenance (§4.1), not an access path, so the closure joins on
+            // the membership relation instead (`set_reach`, §12.1) — the occupancy-join could never
+            // bind a member `al(R)` that is not the term `f(X, I)`.
             if let Some((kind, referent)) = field.view() {
                 statements.push(step(sort, field, kind, referent.clone()));
+            } else if matches!(
+                (field.form(), field.value()),
+                (EmitForm::Set, ValueMapping::Message(_))
+            ) {
+                statements.push(set_reach(sort, field));
             }
         }
     }
@@ -234,6 +242,25 @@ fn slot(field: &FieldMapping, kind: ViewKind, x: Term) -> Term {
     build::apply(field.predicate().clone(), args)
 }
 
+/// The membership-join reach step for a message set (spec §12.1, §7.1): `reach(A) :- reach(X),
+/// <sort>(X), f(X, A).` — the membership atom binds the member `A` directly, whatever its
+/// provenance, so a model-computed set is reachable where the occupancy-join `A = f(X, I)`
+/// ([`step`]) would never bind a provenance-named member `al(R)`. `X` is reached and of this sort
+/// (sort-polymorphic, §4.2), and `A` bound positively by the membership atom.
+fn set_reach(parent: &SortMapping, field: &FieldMapping) -> WithProvenance<Statement> {
+    let x = build::var("X");
+    let a = build::var("A");
+    build::rule(
+        build::atom(names::reach(), [a.clone()]),
+        vec![
+            build::positive(build::atom(names::reach(), [x.clone()])),
+            build::positive(build::atom(parent.predicate().clone(), [x.clone()])),
+            build::positive(build::atom(field.predicate().clone(), [x, a])),
+        ],
+        signature::field(parent, field),
+    )
+}
+
 /// One sort's obligations (spec §12.2): per field, the root instance of occupancy and the
 /// field's own obligations by form; per message-typed field, occupancy over its slot; then the
 /// sort's oneofs' exclusivity. The witnesses an obligation reads are mode-free rules and go to
@@ -254,11 +281,10 @@ fn sort_obligations(
             EmitForm::Map { key, key_treatment } => {
                 map(sort, field, *key, *key_treatment, obligations);
             }
-            // A set (§7.1) drops the index, so it has no contiguity; its membership and range
-            // instances over `f(P, V)`, and the occupant order that makes its serialization
-            // canonical, arrive with the form's semantics — `(keryx.set)`, Increment 5 — and
-            // the mapping does not yet produce the form.
-            EmitForm::Set => {}
+            // A set (§7.1) has no functionality and no contiguity — many members at one `P` by
+            // design. A scalar set carries its value's own obligation over `f(P, V)`; a message set
+            // a membership-keyed occupancy obligation holding its members well-sorted (see `set`).
+            EmitForm::Set => set(sort, field, obligations),
         }
         if let Some((kind, child)) = field.view() {
             obligations.extend(slot_occupancy(unit, sort, field, kind, child));
@@ -424,6 +450,38 @@ fn sequence(
         doc: doc(Kind::Contiguity, &line),
     });
     obligations.extend(value_obligation(sort, field, &[i], &line));
+}
+
+/// A set's obligations (spec §7.1, §12.2): no functionality and no contiguity — a set holds many
+/// members at one `P` by design. A scalar (or enum) set carries only its value's own obligation
+/// over `f(P, V)` — an enum's membership, an unsigned integer's range ([`value_obligation`]) — with
+/// no index. A message set instead carries a **membership-keyed occupancy** obligation: a member
+/// the membership relation names must be an occupant of the element sort — `:- reach(P), <sort>(P),
+/// f(P, E), not <child>(E).` — the well-sortedness a sequence's parent-over-slot occupancy gives its
+/// indexed occupants ([`slot_occupancy`]) but a provenance-named member gets from neither the reach
+/// step nor the reassembler's first-argument-spine orphan check (§7.1); the reassembler re-checks it
+/// mode-free beside this, so a set member has the two guardians every structural condition has. `E`
+/// is bound positively by the membership atom before the negation, so the rule grounds safe.
+fn set(sort: &SortMapping, field: &FieldMapping, obligations: &mut Vec<Obligation>) {
+    let line = signature::field(sort, field);
+    let ValueMapping::Message(child) = field.value() else {
+        obligations.extend(value_obligation(sort, field, &[], &line));
+        return;
+    };
+    let p = build::var("P");
+    let e = build::var("E");
+    let mut body = guard(sort, &p);
+    body.push(build::positive(build::atom(
+        field.predicate().clone(),
+        [p.clone(), e.clone()],
+    )));
+    body.push(build::not_atom(build::atom(child.clone(), [e.clone()])));
+    obligations.push(Obligation {
+        path: path(field),
+        subject: e,
+        body,
+        doc: doc(Kind::Occupancy, &line),
+    });
 }
 
 /// A map's obligations (§7.2): over a base-fact map, key functionality and each value's
@@ -694,4 +752,155 @@ fn membership_table(enumeration: &EnumMapping) -> Vec<WithProvenance<Statement>>
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use themelios_program::Name;
+
+    use super::{emit_diagnostic, emit_strict};
+    use crate::descriptor::model::{FqName, Package, Scalar};
+    use crate::policy::model::{
+        EmitForm, FieldMapping, ScalarTreatment, SortMapping, Totality, Unit, ValueMapping,
+    };
+
+    fn name(text: &str) -> Name {
+        Name::new(text).expect("test name is a valid identifier")
+    }
+
+    /// A unit whose `Container` carries a message set `items` (→ `item`) and an unsigned scalar set
+    /// `codes` (`uint32`), built by hand — `annotate` does not yet produce `EmitForm::Set` (Increment
+    /// 5's last task turns that on), so the form's obligations are exercised over it directly.
+    fn container_with_sets() -> Unit {
+        let set_field = |proto: &str, pred: &str, value: ValueMapping, number: i32| FieldMapping {
+            proto: FqName::new(proto),
+            number,
+            predicate: name(pred),
+            arity: 2,
+            form: EmitForm::Set,
+            value,
+            presence: Totality::Total,
+            escaped: false,
+            doc: None,
+        };
+        let container = SortMapping {
+            proto: FqName::new("keryx.t.Container"),
+            predicate: name("container"),
+            qualifier: Vec::new(),
+            escaped: false,
+            recursive: false,
+            doc: None,
+            fields: vec![
+                set_field(
+                    "keryx.t.Container.items",
+                    "items",
+                    ValueMapping::Message(name("item")),
+                    1,
+                ),
+                set_field(
+                    "keryx.t.Container.codes",
+                    "codes",
+                    ValueMapping::Scalar {
+                        kind: Scalar::Uint32,
+                        treatment: ScalarTreatment::Native,
+                    },
+                    2,
+                ),
+            ],
+        };
+        let item = SortMapping {
+            proto: FqName::new("keryx.t.Item"),
+            predicate: name("item"),
+            qualifier: Vec::new(),
+            escaped: false,
+            recursive: false,
+            doc: None,
+            fields: vec![FieldMapping {
+                proto: FqName::new("keryx.t.Item.label"),
+                number: 1,
+                predicate: name("label"),
+                arity: 2,
+                form: EmitForm::Function,
+                value: ValueMapping::Scalar {
+                    kind: Scalar::String,
+                    treatment: ScalarTreatment::Text,
+                },
+                presence: Totality::Partial,
+                escaped: false,
+                doc: None,
+            }],
+        };
+        Unit {
+            package: Package::parse("keryx.t").expect("valid package"),
+            sorts: vec![container, item],
+            enums: Vec::new(),
+        }
+    }
+
+    /// The theory with all whitespace removed, so a rule assertion reads free of the renderer's
+    /// spacing (the body literals themselves stand in themelios's canonical order).
+    fn compact(theory: &str) -> String {
+        theory.chars().filter(|c| !c.is_whitespace()).collect()
+    }
+
+    #[test]
+    fn a_message_set_is_reached_through_membership_and_holds_its_members_well_sorted() {
+        let strict = compact(&emit_strict(&container_with_sets()).expect("emits"));
+        // Reachability crosses into a message set through the membership relation (§12.1), not the
+        // occupancy-join a sequence/map uses — so a model-computed member is reached whatever its
+        // provenance.
+        assert!(
+            strict.contains("reach(A):-container(X),items(X,A),reach(X)."),
+            "membership-join reach:\n{strict}"
+        );
+        // A member must be an occupant of the element sort (§7.1): the membership-keyed occupancy
+        // obligation, distinct from a slot's, `E` bound positively before the negation.
+        assert!(
+            strict.contains(":-container(P),items(P,E),reach(P),notitem(E)."),
+            "member-occupancy obligation:\n{strict}"
+        );
+        // No contiguity and no functionality — a set holds many members at one parent by design.
+        assert!(
+            !strict.contains("has_items"),
+            "a set mints no index/presence witness:\n{strict}"
+        );
+        assert!(
+            !strict.contains("items(P,V1)"),
+            "a set has no functionality constraint:\n{strict}"
+        );
+    }
+
+    #[test]
+    fn a_scalar_set_carries_its_value_obligation_over_the_binary_relation() {
+        let strict = compact(&emit_strict(&container_with_sets()).expect("emits"));
+        // An unsigned scalar set's only obligation is its value's own over `f(P, V)` — the
+        // non-negative range — with no index and no functionality (§7.1, §12.2).
+        assert!(
+            strict.contains(":-codes(P,V),container(P),reach(P),V<0."),
+            "scalar-set value (range) obligation:\n{strict}"
+        );
+        assert!(
+            !strict.contains("has_codes"),
+            "a scalar set mints no witness:\n{strict}"
+        );
+    }
+
+    #[test]
+    fn the_diagnostic_theory_names_the_set_field_path_and_the_member() {
+        let diagnostic = compact(&emit_diagnostic(&container_with_sets()).expect("emits"));
+        // Diagnostic mode derives `violates(field-path, occupant)` from the same bodies (§12.2, P1):
+        // the member-occupancy names the bad member `E`, the value obligation the parent `P`.
+        assert!(
+            diagnostic.contains(
+                "violates(\"keryx.t.Container.items\",E):-container(P),items(P,E),reach(P),notitem(E)."
+            ),
+            "member-occupancy violation names the member:\n{diagnostic}"
+        );
+        assert!(
+            diagnostic.contains(
+                "violates(\"keryx.t.Container.codes\",P):-codes(P,V),container(P),reach(P),V<0."
+            ),
+            "scalar-set range violation names the field path:\n{diagnostic}"
+        );
+    }
 }

@@ -221,7 +221,8 @@ Generated obligations, each guarded by `reach/1` so working predicates stay unco
 - key functionality for maps;
 - oneof pairwise exclusivity;
 - enum membership; numeric range for `NATIVE_CHECKED`;
-- occupancy consistency (an occupant term's sort atom is present if any of its field atoms are — the field-atom ⇒ sort-atom direction; the reverse is not enforced, so a message with no fields set keeps its sort atom via its parent's occupancy rather than being refused, correcting an "iff" that would refuse valid empty messages).
+- occupancy consistency (an occupant term's sort atom is present if any of its field atoms are — the field-atom ⇒ sort-atom direction; the reverse is not enforced, so a message with no fields set keeps its sort atom via its parent's occupancy rather than being refused, correcting an "iff" that would refuse valid empty messages);
+- set-member occupancy — for a `(keryx.set)` message field, that each member the membership relation names is an occupant of the element sort (the membership-atom ⇒ sort-atom direction, §7.1): a set member is named by its own provenance and reached through membership, not an access-path slot, so its well-sortedness is held by this obligation of its own rather than by the slot occupancy above; a set carries neither functionality nor contiguity.
 
 Two modes, one flag apart, both generated:
 
