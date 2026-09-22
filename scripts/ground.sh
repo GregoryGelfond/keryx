@@ -153,6 +153,19 @@ check thermal "$root/examples/thermal/thermal.proto" "$root/examples/thermal" th
   "$work/thermal.answer.lp" \
   'sensor(readings(r0, 0), "s-999").' \
   'violates("thermal.v1.Reading.sensor",readings(r0,0))'
+
+# A set-bearing root's sort atom is obliged (arch §7, spec §12.2): AlertSet's only field is the set
+# `alerts`, reached through its marker, so nothing but root occupancy forces `alert_set`. Reusing the
+# thermal theory just grounded, an AlertSet carrying its member and its sort atom is SAT; the same with
+# the sort atom omitted is UNSAT — the root-occupancy obligation firing, so a set root cannot be
+# strict-SAT yet unserializable.
+printf '%s\n' 'emit_alert_set(out).' 'alert_set(out).' 'alerts(out, al(0)).' 'alert(al(0)).' \
+  'sensor(al(0), "s-1").' 'temp_c(al(0), 1).' > "$work/alertset.sat.lp"
+printf '%s\n' 'emit_alert_set(out).' 'alerts(out, al(0)).' 'alert(al(0)).' \
+  'sensor(al(0), "s-1").' 'temp_c(al(0), 1).' > "$work/alertset.unsat.lp"
+solve sat "$work/thermal/thermal.v1.emit.lp" "$work/alertset.sat.lp"
+solve unsat "$work/thermal/thermal.v1.emit.lp" "$work/alertset.unsat.lp"
+echo "ground: thermal AlertSet — set root SAT with its sort atom, UNSAT without it (root occupancy)"
 check reach "$fixtures/reach.proto" "$fixtures" keryx.reach \
   "$fixtures/reach.answer.lp" \
   'note(first(p0), "again").' \
