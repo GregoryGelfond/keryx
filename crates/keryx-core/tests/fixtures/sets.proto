@@ -14,3 +14,15 @@ message Record {
   repeated string names = 1 [(keryx.set) = true]; // a scalar set: names(P, V)
   repeated Tag tags = 2 [(keryx.set) = true];     // a message set: tags(P, E)
 }
+
+// An empty message — the element type of a set whose members carry no field. Because it has no
+// field, a member misfiled under a *different* sort would reassemble to a clean (invented) empty
+// message unless the reassembler keys its set-member occupancy re-check on the element sort
+// (spec §7.1). The element sort with no total field is the shape that shows the difference.
+message Empty {}
+
+// A holder of a message set of `Empty`: a member of `items` declared an occupant of a different
+// sort (e.g. `tag(·)`, not `empty(·)`) must be refused, never built as an empty `Empty`.
+message Holder {
+  repeated Empty items = 1 [(keryx.set) = true];
+}

@@ -91,6 +91,42 @@ fn proto2_codec() -> Codec {
         .expect("the proto2 example compiles")
 }
 
+/// The sets fixture's codec (spec §7.1), through the source door.
+fn sets_codec() -> Codec {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let vendored = Path::new(env!("CARGO_MANIFEST_DIR")).join("proto");
+    Codec::from_source(&[fixtures.join("sets.proto")], &[&fixtures, &vendored])
+        .expect("the sets fixture compiles")
+}
+
+#[test]
+fn a_set_member_of_a_different_sort_is_refused_not_built_as_the_element_sort() {
+    // Integrity (threat model property 4, spec §7.1): the reassembler's set-member occupancy re-check
+    // is keyed to the *element* sort, not "an occupant of some sort". `Holder.items` is a set of
+    // `Empty` (a message with no field); this answer set names a member the answer set declares an
+    // occupant of a *different* sort — `tag(foo)`, not `empty(foo)`. Since `Empty` has no field, a
+    // member misfiled under any sort would reassemble to a clean invented empty message if the
+    // re-check accepted an occupant of some sort; keyed to the element sort, it is refused. Mirrors
+    // `emit.lp`'s `:- reach(P), holder(P), items(P, E), not empty(E).` on the adversarial-input path
+    // (an answer set / `.lp` fixture, no serializability theory in the loop).
+    let codec = sets_codec();
+    let answer = vec![
+        atom("emit_holder", vec![constant("h")]),
+        atom("holder", vec![constant("h")]),
+        atom("items", vec![constant("h"), constant("foo")]),
+        atom("tag", vec![constant("foo")]),
+    ];
+    let error = codec
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect_err("a set member declared a different sort is refused");
+    assert!(
+        error
+            .iter()
+            .any(|d| d.kind() == keryx_core::diagnostics::DiagnosticKind::ShapeViolation),
+        "a wrong-sort set member is a shape violation, not a silent empty message"
+    );
+}
+
 #[test]
 fn a_proto2_required_field_omitted_is_a_shape_violation_outbound() {
     // A proto2 `required` field is totality-obliged outbound (#1), so an answer set naming an
