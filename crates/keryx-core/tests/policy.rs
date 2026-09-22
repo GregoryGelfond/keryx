@@ -84,7 +84,7 @@ fn reading_message_field_is_partial_with_a_singular_view() {
     assert_eq!(detail.view().map(|(k, _)| k), Some(ViewKind::Singular));
     match detail.value() {
         ValueMapping::Message(referent) => assert_eq!(referent.as_str(), "detail"),
-        ValueMapping::Scalar { .. } | ValueMapping::Enum(_) => {
+        ValueMapping::Scalar { .. } | ValueMapping::Enum { .. } => {
             panic!("expected `detail` to carry a message value")
         }
     }
@@ -173,7 +173,7 @@ fn maps_message_value_gets_a_map_view() {
     assert_eq!(items.view().map(|(k, _)| k), Some(ViewKind::Map));
     match items.value() {
         ValueMapping::Message(referent) => assert_eq!(referent.as_str(), "item"),
-        ValueMapping::Scalar { .. } | ValueMapping::Enum(_) => {
+        ValueMapping::Scalar { .. } | ValueMapping::Enum { .. } => {
             panic!("expected `items` to carry a message value")
         }
     }
@@ -318,7 +318,7 @@ fn singular_enum_field_has_no_view() {
     assert_eq!(kind.presence(), Totality::Total);
     assert!(kind.view().is_none());
     match kind.value() {
-        ValueMapping::Enum(referent) => assert_eq!(referent.as_str(), "kind"),
+        ValueMapping::Enum { referent, .. } => assert_eq!(referent.as_str(), "kind"),
         ValueMapping::Scalar { .. } | ValueMapping::Message(_) => {
             panic!("expected `kind` to carry an enum value")
         }
@@ -337,7 +337,7 @@ fn repeated_message_field_gets_a_sequence_view() {
     assert_eq!(notes.view().map(|(k, _)| k), Some(ViewKind::Sequence));
     match notes.value() {
         ValueMapping::Message(referent) => assert_eq!(referent.as_str(), "note"),
-        ValueMapping::Scalar { .. } | ValueMapping::Enum(_) => {
+        ValueMapping::Scalar { .. } | ValueMapping::Enum { .. } => {
             panic!("expected `notes` to carry a message value")
         }
     }
@@ -352,7 +352,7 @@ fn repeated_and_mapped_enum_values_have_no_view() {
     assert_eq!(kinds.form(), &EmitForm::Sequence);
     assert!(kinds.view().is_none());
     match kinds.value() {
-        ValueMapping::Enum(referent) => assert_eq!(referent.as_str(), "kind"),
+        ValueMapping::Enum { referent, .. } => assert_eq!(referent.as_str(), "kind"),
         ValueMapping::Scalar { .. } | ValueMapping::Message(_) => {
             panic!("expected `kinds` to carry an enum value")
         }
@@ -368,7 +368,7 @@ fn repeated_and_mapped_enum_values_have_no_view() {
     );
     assert!(tags.view().is_none());
     match tags.value() {
-        ValueMapping::Enum(referent) => assert_eq!(referent.as_str(), "kind"),
+        ValueMapping::Enum { referent, .. } => assert_eq!(referent.as_str(), "kind"),
         ValueMapping::Scalar { .. } | ValueMapping::Message(_) => {
             panic!("expected `tags` to carry an enum value")
         }

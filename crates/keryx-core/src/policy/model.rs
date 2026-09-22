@@ -73,8 +73,16 @@ pub enum ValueMapping {
     },
     /// A message occupant — carries the referent message's sort predicate.
     Message(Name),
-    /// An enum value — carries the referent enum's sort predicate.
-    Enum(Name),
+    /// An enum value — carries the referent enum's sort predicate and its resolved `preserve` flag
+    /// (`(keryx.unknown) = PRESERVE`, §7.4), denormalized onto the field so `emit` reads it without a
+    /// cross-unit enum lookup — the escape-admission rules are emitted in the field's own unit even
+    /// when the enum is imported from another package.
+    Enum {
+        /// The referent enum's sort predicate.
+        referent: Name,
+        /// Whether the referent enum preserves unknown wire values (its `EnumMapping::preserve`).
+        preserve: bool,
+    },
 }
 
 /// A scalar's emitted treatment — the §6 default classification the codec's scalar policy
@@ -458,14 +466,6 @@ impl Unit {
     #[must_use]
     pub fn enums(&self) -> &[EnumMapping] {
         &self.enums
-    }
-
-    /// The enum whose sort predicate is `predicate` — the referent an enum-valued field names
-    /// (`ValueMapping::Enum`, §7.4), so emit can read its resolved `preserve` flag without the
-    /// codec's `Index`. A linear scan of the unit's enums (their count is small).
-    #[must_use]
-    pub(crate) fn enumeration(&self, predicate: &Name) -> Option<&EnumMapping> {
-        self.enums.iter().find(|e| e.predicate() == predicate)
     }
 }
 

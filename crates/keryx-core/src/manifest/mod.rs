@@ -138,7 +138,7 @@ fn field_line(out: &mut String, field: &FieldMapping) {
     };
     let target = match field.value() {
         ValueMapping::Message(name) => format!(" -> {}", name.as_str()),
-        ValueMapping::Scalar { .. } | ValueMapping::Enum(_) => String::new(),
+        ValueMapping::Scalar { .. } | ValueMapping::Enum { .. } => String::new(),
     };
     // The trailing descriptor: a family names its shape — a sequence's contiguous 0-based index,
     // or a map's typed key, the KR distinction §4.1 draws (and which two message families would
@@ -222,7 +222,9 @@ fn value_line(out: &mut String, value: &EnumValueMapping) {
 fn declared(value: &ValueMapping) -> String {
     match value {
         ValueMapping::Scalar { kind, .. } => kind.as_str().to_owned(),
-        ValueMapping::Message(name) | ValueMapping::Enum(name) => name.as_str().to_owned(),
+        ValueMapping::Message(name) | ValueMapping::Enum { referent: name, .. } => {
+            name.as_str().to_owned()
+        }
     }
 }
 
@@ -311,7 +313,13 @@ mod tests {
     #[test]
     fn declared_names_the_message_and_enum_referent() {
         assert_eq!(declared(&ValueMapping::Message(name("detail"))), "detail");
-        assert_eq!(declared(&ValueMapping::Enum(name("level"))), "level");
+        assert_eq!(
+            declared(&ValueMapping::Enum {
+                referent: name("level"),
+                preserve: false
+            }),
+            "level"
+        );
     }
 
     #[test]

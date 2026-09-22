@@ -134,21 +134,21 @@ fn theory(unit: &Unit, mode: Mode) -> Vec<WithProvenance<Statement>> {
     // Under `(keryx.unknown) = PRESERVE`, admit the escape term `unknown(N)` to the membership
     // table — one rule per enum-valued field of a preserve enum (§7.4, §12.2), `ok_signal(unknown(N))
     // :- f(_, …, unknown(N)).`, satisfying the membership obligation for `V = unknown(N)`; `N` is
-    // bound only through the field atom so the rule grounds safe.
+    // bound only through the field atom so the rule grounds safe. The referent enum's `preserve` flag
+    // rides on the field (denormalized by `policy::resolve_enum_preserve`), so the rule is emitted in
+    // the field's unit even when the enum is imported from another package — its head `ok_e(...)`
+    // composes with the enum's own `ok_e(c).` table when both packages' `emit.lp` files load together.
     for sort in unit.sorts() {
         for field in sort.fields() {
-            let ValueMapping::Enum(referent) = field.value() else {
+            let ValueMapping::Enum { referent, preserve } = field.value() else {
                 continue;
             };
-            let Some(enumeration) = unit.enumeration(referent) else {
-                continue;
-            };
-            if enumeration.preserve() {
+            if *preserve {
                 statements.push(build::escape_admission(
-                    names::member(enumeration.predicate()),
+                    names::member(referent),
                     field.predicate().clone(),
                     field.arity(),
-                    doc(Kind::Membership, &signature::enumeration(enumeration)),
+                    doc(Kind::Membership, &signature::field(sort, field)),
                 ));
             }
         }
@@ -491,9 +491,9 @@ fn value_obligation(
     let p = build::var("P");
     let v = build::var("V");
     let (kind, test) = match field.value() {
-        ValueMapping::Enum(enumeration) => (
+        ValueMapping::Enum { referent, .. } => (
             Kind::Membership,
-            build::not_atom(build::atom(names::member(enumeration), [v.clone()])),
+            build::not_atom(build::atom(names::member(referent), [v.clone()])),
         ),
         ValueMapping::Scalar { kind, treatment } if unsigned(*kind, *treatment) => (
             Kind::Range,
@@ -653,7 +653,7 @@ fn occurrence(field: &FieldMapping, subject: Term, place: Option<Term>) -> Atom 
             child.clone(),
             [build::apply(field.predicate().clone(), args)],
         ),
-        ValueMapping::Scalar { .. } | ValueMapping::Enum(_) => {
+        ValueMapping::Scalar { .. } | ValueMapping::Enum { .. } => {
             args.push(build::anonymous());
             build::atom(field.predicate().clone(), args)
         }

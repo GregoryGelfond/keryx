@@ -70,21 +70,21 @@ pub fn core(unit: &Unit) -> Result<String, Diagnostics> {
     }
     // Under `(keryx.unknown) = PRESERVE`, admit the escape term `unknown(N)` to the value sort —
     // one rule per enum-valued field of a preserve enum (§7.4), `signal(unknown(N)) :- f(_, …,
-    // unknown(N)).`, `N` bound only through the field atom so the rule grounds safe.
+    // unknown(N)).`, `N` bound only through the field atom so the rule grounds safe. The referent
+    // enum's `preserve` flag rides on the field (denormalized by `policy::resolve_enum_preserve`), so
+    // the rule is emitted here even when the enum is imported from another package — the head names
+    // the referent sort, which resolves when that package's `core.lp` loads alongside.
     for sort in unit.sorts() {
         for field in sort.fields() {
-            let ValueMapping::Enum(referent) = field.value() else {
+            let ValueMapping::Enum { referent, preserve } = field.value() else {
                 continue;
             };
-            let Some(enumeration) = unit.enumeration(referent) else {
-                continue;
-            };
-            if enumeration.preserve() {
+            if *preserve {
                 statements.push(build::escape_admission(
-                    enumeration.predicate().clone(),
+                    referent.clone(),
                     field.predicate().clone(),
                     field.arity(),
-                    doc_line(None, &signature::enumeration(enumeration)),
+                    doc_line(field.doc(), &signature::field(sort, field)),
                 ));
             }
         }

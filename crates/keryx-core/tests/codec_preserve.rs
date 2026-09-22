@@ -174,3 +174,39 @@ fn an_undeclared_number_round_trips_byte_for_byte() {
     assert_eq!(out.messages().len(), 1);
     assert_eq!(out.messages()[0].bytes(), panel);
 }
+
+#[test]
+fn a_declared_value_lowering_to_the_unknown_constant_round_trips() {
+    // SIGNAL_UNKNOWN = 3 strips to the 0-ary constant `unknown`, distinct by arity from the 1-ary
+    // escape term unknown(N). Under PRESERVE the reassembler must route the 0-ary constant to the
+    // declared lookup (→ wire 3), not the preserve branch — the P4 case the arity guard protects.
+    let codec = preserve_codec();
+    // Inbound: wire 3 (declared) lowers to the constant `unknown`, not unknown(3).
+    let mut panel = Vec::new();
+    wire::int32(1, 3, &mut panel);
+    let facts = codec
+        .shred(
+            "keryx.preserve.Panel",
+            &panel,
+            PayloadFormat::Binary,
+            &Root::fresh(0),
+        )
+        .expect("the panel shreds");
+    let rendered = facts.render().expect("the facts render");
+    assert!(
+        rendered.contains("current(r0, unknown)."),
+        "the declared SIGNAL_UNKNOWN lowers to the 0-ary constant:\n{rendered}"
+    );
+    // Outbound: the 0-ary constant `unknown` reassembles to its wire number 3 (not refused).
+    let answer = vec![
+        atom("emit_panel", vec![constant("p0")]),
+        atom("panel", vec![constant("p0")]),
+        atom("current", vec![constant("p0"), constant("unknown")]),
+    ];
+    let out = codec
+        .reassemble(&answer, PayloadFormat::Binary)
+        .expect("the declared unknown constant reassembles");
+    let mut expected = Vec::new();
+    wire::int32(1, 3, &mut expected);
+    assert_eq!(out.messages()[0].bytes(), expected);
+}

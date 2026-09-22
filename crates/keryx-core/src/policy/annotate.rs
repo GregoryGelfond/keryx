@@ -425,7 +425,8 @@ pub(super) fn key_treatment(field: &Field, key: MapKey) -> Result<ScalarTreatmen
 
 /// Whether an enum preserves unknown wire values under `(keryx.unknown) = PRESERVE` (§7.4). Returns
 /// the resolved flag (default `false` — an unknown value is refused) plus any diagnostics; the flag
-/// is consumed on `EnumMapping` in Task 8.
+/// rides on `EnumMapping::preserve` and is denormalized onto each referencing field's
+/// `ValueMapping::Enum` so the codec and emit read it directly.
 pub(super) fn enum_preserve(enumeration: &Enum) -> Result<bool, Diagnostics> {
     let mut preserve = false;
     let mut rejections = Vec::new();

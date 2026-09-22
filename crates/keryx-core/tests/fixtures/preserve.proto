@@ -2,16 +2,21 @@ syntax = "proto3";
 package keryx.preserve;
 
 import "keryx/options.proto";
+import "preserve_dep.proto";
 
 // A proto3 (open) enum under (keryx.unknown) = PRESERVE (spec §7.4): an undeclared wire number
 // lowers to the escape term unknown(N) rather than the loud UnknownEnumValue refusal, and the
 // generated theory admits unknown(N) to both the value sort (core.lp) and the membership table
 // (emit.lp) — one admission rule per enum-valued field, N bound only through that field's atom.
+// SIGNAL_UNKNOWN lowers (prefix-strip) to the 0-ary constant `unknown`, which coexists by arity
+// with the 1-ary escape term unknown(N): the reassembler routes a 0-ary `unknown` to the declared
+// lookup and a 1-ary unknown(N) to the preserve branch.
 enum Signal {
   option (keryx.unknown) = PRESERVE;
   SIGNAL_UNSPECIFIED = 0;
   SIGNAL_GO = 1;
   SIGNAL_STOP = 2;
+  SIGNAL_UNKNOWN = 3;
 }
 
 message Panel {
@@ -21,4 +26,11 @@ message Panel {
   // A repeated enum field — arity 3, history(P, I, V): the extra index position is anonymous too,
   // signal(unknown(N)) :- history(_, _, unknown(N)).
   repeated Signal history = 2;
+}
+
+// A field whose PRESERVE enum is declared in another package (keryx.preserve.dep): the escape
+// admission rules must still be emitted in this unit — the field predicate is this unit's, the
+// enum sort predicate the dependency's, composing when both packages' modules load together.
+message Relay {
+  keryx.preserve.dep.Beacon status = 1;
 }

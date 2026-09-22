@@ -571,7 +571,7 @@ impl Assembler<'_, '_> {
             ValueMapping::Scalar { kind, treatment } => {
                 scalar::raise(symbol, *kind, *treatment, at)
             }
-            ValueMapping::Enum(referent) => self.enum_number(field, referent, symbol),
+            ValueMapping::Enum { referent, .. } => self.enum_number(field, referent, symbol),
             // A message value is routed to `plan_child` by the singular/sequence/map planners before
             // here; reaching the scalar path is a keryx error, discharged loud as `walk` does inbound.
             ValueMapping::Message(_) => unreachable!(
@@ -611,10 +611,12 @@ impl Assembler<'_, '_> {
             .expect("every enum referent of the mapping is an enum of its index")
             .in_mapping(self.mapping);
         // §7.4: a PRESERVE open enum admits the escape term `unknown(N)`, raising it to the wire
-        // number `N`. A 0-ary symbol takes the declared-constant path below; only a `PRESERVE`
-        // enum's `unknown(N)` reaches this branch, so a declared value named `*_UNKNOWN` (the
-        // 0-ary constant) is untouched.
-        if enumeration.preserve() && name.as_str() == names::UNKNOWN_FUNCTOR {
+        // number `N`. The branch is guarded by arity: only a 1-ary `unknown(N)` reaches it, so a
+        // declared value named `*_UNKNOWN` — which lowers to the 0-ary constant `unknown` — takes
+        // the declared-constant lookup below and raises to its own number, coexisting by arity with
+        // the escape term (§7.4; the routing the `unknown`-not-reserved decision rests on).
+        if enumeration.preserve() && name.as_str() == names::UNKNOWN_FUNCTOR && arguments.len() == 1
+        {
             return preserved_number(field, enumeration, arguments);
         }
         if !arguments.is_empty() {
