@@ -91,3 +91,126 @@ pub fn core(unit: &Unit) -> Result<String, Diagnostics> {
     }
     render(statements)
 }
+
+#[cfg(test)]
+mod tests {
+    use themelios_program::Name;
+
+    use super::core;
+    use crate::descriptor::model::{FqName, Package, Scalar};
+    use crate::policy::model::{
+        EmitForm, FieldMapping, ScalarTreatment, SortMapping, Totality, Unit, ValueMapping,
+    };
+
+    fn name(text: &str) -> Name {
+        Name::new(text).expect("test name is a valid identifier")
+    }
+
+    /// A unit whose one composite sort carries two `(keryx.set)` fields — a scalar set `tags` and a
+    /// message set `items` — built by hand because `policy::annotate` does not yet produce
+    /// `EmitForm::Set` (Increment 5's last task turns that on); the gen artifacts are exercised over
+    /// the form directly, as the codec tests do.
+    fn container_with_two_sets() -> Unit {
+        let set_field = |proto: &str, pred: &str, value: ValueMapping, number: i32| FieldMapping {
+            proto: FqName::new(proto),
+            number,
+            predicate: name(pred),
+            arity: 2,
+            form: EmitForm::Set,
+            value,
+            presence: Totality::Total,
+            escaped: false,
+            doc: None,
+        };
+        let container = SortMapping {
+            proto: FqName::new("keryx.t.Container"),
+            predicate: name("container"),
+            qualifier: Vec::new(),
+            escaped: false,
+            recursive: false,
+            doc: None,
+            fields: vec![
+                set_field(
+                    "keryx.t.Container.tags",
+                    "tags",
+                    ValueMapping::Scalar {
+                        kind: Scalar::String,
+                        treatment: ScalarTreatment::Text,
+                    },
+                    1,
+                ),
+                set_field(
+                    "keryx.t.Container.items",
+                    "items",
+                    ValueMapping::Message(name("item")),
+                    2,
+                ),
+            ],
+        };
+        let item = SortMapping {
+            proto: FqName::new("keryx.t.Item"),
+            predicate: name("item"),
+            qualifier: Vec::new(),
+            escaped: false,
+            recursive: false,
+            doc: None,
+            fields: vec![FieldMapping {
+                proto: FqName::new("keryx.t.Item.sku"),
+                number: 1,
+                predicate: name("sku"),
+                arity: 2,
+                form: EmitForm::Function,
+                value: ValueMapping::Scalar {
+                    kind: Scalar::String,
+                    treatment: ScalarTreatment::Text,
+                },
+                presence: Totality::Total,
+                escaped: false,
+                doc: None,
+            }],
+        };
+        Unit {
+            package: Package::parse("keryx.t").expect("valid package"),
+            sorts: vec![container, item],
+            enums: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_set_field_gets_its_own_defined_in_core_with_the_set_signature() {
+        // A set is a first-class membership relation `f/2` — a scalar set `f(P, V)`, a message set
+        // `f(P, E)` — so it takes its own `#defined f/2` on `core.lp`'s base-fact path, exactly as
+        // any other relation of the vocabulary does. The signature's domain is the parent sort with
+        // no `× index` (that is a sequence's), the shape word `set` (§13.1, §7.1).
+        let core = core(&container_with_two_sets()).expect("core.lp renders");
+        assert!(
+            core.contains("tags : container -> string  (set)"),
+            "scalar-set signature line missing:\n{core}"
+        );
+        assert!(
+            core.contains("items : container -> item  (set)"),
+            "message-set signature line missing:\n{core}"
+        );
+        assert!(
+            core.contains("tags/2"),
+            "scalar-set #defined arity 2:\n{core}"
+        );
+        assert!(
+            core.contains("items/2"),
+            "message-set #defined arity 2:\n{core}"
+        );
+    }
+
+    #[test]
+    fn a_set_field_generates_no_views_rule() {
+        // Membership is a base relation the model asserts, not a projection over occupancy (§7.1),
+        // so a set contributes no `views.lp` rule — unlike a message *sequence*, whose
+        // `f(P, I, E) :- …` view projects its indexed occupants. The only message-typed field here
+        // is the message set `items`, so `views.lp` carries no rule at all.
+        let views = crate::emit::views(&container_with_two_sets()).expect("views.lp renders");
+        assert!(
+            !views.contains(":-"),
+            "a set must contribute no views.lp rule:\n{views}"
+        );
+    }
+}
