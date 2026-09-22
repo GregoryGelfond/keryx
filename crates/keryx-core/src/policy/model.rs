@@ -19,18 +19,16 @@ use crate::descriptor::model::{FqName, MapKey, Openness, Package, Scalar};
 
 /// A field's emitted form (spec §4.1, §7): the ASP shape its predicate takes. Closed —
 /// the value's treatment classification (`ValueMapping`) rides beside it, never inside it;
-/// a map's *key* is the form's own, so its treatment rides with the form. At
-/// present every `repeated` is a `Sequence`; the `Set` form lands when `(keryx.set)` gains
-/// meaning (Increment 5). `OneofArm` is an ordinary partial function that also records
-/// its oneof (spec §7.3).
+/// a map's *key* is the form's own, so its treatment rides with the form. A `repeated` field is a
+/// `Sequence`, or a `Set` when it carries `(keryx.set)` (§7.1). `OneofArm` is an ordinary partial
+/// function that also records its oneof (spec §7.3).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EmitForm {
     /// A singular field — a unary function on its parent sort.
     Function,
     /// A repeated field — an index-keyed family (spec §7.1).
     Sequence,
-    /// A repeated field under `(keryx.set)` — a membership relation (spec §7.1);
-    /// reserved for Increment 5, never produced at present.
+    /// A repeated field under `(keryx.set)` — a membership relation (spec §7.1).
     Set,
     /// A map field — a key-keyed family (spec §7.2).
     Map {
