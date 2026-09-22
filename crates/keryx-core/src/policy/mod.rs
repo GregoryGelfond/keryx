@@ -803,6 +803,58 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_set_field_reserves_no_auxiliary_and_emit_lp_mints_none() {
+        // A `(keryx.set)` field mints neither a presence/index witness (`has_`) nor an enum
+        // membership table (`ok_`): its reach and its member-occupancy obligation carry no such
+        // auxiliary (§7.1, §12.2). Both sides of the mirror stay empty for it — the reserved set
+        // (this fn's `_ => continue`) and the emitted heads alike — built by hand, `annotate` not
+        // yet producing `EmitForm::Set`, so a future arm that reserved or emitted one for a set
+        // would fail here rather than desync silently until a set fixture exists.
+        use themelios_program::Name;
+
+        use crate::emit;
+        use crate::policy::model::{
+            EmitForm, FieldMapping, ScalarTreatment, SortMapping, Totality, Unit, ValueMapping,
+        };
+
+        let unit = Unit {
+            package: Package::parse("keryx.t").expect("valid package"),
+            sorts: vec![SortMapping {
+                proto: FqName::new("keryx.t.Container"),
+                predicate: Name::new("container").expect("identifier"),
+                qualifier: Vec::new(),
+                escaped: false,
+                recursive: false,
+                doc: None,
+                fields: vec![FieldMapping {
+                    proto: FqName::new("keryx.t.Container.tags"),
+                    number: 1,
+                    predicate: Name::new("tags").expect("identifier"),
+                    arity: 2,
+                    form: EmitForm::Set,
+                    value: ValueMapping::Scalar {
+                        kind: Scalar::String,
+                        treatment: ScalarTreatment::Text,
+                    },
+                    presence: Totality::Total,
+                    escaped: false,
+                    doc: None,
+                }],
+            }],
+            enums: Vec::new(),
+        };
+        assert!(
+            super::generated_auxiliaries(&unit).is_empty(),
+            "a set reserves no `has_`/`ok_` auxiliary"
+        );
+        let theory = emit::emit_strict(&unit).expect("emits");
+        assert!(
+            !theory.contains("has_") && !theory.contains("ok_"),
+            "and emit.lp mints none for it:\n{theory}"
+        );
+    }
+
     // --- the `policy::annotate` seam is wired into `map`, pinned adversarially end-to-end ---
     //
     // The leaf validators are unit-tested in `annotate.rs`; these pin that they are *invoked* from
