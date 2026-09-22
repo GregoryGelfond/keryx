@@ -49,6 +49,13 @@ use crate::policy::names;
 /// per reassemble over the whole answer set (`'a`), holding references into it.
 pub(crate) struct SlotIndex<'a> {
     slots: BTreeMap<(Name, Symbol), Vec<&'a Symbol>>,
+    /// The occupants an occupancy atom declares — the terms `t` for which some sort atom `u(t)` is
+    /// present. A `(keryx.set)` message member, named only by a membership atom `f(P, E)`, must be
+    /// one of these to be well-sorted; the reassembler's mode-free half of the set-member occupancy
+    /// obligation re-checks it here (§7.1, §12.3), since its first-argument-spine orphan pass does
+    /// not reach a member named by its own provenance. Marker roots are *not* added (a marker is not
+    /// a sort atom); a root's own sort atom is obliged by `emit.lp`'s root occupancy.
+    occupants: BTreeSet<&'a Symbol>,
     markers: Vec<(SortRef, &'a Symbol)>,
     violations: Vec<&'a Symbol>,
     orphans: Vec<Diagnostic>,
@@ -101,6 +108,7 @@ impl<'a> SlotIndex<'a> {
         // missing its occupancy atom — is a refused orphan (real dropped data); one descending from
         // no marker is the model's private business (§12.1), ignored, never refused.
         let mut declared: BTreeSet<&Symbol> = BTreeSet::new();
+        let mut occupants: BTreeSet<&'a Symbol> = BTreeSet::new();
         let mut marker_roots: BTreeSet<&'a Symbol> = BTreeSet::new();
         let mut field_parents: Vec<(&'a Symbol, &'a Symbol)> = Vec::new();
 
@@ -123,6 +131,7 @@ impl<'a> SlotIndex<'a> {
                 // An occupancy atom `u(occupant)`: file the occupant under its (functor, parent).
                 if let [occupant] = arguments.as_slice() {
                     declared.insert(occupant);
+                    occupants.insert(occupant);
                     if let Symbol::Function {
                         name: field,
                         arguments: occupant_args,
@@ -166,6 +175,7 @@ impl<'a> SlotIndex<'a> {
 
         SlotIndex {
             slots,
+            occupants,
             markers,
             violations,
             orphans,
@@ -199,6 +209,13 @@ impl<'a> SlotIndex<'a> {
         self.slots
             .get(&(field.clone(), parent.clone()))
             .map_or(&[], Vec::as_slice)
+    }
+
+    /// Whether `occupant` has a sort atom in the answer set — the set-member occupancy re-check
+    /// (§7.1): a `(keryx.set)` message member named by a membership atom is well-sorted only when
+    /// some `u(occupant)` declares it.
+    fn is_occupant(&self, occupant: &Symbol) -> bool {
+        self.occupants.contains(occupant)
     }
 }
 
@@ -361,12 +378,7 @@ impl Assembler<'_, '_> {
             }
             EmitForm::Sequence => self.plan_sequence(work, field, entries, fields, stack),
             EmitForm::Map { .. } => self.plan_map(work, field, entries, fields, stack),
-            // A set (§7.1) is not produced by the mapping until its annotation lands (Increment 5),
-            // so no answer set the walk dispatches from carries the form: planning one is a keryx
-            // error in the mapping, discharged loud as `walk::run` discharges the same inbound.
-            EmitForm::Set => unreachable!(
-                "the mapping produces no `Set` form before Increment 5; planning one is a keryx error"
-            ),
+            EmitForm::Set => self.plan_set(work, field, entries, fields, stack),
         }
     }
 
@@ -462,6 +474,67 @@ impl Assembler<'_, '_> {
             fields.push(Planned::List {
                 number: field.number(),
                 values,
+            });
+        }
+    }
+
+    /// A set field (§7.1): its members ordered by `Symbol::Ord` — the canonical serialization,
+    /// identical answer set ⇒ identical bytes — with no dense-index and no duplicate-index check (a
+    /// set has neither). A scalar (or enum) set is the binary relation `f(P, V)`: its distinct
+    /// values raised, identical ones collapsed. A message set is the membership relation `f(P, E)`:
+    /// its members the second argument of each membership atom (a member occupant, a `Function`) —
+    /// the shredded case's positional occupants co-file here from occupancy too, told apart by their
+    /// `Number` second argument and skipped, the membership atom naming the same member. Each member
+    /// is re-checked well-sorted (`is_occupant`) — the mode-free half of the set-member occupancy
+    /// obligation `emit.lp` carries (§12.2), the reassembler's own orphan pass not reaching a member
+    /// named by its own provenance — and refused (`ShapeViolation`) when it is not, never silently
+    /// built as an empty message.
+    fn plan_set(
+        &mut self,
+        work: &Discover,
+        field: &FieldMapping,
+        entries: &[&Symbol],
+        fields: &mut Vec<Planned>,
+        stack: &mut Vec<Discover>,
+    ) {
+        if let ValueMapping::Message(referent) = field.value() {
+            let mut members: Vec<&Symbol> = entries
+                .iter()
+                .filter_map(|entry| match place(entry) {
+                    Some(member @ Symbol::Function { .. }) => Some(member),
+                    _ => None, // a `Number` second argument is a shredded positional occupant, skipped
+                })
+                .collect();
+            members.sort_unstable();
+            members.dedup();
+            let mut children = Vec::with_capacity(members.len());
+            for member in members {
+                if self.slots.is_occupant(member) {
+                    children.push(self.plan_child(work, referent, member, stack));
+                } else {
+                    self.diagnostics.push(shape(
+                        field,
+                        "a set member is not an occupant of the element sort",
+                    ));
+                }
+            }
+            fields.push(Planned::Messages {
+                number: field.number(),
+                children,
+            });
+        } else {
+            let mut values: Vec<&Symbol> = entries.to_vec();
+            values.sort_unstable();
+            values.dedup();
+            let mut raised = Vec::with_capacity(values.len());
+            for entry in values {
+                if let Some(value) = self.value(field, entry) {
+                    raised.push(value);
+                }
+            }
+            fields.push(Planned::List {
+                number: field.number(),
+                values: raised,
             });
         }
     }
@@ -763,17 +836,15 @@ fn last_argument(entry: &Symbol) -> Option<&Symbol> {
 /// predicate (ASP identifies a predicate by name and arity), filtered out before the field is planned
 /// ([`Discover::plan_field`]).
 fn expected_arity(field: &FieldMapping) -> usize {
-    let base = match field.form() {
-        EmitForm::Function | EmitForm::OneofArm { .. } => 2,
-        EmitForm::Sequence | EmitForm::Map { .. } => 3,
-        EmitForm::Set => unreachable!(
-            "the mapping produces no `Set` form before Increment 5; planning one is a keryx error"
-        ),
-    };
-    if matches!(field.value(), ValueMapping::Message(_)) {
-        base - 1
-    } else {
-        base
+    let message = usize::from(matches!(field.value(), ValueMapping::Message(_)));
+    match field.form() {
+        // A set's membership atom is arity 2 in both value kinds — a scalar set's `f(P, V)` and a
+        // message set's `f(P, E)` alike — the member (a value, or the member occupant) riding in the
+        // last argument, so the message `- 1` (which drops the value argument for a message occupant)
+        // does not apply.
+        EmitForm::Set => 2,
+        EmitForm::Function | EmitForm::OneofArm { .. } => 2 - message,
+        EmitForm::Sequence | EmitForm::Map { .. } => 3 - message,
     }
 }
 
@@ -906,7 +977,8 @@ mod tests {
     use crate::codec::walk::Index;
     use crate::descriptor::{self, RetainedPool};
     use crate::diagnostics::DiagnosticKind;
-    use crate::policy::{self, Mapping};
+    use crate::policy::model::FieldMapping;
+    use crate::policy::{self, EmitForm, Mapping};
 
     /// The thermal example's mapping and the pool it was walked from (spec §28).
     fn thermal() -> (Mapping, RetainedPool) {
@@ -952,6 +1024,174 @@ mod tests {
             crate::codec::PayloadFormat::Binary,
         )
         .map_err(|d| d.iter().map(crate::diagnostics::Diagnostic::kind).collect())
+    }
+
+    /// The field of `mapping` at the fully-qualified `path`, for a test to alter to `Set` — the
+    /// mapping being the policy's, no public door constructs an inconsistent one (as `walk`'s tests do).
+    fn field_mut<'m>(mapping: &'m mut Mapping, path: &str) -> &'m mut FieldMapping {
+        mapping
+            .units
+            .iter_mut()
+            .flat_map(|unit| unit.sorts.iter_mut())
+            .flat_map(|sort| sort.fields.iter_mut())
+            .find(|field| field.proto.as_str() == path)
+            .expect("a field of the mapping")
+    }
+
+    /// The obligations fixture's mapping and pool — its `Gauge` carries `repeated int32 samples`.
+    fn obligations() -> (Mapping, RetainedPool) {
+        let (schema, pool) =
+            descriptor::ingest_retaining(&keryx_test_support::compile_fixture("obligations.proto"))
+                .expect("the fixture ingests");
+        (policy::map(&schema).expect("maps"), pool)
+    }
+
+    /// Assemble the one root of `answer` over `(mapping, pool)` after `alter`: the set tests alter a
+    /// repeated field to `Set`, the policy not producing the form until the annotation is read.
+    fn reassemble_altered(
+        units: (Mapping, RetainedPool),
+        alter: impl FnOnce(&mut Mapping),
+        answer: &[Symbol],
+    ) -> Result<Vec<u8>, Vec<DiagnosticKind>> {
+        let (mut mapping, pool) = units;
+        alter(&mut mapping);
+        let index = Index::build(&mapping).expect("indexes");
+        let slots = SlotIndex::build(&mapping, &index, answer);
+        let (sort, marker) = slots.markers()[0];
+        let root = super::marker_root(marker).expect("a marker names a root");
+        assemble(
+            &mapping,
+            &index,
+            &pool,
+            &slots,
+            root,
+            sort,
+            crate::codec::PayloadFormat::Binary,
+        )
+        .map_err(|d| d.iter().map(crate::diagnostics::Diagnostic::kind).collect())
+    }
+
+    /// Set the thermal `readings` field to the message-set form (arity 2).
+    fn readings_as_set(mapping: &mut Mapping) {
+        let field = field_mut(mapping, "thermal.v1.ReadingBatch.readings");
+        field.form = EmitForm::Set;
+        field.arity = 2;
+    }
+
+    #[test]
+    fn a_message_set_reassembles_its_members_in_symbol_order_from_membership_atoms() {
+        // A message set is read from its membership atoms `readings(b0, E)` (E the member occupant):
+        // each member recursed into, the members ordered by `Symbol::Ord` — so a shuffled answer set
+        // reassembles to the canonical batch. The shredded positional occupants co-file under
+        // `(readings, b0)` from occupancy and are told apart by their `Number` second argument.
+        let b0 = constant("b0");
+        let occ = |i: i32| atom("readings", vec![b0.clone(), Symbol::Number(i)]);
+        let member = |i: i32| atom("readings", vec![b0.clone(), occ(i)]);
+        // Element 1's atoms precede element 0's, the membership atoms reversed — order must not matter.
+        let answer = vec![
+            atom("emit_reading_batch", vec![b0.clone()]),
+            atom("reading_batch", vec![b0.clone()]),
+            member(1),
+            atom("reading", vec![occ(1)]),
+            atom("sensor", vec![occ(1), Symbol::String("s-2".to_owned())]),
+            atom("temp_c", vec![occ(1), Symbol::Number(2)]),
+            member(0),
+            atom("reading", vec![occ(0)]),
+            atom("sensor", vec![occ(0), Symbol::String("s-1".to_owned())]),
+            atom("temp_c", vec![occ(0), Symbol::Number(1)]),
+        ];
+        assert_eq!(
+            reassemble_altered(thermal(), readings_as_set, &answer).expect("reassembles"),
+            keryx_test_support::wire::batch(&[
+                keryx_test_support::wire::reading("s-1", 1),
+                keryx_test_support::wire::reading("s-2", 2),
+            ]),
+            "members serialize in Symbol::Ord order regardless of answer-set order"
+        );
+    }
+
+    #[test]
+    fn a_set_member_without_its_sort_atom_is_a_shape_violation() {
+        // The set-member occupancy re-check (§7.1): a membership atom names a member the answer set
+        // declares no occupant of — no `reading(readings(b0,0))` — so it is refused, never silently
+        // built as an empty message (the reassembler's mode-free half of the obligation).
+        let b0 = constant("b0");
+        let occ = atom("readings", vec![b0.clone(), Symbol::Number(0)]);
+        let answer = vec![
+            atom("emit_reading_batch", vec![b0.clone()]),
+            atom("reading_batch", vec![b0.clone()]),
+            atom("readings", vec![b0.clone(), occ]),
+        ];
+        assert_eq!(
+            reassemble_altered(thermal(), readings_as_set, &answer).expect_err("refused"),
+            vec![DiagnosticKind::ShapeViolation]
+        );
+    }
+
+    #[test]
+    fn a_message_set_needs_no_dense_indices() {
+        // A set has no contiguity: its occupants may sit at any distinct indices — a gap is not a
+        // violation, unlike a sequence — and reassemble ordered by `Symbol::Ord`.
+        let b0 = constant("b0");
+        let occ = |i: i32| atom("readings", vec![b0.clone(), Symbol::Number(i)]);
+        let element = |i: i32, sensor: &str, t: i32| {
+            vec![
+                atom("readings", vec![b0.clone(), occ(i)]),
+                atom("reading", vec![occ(i)]),
+                atom("sensor", vec![occ(i), Symbol::String(sensor.to_owned())]),
+                atom("temp_c", vec![occ(i), Symbol::Number(t)]),
+            ]
+        };
+        let mut answer = vec![
+            atom("emit_reading_batch", vec![b0.clone()]),
+            atom("reading_batch", vec![b0.clone()]),
+        ];
+        // Non-zero temperatures: proto3 omits a default `0` on encode, which the always-encoding
+        // `wire::reading` helper does not — the gap in the *indices* (5 then 0) is the point here.
+        answer.extend(element(5, "s-hi", 9));
+        answer.extend(element(0, "s-lo", 1));
+        assert_eq!(
+            reassemble_altered(thermal(), readings_as_set, &answer).expect("a set tolerates a gap"),
+            keryx_test_support::wire::batch(&[
+                keryx_test_support::wire::reading("s-lo", 1),
+                keryx_test_support::wire::reading("s-hi", 9),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_scalar_set_canonicalises_shuffled_and_duplicate_values() {
+        // A scalar set drops the index and collapses duplicates (§7.1): `samples = [7, 3, 7]` and
+        // `samples = [3, 7]` reassemble to identical bytes — values ordered by `Symbol::Ord`, the
+        // duplicate one atom — an idempotent canonicalization. The `Gauge`'s total fields ride along
+        // unchanged, so the two outputs differ only where the set does.
+        let g0 = constant("g0");
+        let samples_as_set = |mapping: &mut Mapping| {
+            let field = field_mut(mapping, "keryx.obligations.Gauge.samples");
+            field.form = EmitForm::Set;
+            field.arity = 2;
+        };
+        let gauge = |samples: &[i32]| {
+            let mut answer = vec![
+                atom("emit_gauge", vec![g0.clone()]),
+                atom("gauge", vec![g0.clone()]),
+                atom("sensor", vec![g0.clone(), Symbol::String(String::new())]),
+                atom("ticks", vec![g0.clone(), Symbol::Number(0)]),
+                atom("level", vec![g0.clone(), constant("low")]),
+            ];
+            for &value in samples {
+                answer.push(atom("samples", vec![g0.clone(), Symbol::Number(value)]));
+            }
+            answer
+        };
+        let shuffled = reassemble_altered(obligations(), samples_as_set, &gauge(&[7, 3, 7]))
+            .expect("reassembles");
+        let canonical = reassemble_altered(obligations(), samples_as_set, &gauge(&[3, 7]))
+            .expect("reassembles");
+        assert_eq!(
+            shuffled, canonical,
+            "shuffled and duplicate scalar-set values canonicalise identically"
+        );
     }
 
     #[test]
