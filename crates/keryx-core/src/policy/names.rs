@@ -314,7 +314,13 @@ fn value_mapping(
         }
         ValueType::Enum(path) => {
             annotate::reject_nonscalar_options(field)?;
-            ValueMapping::Enum(sort_of(path)?)
+            // `preserve` is denormalized from the referent enum's `EnumMapping` after assembly
+            // (`policy::resolve_enum_preserve`), so it is a single-sourced default here, not yet
+            // the resolved flag; resolving it at construction would need a cross-package enum read.
+            ValueMapping::Enum {
+                referent: sort_of(path)?,
+                preserve: false,
+            }
         }
     })
 }

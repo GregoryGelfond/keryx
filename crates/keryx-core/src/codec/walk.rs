@@ -190,7 +190,9 @@ impl Index {
                 ValueMapping::Message(predicate) => {
                     index.sorts_by_predicate.contains_key(predicate)
                 }
-                ValueMapping::Enum(predicate) => index.enums_by_predicate.contains_key(predicate),
+                ValueMapping::Enum { referent, .. } => {
+                    index.enums_by_predicate.contains_key(referent)
+                }
             };
             if !resolved {
                 problems.push(dangling_referent(field));
@@ -254,7 +256,7 @@ fn shared_predicate(path: &FqName, predicate: &Name) -> Diagnostic {
 fn dangling_referent(field: &FieldMapping) -> Diagnostic {
     let (referent, kind) = match field.value() {
         ValueMapping::Message(predicate) => (predicate, "sort"),
-        ValueMapping::Enum(predicate) => (predicate, "enum"),
+        ValueMapping::Enum { referent, .. } => (referent, "enum"),
         ValueMapping::Scalar { .. } => unreachable!("a scalar field has no referent to dangle"),
     };
     Diagnostic::new(
@@ -508,8 +510,8 @@ impl<'m, 'a> Walker<'m, 'a> {
             (ValueMapping::Scalar { kind, treatment }, Element::Scalar(datum)) => {
                 scalar::lower(*kind, *treatment, &datum, at)
             }
-            (ValueMapping::Enum(predicate), Element::Scalar(Datum::Enum(number))) => {
-                self.enum_constant(predicate, number, at)
+            (ValueMapping::Enum { referent, .. }, Element::Scalar(Datum::Enum(number))) => {
+                self.enum_constant(referent, number, at)
             }
             (ValueMapping::Message(predicate), Element::Message(child)) => {
                 // `Index::build` resolved every referent of the mapping before any walk.
@@ -526,7 +528,7 @@ impl<'m, 'a> Walker<'m, 'a> {
                 return;
             }
             (
-                ValueMapping::Enum(_),
+                ValueMapping::Enum { .. },
                 Element::Scalar(
                     Datum::I32(_)
                     | Datum::I64(_)
@@ -539,7 +541,7 @@ impl<'m, 'a> Walker<'m, 'a> {
                 ),
             )
             | (ValueMapping::Message(_), Element::Scalar(_))
-            | (ValueMapping::Scalar { .. } | ValueMapping::Enum(_), Element::Message(_)) => {
+            | (ValueMapping::Scalar { .. } | ValueMapping::Enum { .. }, Element::Message(_)) => {
                 unreachable!(
                     "the value of `{at}` is of its field's kind, the mapping and the decoded tree deriving from one descriptor pool; a mismatch is a keryx error"
                 )
@@ -867,8 +869,10 @@ mod tests {
         let (mut mapping, _) = thermal();
         field_mut(&mut mapping, "thermal.v1.ReadingBatch.readings").value =
             ValueMapping::Message(Name::new("nowhere").expect("an identifier"));
-        field_mut(&mut mapping, "thermal.v1.Reading.temp_c").value =
-            ValueMapping::Enum(Name::new("no_enum").expect("an identifier"));
+        field_mut(&mut mapping, "thermal.v1.Reading.temp_c").value = ValueMapping::Enum {
+            referent: Name::new("no_enum").expect("an identifier"),
+            preserve: false,
+        };
         let diagnostics = Index::build(&mapping).expect_err("two dangling referents");
         let located: Vec<(DiagnosticKind, Option<&str>)> = diagnostics
             .iter()

@@ -230,6 +230,18 @@ ground "$preserve/keryx.preserve.emit.lp"
 ground "$preserve/keryx.preserve.emit-diagnostic.lp"
 printf '%s\n' 'emit_panel(p0).' 'panel(p0).' 'current(p0, unknown(99)).' > "$preserve/answer.lp"
 solve sat "$preserve/keryx.preserve.emit.lp" "$preserve/answer.lp"
+# SIGNAL_UNKNOWN lowers to the 0-ary constant `unknown`; a Panel carrying it is SAT (the declared
+# membership fact ok_signal(unknown) admits it), coexisting by arity with the escape term unknown(N)
+# — the P4 case the reassembler's arity guard protects (a declared value still round-trips).
+printf '%s\n' 'emit_panel(p0).' 'panel(p0).' 'current(p0, unknown).' > "$preserve/declared.lp"
+solve sat "$preserve/keryx.preserve.emit.lp" "$preserve/declared.lp"
+# Cross-package: Relay.status references a PRESERVE enum (Beacon) declared in another package. The
+# escape admission is emitted in this unit and composes with the dependency's core.lp; the theory
+# grounds clean and a Relay whose status is an undeclared unknown(N) is SAT (ok_beacon(unknown(N))
+# derived here) — cross-package PRESERVE functions, not a false UNSAT.
+ground_with "$preserve/keryx.preserve.emit.lp" "$preserve/keryx.preserve.dep.core.lp"
+printf '%s\n' 'emit_relay(x0).' 'relay(x0).' 'status(x0, unknown(77)).' > "$preserve/cross.lp"
+solve sat "$preserve/keryx.preserve.emit.lp" "$preserve/keryx.preserve.dep.core.lp" "$preserve/cross.lp"
 signals=$work/signals
 mkdir -p "$signals"
 "$KERYX" gen "$root/examples/enum/signals.proto" -I "$root/examples/enum" -o "$signals" --shape both \

@@ -1,0 +1,13 @@
+syntax = "proto3";
+package keryx.preserve.dep;
+
+import "keryx/options.proto";
+
+// A PRESERVE open enum in its own package, referenced cross-package by keryx.preserve.Relay.status
+// (spec §7.4): the escape-admission rules for that field are emitted in the referencing unit and
+// name this enum's sort predicate, resolving when both packages' core.lp/emit.lp load together.
+enum Beacon {
+  option (keryx.unknown) = PRESERVE;
+  BEACON_UNSPECIFIED = 0;
+  BEACON_ACTIVE = 1;
+}

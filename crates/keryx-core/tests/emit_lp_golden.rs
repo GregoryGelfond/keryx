@@ -211,3 +211,22 @@ fn preserve_admits_the_escape_term_to_the_sort_and_the_membership_table() {
         "repeated admission missing from emit.lp:\n{theory}"
     );
 }
+
+// §7.4 cross-package: Relay.status references a PRESERVE enum (Beacon) declared in another package.
+// The escape-admission rules must still be emitted in the referencing unit — the field predicate is
+// this unit's, the enum sort predicate the dependency's — so cross-package PRESERVE functions rather
+// than the theory falsely rejecting a preserved value the inbound shred produces.
+#[test]
+fn preserve_admits_a_cross_package_enum_field() {
+    let unit = unit_of("preserve.proto");
+    let core = emit::core(&unit).expect("core");
+    assert!(
+        core.contains("beacon(unknown(N)) :- status(_, unknown(N))."),
+        "cross-package value-sort admission missing from core.lp:\n{core}"
+    );
+    let theory = emit::emit_strict(&unit).expect("emit");
+    assert!(
+        theory.contains("ok_beacon(unknown(N)) :- status(_, unknown(N))."),
+        "cross-package membership admission missing from emit.lp:\n{theory}"
+    );
+}

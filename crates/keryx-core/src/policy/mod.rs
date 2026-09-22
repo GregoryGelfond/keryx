@@ -45,7 +45,8 @@ use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 pub fn map(schema: &Schema) -> Result<Mapping, Diagnostics> {
     reject_packageless(schema)?;
     let sorts = qualify::resolve(&names::sort_table(schema)?)?; // path -> resolved name + decisions
-    let mapping = assemble(schema, &sorts)?;
+    let mut mapping = assemble(schema, &sorts)?;
+    resolve_enum_preserve(&mut mapping);
     // The generated theory reserves the `has_<field>`/`ok_<enum>` auxiliary predicates (§12.2);
     // unlike the marker/`reach`/`violates`/`ep` names, their prefixes are not escaped, so a schema
     // element that lowers onto one is refused rather than silently sharing its extension.
@@ -136,6 +137,34 @@ fn assemble(
             })
             .collect(),
     })
+}
+
+/// Denormalize each enum's resolved `preserve` flag (`(keryx.unknown) = PRESERVE`, §7.4) onto every
+/// field that references it, so `emit` reads it from the field's own `ValueMapping::Enum` rather than
+/// a same-unit enum lookup — the escape-admission rules are then emitted in the field's unit even when
+/// the enum is imported from another package. The flag is single-sourced from the referent
+/// `EnumMapping::preserve` (spanning every unit), so the field and the enum cannot disagree. Runs once
+/// after assembly, before the mapping is used; `assemble` leaves each field's flag `false` until here.
+fn resolve_enum_preserve(mapping: &mut Mapping) {
+    let preserve: BTreeMap<Name, bool> = mapping
+        .units
+        .iter()
+        .flat_map(|unit| unit.enums.iter())
+        .map(|enumeration| (enumeration.predicate.clone(), enumeration.preserve))
+        .collect();
+    for unit in &mut mapping.units {
+        for sort in &mut unit.sorts {
+            for field in &mut sort.fields {
+                if let ValueMapping::Enum {
+                    referent,
+                    preserve: flag,
+                } = &mut field.value
+                {
+                    *flag = preserve.get(referent).copied().unwrap_or(false);
+                }
+            }
+        }
+    }
 }
 
 /// One message's `SortMapping`: its qualified sort predicate, and a `FieldMapping` per

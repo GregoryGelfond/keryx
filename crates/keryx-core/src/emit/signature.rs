@@ -82,7 +82,9 @@ fn domain(parent: &str, form: &EmitForm) -> String {
 fn range(value: &ValueMapping) -> String {
     match value {
         ValueMapping::Scalar { kind, .. } => kind.as_str().to_owned(),
-        ValueMapping::Message(name) | ValueMapping::Enum(name) => name.as_str().to_owned(),
+        ValueMapping::Message(name) | ValueMapping::Enum { referent: name, .. } => {
+            name.as_str().to_owned()
+        }
     }
 }
 
