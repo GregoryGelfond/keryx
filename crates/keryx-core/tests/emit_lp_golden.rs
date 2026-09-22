@@ -63,7 +63,7 @@ golden!(
     "golden/obligations.emit-diagnostic.lp"
 );
 
-// A proto2 `required` field is totality-obliged outbound (E1): it gets functionality *and*
+// A proto2 `required` field is totality-obliged outbound: it gets functionality *and*
 // totality, where a proto2 `optional` (EXPLICIT) field gets functionality alone — the mapping
 // carries the distinction (`Totality::Required`), full proto2/proto3 parity; its inbound signature
 // stays partial. The unreferenced enum still gets its membership table: the table is the enum's
@@ -81,7 +81,7 @@ golden!(
     "golden/proto2.emit-diagnostic.lp"
 );
 
-// E1 (#1): a proto2 `required` field is totality-obliged outbound — it mints the presence
+// A proto2 `required` field is totality-obliged outbound (#1) — it mints the presence
 // witness and carries the totality constraint an IMPLICIT (`Total`) field does, which an EXPLICIT
 // (`optional`) one does not. Its inbound signature stays partial (presence read from the message);
 // only the outbound obligation is added.
@@ -102,7 +102,7 @@ fn a_proto2_required_field_carries_the_outbound_totality_obligation() {
     );
 }
 
-// E1 (Slice 1 close): a proto2 `required` MESSAGE field is totality-obliged over occupancy — the
+// A proto2 `required` MESSAGE field is totality-obliged over occupancy — the
 // occupant must exist — so `emit.lp` enforces it as the reassembler does (full parity), not only
 // for a required scalar. `Order.info` is `required Detail`.
 #[test]

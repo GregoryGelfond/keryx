@@ -257,7 +257,7 @@ echo "ground: preserve — admission rules ground safe; SAT with unknown(N); non
 grounds_clean enum "$root/examples/enum/signals.proto" "$root/examples/enum" signals.v1
 grounds_clean oneof "$root/examples/oneof/dispatch.proto" "$root/examples/oneof" dispatch.v1
 grounds_clean map "$root/examples/map/inventory.proto" "$root/examples/map" inventory.v1 catalog.v1
-# proto2 (E1, #1): a proto2 `required` field carries an outbound totality obligation, so the
+# proto2 (#1): a proto2 `required` field carries an outbound totality obligation, so the
 # generated theory both grounds clean and enforces completeness. An `Order` naming its `required`
 # id is SAT under strict; one omitting id is UNSAT under strict and, under diagnostic, SAT with the
 # id totality violation derived at the field's path — full proto2/proto3 outbound parity.
@@ -280,7 +280,7 @@ $model" ;;
 esac
 echo "ground: proto2 — SAT with the required id; UNSAT omitting it; required-field violation derived"
 
-# proto2 fixture (E1, required MESSAGE field): a proto2 `required` message field's presence is
+# proto2 fixture (required MESSAGE field): a proto2 `required` message field's presence is
 # obliged over occupancy in emit.lp, as the reassembler enforces it — full parity. `Order.info` is
 # `required Detail`; an order naming its id and its info occupant is SAT under strict, one omitting
 # the info occupant is UNSAT under strict and, under diagnostic, SAT with the info violation derived.

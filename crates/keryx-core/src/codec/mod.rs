@@ -235,7 +235,7 @@ impl Codec {
                 .iter()
                 .map(|violates| violation(violates)),
         );
-        // Order the roots by their marker atom's `Symbol::Ord` (F5), so the result is deterministic
+        // Order the roots by their marker atom's `Symbol::Ord`, so the result is deterministic
         // and two roots of one type keep distinct positions.
         let mut markers = slots.markers().to_vec();
         markers.sort_by_key(|(_, first)| *first);

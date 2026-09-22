@@ -384,7 +384,7 @@ impl Assembler<'_, '_> {
     ) {
         let [entry] = entries else {
             if entries.is_empty() {
-                // E1: a `Required` (proto2 `required`) field is totality-obliged outbound as a
+                // A `Required` (proto2 `required`) field is totality-obliged outbound as a
                 // `Total` (IMPLICIT) one is — an answer set omitting it is a shape violation.
                 if matches!(field.presence(), Totality::Total | Totality::Required) {
                     self.diagnostics.push(missing_total(field));

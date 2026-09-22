@@ -63,7 +63,7 @@ fn an_answer_set_reassembles_one_message_carrying_its_type_root_and_bytes() {
 #[test]
 fn two_roots_of_one_type_are_distinct_and_marker_ordered() {
     // Two `Reading` roots in one answer set, given out of order: the results are distinguished by
-    // their root (F5) and ordered by the marker atom's `Symbol::Ord` — `emit_reading(r0)` before
+    // their root and ordered by the marker atom's `Symbol::Ord` — `emit_reading(r0)` before
     // `emit_reading(r1)` — regardless of the answer set's order, so the door is deterministic.
     let codec = thermal_codec();
     let mut answer = reading("r1", "b", 2);
@@ -93,7 +93,7 @@ fn proto2_codec() -> Codec {
 
 #[test]
 fn a_proto2_required_field_omitted_is_a_shape_violation_outbound() {
-    // E1 (#1): a proto2 `required` field is totality-obliged outbound, so an answer set naming an
+    // A proto2 `required` field is totality-obliged outbound (#1), so an answer set naming an
     // `Order` root but omitting its `required` id is refused at reassembly (`ShapeViolation`) — the
     // reassembly-side enforcement paired with `emit.lp`'s totality obligation, full proto2/proto3
     // parity, exactly as an IMPLICIT (`Total`) field's absence is refused. An `Order` carrying its

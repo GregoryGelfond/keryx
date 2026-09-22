@@ -211,12 +211,12 @@ Each increment leaves the workspace green and demonstrable and lands its worked 
 | 2 | gen | Rust policy → mapping model; emit `core`/`views`/manifest via `render_documented`; `explain`; self-application | thermal *(gen)* |
 | 3 | Inbound codec | payload → `Symbol` facts → `facts.lp`; `keryx facts`; round-trip properties (inbound half — the round trip closes with reassembly at 4, §7) | thermal *(facts)* |
 | 4 | Outbound + emit | `emit.lp` (strict/diagnostic); reassemble from answer sets in all three forms; the `.lp` read; `keryx emit`; field-path diagnostics | **thermal *(round-trip E2E)*** |
-| 5 | Annotations | the field/enum option vocabulary (Appendix A): `(keryx.set)`, `(keryx.scale)`/`(keryx.opaque)`, `(keryx.numeric)`, `(keryx.unknown) = PRESERVE`; the §6 scalar policies; proto2 `required` outbound totality; `views.lp` projection descriptions | **thermal *(alert-set round trip, F10)*** |
+| 5 | Annotations | the field/enum option vocabulary (Appendix A): `(keryx.set)`, `(keryx.scale)`/`(keryx.opaque)`, `(keryx.numeric)`, `(keryx.unknown) = PRESERVE`; the §6 scalar policies; proto2 `required` outbound totality; `views.lp` projection descriptions | **thermal *(alert-set round trip)*** |
 | 6 | Admit + plugin | `.lp` admission/lint (`keryx check`); `keryx-protoc` (the `protoc-gen-keryx` plugin; editions handshake) | — |
 | 7 | Targets | `--profile clingcon`; `--target <typed-dialect>` + degradation report (emission only) | — |
 | 8 | Overlays + diff + scaffold | TOML overlays (§16); `keryx diff`; `scaffold`; the remaining presence annotations (`(keryx.zero)`/`(keryx.default)`); the `(keryx.any_types)` `Any` registry | dispatch; diagnosis *(translation)* |
 
-*Increment 5 lands the field/enum vocabulary and closes the thermal alert-set round trip (F10); the `dispatch` and `diagnosis` worked examples move to Increment 8 with the `(keryx.default)`/`(keryx.zero)` presence annotations they turn on, alongside overlays, `keryx diff`, and `scaffold`.*
+*Increment 5 lands the field/enum vocabulary and closes the thermal alert-set round trip; the `dispatch` and `diagnosis` worked examples move to Increment 8 with the `(keryx.default)`/`(keryx.zero)` presence annotations they turn on, alongside overlays, `keryx diff`, and `scaffold`.*
 
 keryx's boundary is the translation: schema → vocabulary, message → facts, answer-set → message, plus the shape contract and the manifest. Everything past it — the solver, the domain model, stateful serving — is the consuming tool's (R4).
 

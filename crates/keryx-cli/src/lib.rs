@@ -372,7 +372,7 @@ fn facts(args: &FactsArgs, format: Format) -> Exit {
 /// `.binpb` descriptor set, as `gen`/`explain`/`facts` take it — builds the [`Codec`]; the `.lp`
 /// answer set `answer_set` is read and raised to its ground facts, and the message its
 /// `emit_<sort>` marker names is reassembled to the wire form `--out` names and written to stdout
-/// (`keryx emit … | protoc --decode`). **Exactly one message reaches stdout (F9):** `--root Type`
+/// (`keryx emit … | protoc --decode`). **Exactly one message reaches stdout:** `--root Type`
 /// narrows the answer set's roots to one, since two messages concatenated would either merge into
 /// one bogus binary or be two documents where one is meant. The exit classes (§6): a `--root` that
 /// does not resolve to exactly one message, or an answer set naming several roots with none named,
@@ -422,7 +422,7 @@ fn emit(args: &EmitArgs, format: Format) -> Exit {
             );
         }
     };
-    // F9: exactly one message on stdout. `--root Type` narrows to one; none or several is `Usage`,
+    // Exactly one message on stdout. `--root Type` narrows to one; none or several is `Usage`,
     // naming the types found — never a merged or double-document product.
     match select_one(reassembled.messages(), args.root.as_deref()) {
         Ok(message) => product_bytes(format, message.bytes()),
@@ -430,7 +430,7 @@ fn emit(args: &EmitArgs, format: Format) -> Exit {
     }
 }
 
-/// Select the single message [`emit`] writes to stdout (F9, spec §12.3): the messages the answer
+/// Select the single message [`emit`] writes to stdout (spec §12.3): the messages the answer
 /// set reassembled to, narrowed by `--root Type` when given. Exactly one must remain — zero or
 /// several is a usage error naming the types found ([`roots_note`]), so the caller narrows with
 /// `--root Type` or splits the answer set. `Ok` borrows the chosen message; `Err` carries the note.
@@ -456,7 +456,7 @@ fn type_matches(type_name: &str, root: &str) -> bool {
     type_name == root || type_name.rsplit('.').next() == Some(root)
 }
 
-/// The usage note when the emit selection is not exactly one message (F9): what the answer set
+/// The usage note when the emit selection is not exactly one message: what the answer set
 /// reassembled to and how to narrow it to the one stdout carries. Only the schema-derived type
 /// names are echoed — never the answer set's own root terms, which are untrusted (the threat
 /// model's property 3) — each with its count when a type names more than one root (which `--root`

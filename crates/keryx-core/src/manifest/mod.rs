@@ -124,7 +124,7 @@ fn sort_lines(out: &mut String, sort: &SortMapping) {
 /// `set` (a `(keryx.set)` membership relation, reserved at present) — or, for a singular field or
 /// oneof arm, its `Totality` (§5), not the finer presence — the fidelity the `Mapping` carries: a
 /// proto2 `required` field renders `required` (not folded into `partial`), its distinct outbound
-/// totality obligation emitted by `emit.lp` (`policy::model::Totality`, E1 — full proto2/proto3
+/// totality obligation emitted by `emit.lp` (`policy::model::Totality` — full proto2/proto3
 /// parity).
 /// A map's `<key>` is the *declared* key type (§13.4): the codec lowers a key under its §6
 /// default treatment (an `int64` key travels as a decimal string, §7.2), but the manifest records

@@ -184,7 +184,7 @@ fn proto2_presence_across_the_three_labels() {
     let mapping = mapping("proto2.proto");
     let order = sort(&mapping, "keryx.p2.Order");
 
-    // `required` is `Totality::Required` (E1) — partial inbound, totality-obliged outbound;
+    // `required` is `Totality::Required` — partial inbound, totality-obliged outbound;
     // `optional` is `Totality::Partial`; `repeated` (below) is `Totality::Total`.
     assert_eq!(field(order, "id").presence(), Totality::Required);
     assert_eq!(field(order, "quantity").presence(), Totality::Partial);

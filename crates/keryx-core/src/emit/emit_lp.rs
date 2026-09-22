@@ -285,13 +285,13 @@ fn path(field: &FieldMapping) -> String {
 /// A singular field's obligations (`Function` or `OneofArm`) over a base-fact field — scalar
 /// or enum: functionality, totality when the field is total, and the value's membership or
 /// range. Totality is emitted for `Total` and `Required` alike — IMPLICIT presence and proto2
-/// `required` (`Totality::Required`, E1): both mint the presence witness and carry the totality
+/// `required` (`Totality::Required`): both mint the presence witness and carry the totality
 /// constraint, so a proto2 `required` field's completeness is enforced outbound (full
 /// proto2/proto3 parity), while an EXPLICIT (`Partial`) field gets functionality only. A
 /// message-typed slot's functionality is structural (its occupant `f(P)` is one term) and its
 /// presence is its occupancy, held from the parent over the slot ([`slot_occupancy`]) — except a
 /// `Required` (proto2 `required`) message slot, which additionally carries a totality obligation
-/// over its occupant, `not <child>(f(P))` (below; E1).
+/// over its occupant, `not <child>(f(P))` (below).
 fn singular(
     sort: &SortMapping,
     field: &FieldMapping,
@@ -304,7 +304,7 @@ fn singular(
         // is held from the parent (`slot_occupancy`). A `Required` (proto2 `required`) message field
         // adds a totality obligation over occupancy — the occupant `f(P)` must be a `<child>` — the
         // message counterpart of the scalar witness-and-constraint below, so `emit.lp` enforces a
-        // `required` field on both the scalar and the message side (E1, full proto2/proto3 parity).
+        // `required` field on both the scalar and the message side (full proto2/proto3 parity).
         if field.presence() == Totality::Required {
             let p = build::var("P");
             let mut body = guard(sort, &p);
@@ -323,7 +323,7 @@ fn singular(
     }
     let p = build::var("P");
     obligations.push(functional(sort, field, Kind::Functionality, &[], &line));
-    // A `Total` (IMPLICIT) or a `Required` (proto2 `required`) field is totality-obliged (E1):
+    // A `Total` (IMPLICIT) or a `Required` (proto2 `required`) field is totality-obliged:
     // both mint the presence witness and carry the totality constraint; an EXPLICIT one does not.
     if matches!(field.presence(), Totality::Total | Totality::Required) {
         // The witness `has_f(P) :- f(P, _).` is what the obligation negates: a default-negated
