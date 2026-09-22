@@ -3,8 +3,9 @@
 #defined alert/1.
 %! The set of alerts emitted for a batch.
 %! sort alert_set/1
-%! alerts : alert_set × index -> alert  (sequence)
 #defined alert_set/1.
+%! alerts : alert_set -> alert  (set)
+#defined alerts/2.
 %! A single sensor reading.
 %! sort reading/1
 #defined reading/1.

@@ -594,3 +594,29 @@ fn a_well_known_referent_maps_to_a_sort() {
     // the referencing subject field is present on its own sort — its value resolved to the WKT sort.
     let _ = field(sort(&mapping, "keryx.wkt.Event"), "at");
 }
+
+#[test]
+fn set_annotated_repeated_fields_map_to_the_set_form() {
+    // `(keryx.set) = true` on a repeated field produces `EmitForm::Set` — a membership relation at
+    // arity 2, not the sequence default it overrides (spec §7.1) — for a scalar element and a
+    // message element alike. A message set carries no `views.lp` projection: its membership is a
+    // base relation the model asserts, not a view over occupancy.
+    let mapping = mapping("sets.proto");
+    let record = sort(&mapping, "keryx.sets.Record");
+
+    let names = field(record, "names");
+    assert_eq!(names.form(), &EmitForm::Set, "a scalar set is the set form");
+    assert_eq!(names.arity(), 2, "the scalar-set relation is arity 2");
+
+    let tags = field(record, "tags");
+    assert_eq!(tags.form(), &EmitForm::Set, "a message set is the set form");
+    assert_eq!(
+        tags.arity(),
+        2,
+        "the message-set membership relation is arity 2"
+    );
+    assert!(
+        tags.view().is_none(),
+        "a message set has no views.lp projection — membership is a base relation"
+    );
+}

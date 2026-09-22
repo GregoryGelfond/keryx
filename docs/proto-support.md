@@ -142,12 +142,12 @@ counterpart of the inbound dialect's control-character refusal, `Unrepresentable
 round-trip parity above is exact for every message all three forms can represent
 (`tests/codec_emit_wkt.rs`).
 
-**The thermal example's outbound story at Increment 4 is the `ReadingBatch` round trip.** The worked
-example closes the round trip solver-free — `examples/thermal/batch.binpb` → facts →
+**The thermal example's outbound story closes both round trips.** The worked example closes the
+`ReadingBatch` round trip solver-free — `examples/thermal/batch.binpb` → facts →
 `examples/thermal/answer.lp` (its facts under the `emit_reading_batch(r0)` marker) → `keryx emit` →
-`examples/thermal/batch.reassembled.binpb`, byte-for-byte the payload again. The §28 story's *alert*
-half — an `AlertSet` of alerts emitted from a batch — is not part of this increment's end-to-end:
-`AlertSet.alerts` carries `(keryx.set)`, which is inert until annotation reading (Increment 5), so it
-is generated as a **sequence** needing dense indices from 0, which a natural `overheating/1` model
-does not produce. The alert half of the round trip therefore closes when `(keryx.set)` gains meaning
-at Increment 5; the `ReadingBatch` round trip is what the complete end-to-end means at Increment 4.
+`examples/thermal/batch.reassembled.binpb`, byte-for-byte the payload again (Increment 4). The §28
+story's *alert* half — an `AlertSet` of alerts emitted from a batch — closes at Increment 5, when
+`(keryx.set)` gains meaning: `AlertSet.alerts` is generated as a **membership relation**, not a
+sequence, so a natural `overheating` model that names its alerts by their own provenance
+(`alerts(out, al(R))`, not the dense indices a sequence needs) reassembles, and `keryx emit` closes
+the `AlertSet` round trip byte-for-byte, its members in clingo's total symbol order (§7.1).

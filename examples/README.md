@@ -57,7 +57,7 @@ gets wrong:
   binary, textproto, and JSON payloads). Every example's proto→asp half runs today.
 - **Being finalized:** the outbound codec (`keryx emit`, asp→proto). The thermal and config
   examples demonstrate the round trip; these docs will be extended as it lands.
-- **Not yet:** set-valued fields (`(keryx.set)`) and Protocol Buffers editions.
+- **Not yet:** Protocol Buffers editions.
 
 See the [top-level README](../README.md) for the project overview and
 [`docs/specification.md`](../docs/specification.md) for the full design.

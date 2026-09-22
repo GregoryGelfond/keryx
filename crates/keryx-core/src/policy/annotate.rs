@@ -384,12 +384,14 @@ pub(super) fn reject_nonscalar_options(field: &Field) -> Result<(), Diagnostics>
     Diagnostics::collect(rejections).map_or(Ok(()), Err)
 }
 
-/// The emit form of a field under `(keryx.set)`. Returns `default` (the §7 form) plus any
-/// diagnostics; the positive `EmitForm::Set` production for a set-annotated repeated field lands in
-/// the set vertical, a later increment.
+/// The emit form of a field under `(keryx.set)` (§7.1): `EmitForm::Set` for a `(keryx.set) = true`
+/// on a repeated field, else `default` (the §7 form) — plus any diagnostics. `(keryx.set)` on a
+/// non-repeated field is a mis-target and a non-`true` value malformed, each a structured
+/// diagnostic at the field's locus rather than a silent mis-lowering.
 pub(super) fn field_form(field: &Field, default: EmitForm) -> Result<EmitForm, Diagnostics> {
     let is_repeated = matches!(field.shape(), FieldShape::Repeated { .. });
     let mut rejections = Vec::new();
+    let mut set = false;
     for annotation in field.options() {
         if annotation.key == "set" {
             if !is_repeated {
@@ -397,12 +399,17 @@ pub(super) fn field_form(field: &Field, default: EmitForm) -> Result<EmitForm, D
                     field,
                     "(keryx.set) applies only to a repeated field",
                 ));
-            } else if !matches!(annotation.value, AnnotationValue::Bool(true)) {
+            } else if matches!(annotation.value, AnnotationValue::Bool(true)) {
+                set = true;
+            } else {
                 rejections.push(reject_field(field, "(keryx.set) takes the value true"));
             }
         }
     }
-    Diagnostics::collect(rejections).map_or(Ok(default), Err)
+    if let Some(diagnostics) = Diagnostics::collect(rejections) {
+        return Err(diagnostics);
+    }
+    Ok(if set { EmitForm::Set } else { default })
 }
 
 /// The treatment of a map key under `(keryx.numeric)` (§7.2). Returns the key kind's §6 default or
@@ -1136,9 +1143,9 @@ mod tests {
     }
 
     #[test]
-    fn set_on_a_repeated_field_admits_today_as_the_sequence_default() {
-        // Applicable (repeated) but not yet produced: a later increment turns on `EmitForm::Set`; the default
-        // `Sequence` stands here.
+    fn set_on_a_repeated_field_produces_the_set_form() {
+        // A `(keryx.set) = true` on a repeated field produces `EmitForm::Set` — the membership
+        // relation of §7.1, not the sequence default it overrides.
         let form = field_form(
             &repeated(
                 Scalar::String,
@@ -1147,7 +1154,7 @@ mod tests {
             EmitForm::Sequence,
         )
         .expect("set on a repeated field is applicable");
-        assert_eq!(form, EmitForm::Sequence);
+        assert_eq!(form, EmitForm::Set);
     }
 
     #[test]
