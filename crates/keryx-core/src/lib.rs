@@ -1,10 +1,12 @@
 //! The solver-free core of keryx: the protobuf-schema-to-ASP-vocabulary
 //! compiler and the protobuf-message-to-ground-facts codec, over themelios's
-//! `Symbol` algebra. Every foreign input crosses a `Result` boundary returning
-//! the [`diagnostics`] taxonomy's typed values — never a panic or a bare string
-//! (architecture §6); that taxonomy is the foundation the ingestion spine (the
-//! schema model and descriptor facts) and, later, the codec build upon. The
-//! themelios binding is proven in `tests/themelios_binding.rs`.
+//! `Symbol` algebra — and, over two of the compiler's own mappings, the
+//! evolution instrument's comparison ([`diff`]). Every foreign input crosses a
+//! `Result` boundary returning the [`diagnostics`] taxonomy's typed values —
+//! never a panic or a bare string (architecture §6); that taxonomy is the
+//! foundation the ingestion spine (the schema model and descriptor facts) and,
+//! later, the codec build upon. The themelios binding is proven in
+//! `tests/themelios_binding.rs`.
 //!
 //! Design of record: `docs/design/architecture.md` (the architecture) over
 //! `docs/specification.md` (the spec).

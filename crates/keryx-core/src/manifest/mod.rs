@@ -141,17 +141,6 @@ fn field_line(out: &mut String, field: &FieldMapping) {
         ValueMapping::Message(name) => format!(" -> {}", name.as_str()),
         ValueMapping::Scalar { .. } | ValueMapping::Enum { .. } => String::new(),
     };
-    // The trailing descriptor: a family names its shape — a sequence's contiguous 0-based index,
-    // or a map's typed key, the KR distinction §4.1 draws (and which two message families would
-    // otherwise be indistinguishable by); a singular field or oneof arm names its presence (§5).
-    let descriptor = match field.form() {
-        EmitForm::Sequence => "seq".to_owned(),
-        EmitForm::Map { key, .. } => format!("map<{}>", Scalar::from(*key).as_str()),
-        EmitForm::Set => "set".to_owned(),
-        EmitForm::Function | EmitForm::OneofArm { .. } => {
-            totality_word(field.presence()).to_owned()
-        }
-    };
     // A message field is named by its occupant access-path term — the functional constructor,
     // arity one less than the relational view it carries (`FieldMapping::arity` is the view
     // arity) — with the view predicate noted (`; view <name>/<v>`), the additive join surface in
@@ -176,26 +165,39 @@ fn field_line(out: &mut String, field: &FieldMapping) {
         name_arity,
         target,
         declared(field.value()),
-        descriptor,
+        descriptor(field),
         view,
         decision_note(&[], field.escaped()),
     );
+}
+
+/// The trailing descriptor of a field's record (spec §13.4): a family names its shape — `seq`,
+/// a sequence's contiguous 0-based index; `map<key>`, a map's typed key, the KR distinction
+/// §4.1 draws (and which two message families would otherwise be indistinguishable by); `set`,
+/// a membership relation — and a singular field or oneof arm names its presence (§5), the
+/// totality word. Crate-visible so the evolution instrument's rendered signatures read this
+/// column through the one writer the manifest does, never a second spelling.
+pub(crate) fn descriptor(field: &FieldMapping) -> String {
+    match field.form() {
+        EmitForm::Sequence => "seq".to_owned(),
+        EmitForm::Map { key, .. } => format!("map<{}>", Scalar::from(*key).as_str()),
+        EmitForm::Set => "set".to_owned(),
+        EmitForm::Function | EmitForm::OneofArm { .. } => {
+            totality_word(field.presence()).to_owned()
+        }
+    }
 }
 
 /// One enum's manifest record (spec §13.4, §7.4): an `enum <predicate>/1 (open|closed)` line
 /// naming the resolved `enum_type` feature, then a `#<number>  value  <constant>` line per
 /// value in number order, each with its own carried escape decision (`decision_note`).
 fn enum_lines(out: &mut String, e: &EnumMapping) {
-    let openness = if matches!(e.openness(), Openness::Open) {
-        "open"
-    } else {
-        "closed"
-    };
     let _ = writeln!(
         out,
-        "{}  enum  {}/1  ({openness}){}",
+        "{}  enum  {}/1  ({}){}",
         e.proto().as_str(),
         e.predicate().as_str(),
+        openness_word(e.openness()),
         decision_note(e.qualifier(), e.escaped()),
     );
     for value in e.values() {
@@ -219,13 +221,24 @@ fn value_line(out: &mut String, value: &EnumValueMapping) {
 
 /// The proto-declared type of a field's value (spec §13.4's `<declared>` column), regardless
 /// of the record's `kind`/target columns: a scalar's proto type name (its `Scalar` kind), or
-/// a message/enum's referent sort predicate.
-fn declared(value: &ValueMapping) -> String {
+/// a message/enum's referent sort predicate. Crate-visible so the evolution instrument's
+/// rendered signatures name a value's type through this one writer, as `descriptor`.
+pub(crate) fn declared(value: &ValueMapping) -> String {
     match value {
         ValueMapping::Scalar { kind, .. } => kind.as_str().to_owned(),
         ValueMapping::Message(name) | ValueMapping::Enum { referent: name, .. } => {
             name.as_str().to_owned()
         }
+    }
+}
+
+/// The manifest's openness word (spec §13.4, §7.4): `open` or `closed`, the resolved
+/// `enum_type` feature. Crate-visible for the evolution instrument's enum signatures, as
+/// `declared` and `descriptor`.
+pub(crate) fn openness_word(openness: Openness) -> &'static str {
+    match openness {
+        Openness::Open => "open",
+        Openness::Closed => "closed",
     }
 }
 
