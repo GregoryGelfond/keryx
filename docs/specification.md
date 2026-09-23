@@ -300,7 +300,7 @@ The serializability theory (§12.2), generated as two variants rather than param
 
 The evolution contract and naming authority (P3, G6). Format sketched in Appendix B. Contents per entry: fully-qualified proto path, field **number**, resolved presence, declared type, applied annotations (with provenance: inline option vs. overlay), emitted name/arity/shape, qualifier decisions, reserved-word escapes. Plus: schema content hash, keryx version, target, profile.
 
-Protobuf's contract is that field numbers are identity and names are free to change; a predicate's identity is its name. The manifest binds the two so that regeneration after a rename **diffs into a migration notice** — and optionally a generated *bridge view* (`old_name(…) :- new_name(…).` plus a lint deprecation) — instead of a silent vocabulary fork.
+Protobuf's contract is that field numbers are identity and names are free to change; a predicate's identity is its name. The manifest records the binding of the two for each generated version, and `keryx diff` compares the binding across versions by regenerating both — it diffs the two generated mappings, each from its own `.proto`, matched by protobuf identity (field number; sort and enum path), and reads no manifest — so that regeneration after a rename **diffs into a migration notice** — and optionally a generated *bridge view* (`old_name(…) :- new_name(…).` plus a lint deprecation) — instead of a silent vocabulary fork.
 
 ### 14. Scaffolds
 
@@ -376,7 +376,8 @@ keryx/                          (Cargo workspace)
     policy/                     stage 1: mapping policy (.lp assets + evaluation) (§21.3)
     emit/                       stage 2: modules, manifest, scaffolds; emission trait (§18)
     codec/                      payload ⇄ symbolic-value data model (Sym enum), validation
-    manifest/                   read/write/diff
+    manifest/                   write (the per-version record; never read back)
+    diff/                       two generated mappings → migration report, JSON changeset, bridge views (§13.4, §27)
   keryx-driver/                 aspis-backed runtimes: one-shot + episodic solve,
                                 envelope assembly, brave/cautious, fixture harness
   keryx-cli/                    the `keryx` binary (§25)
@@ -477,13 +478,13 @@ keryx emit      [--out binpb|json|txtpb] [--root Type] <answer.lp> <spec>   # re
 keryx scaffold  --emit Type <spec>                                    # lowering skeleton
 # keryx solve … --emit …  — retired (R4): keryx invokes no solver; keryx emit is the outbound
 #                           command, run over the consuming tool's own solver output
-keryx diff      <old-manifest> <spec>            # migration notes; optional bridge views
+keryx diff      <old.proto> <new.proto>          # migration notes; optional bridge views (--bridge)
 keryx check     <model.lp> <gen-dir>             # lint: signature conformance, house style
                                                  # (gated on the parsing provider, §18)
 protoc-gen-keryx                                  # plugin shim (same gen pipeline)
 ```
 
-`explain` is keryx lore delivered at point of use instead of documentation: what each field maps to, why, and where an annotation would change semantics ("`tags` is repeated: treated as ordered; if order is incidental, mark it `set = true`"). `facts` is the single fastest way to learn a generated vocabulary — watching real data become atoms — and makes the decode inspectable rather than trusted (P1, legible rightward). As of the inbound codec, `facts` reads `.binpb`, `.txtpb`, and `.json` payloads, the format named by the extension from one table (§26). `emit` is the outbound command — the answer-set → message half — that replaces the retired `keryx solve --emit` (R4): it reassembles a `.lp` answer set to exactly one message on stdout, `--out` naming the wire form (binary, text, or JSON) and `--root Type` selecting which message when the answer set names more than one root — distinct from `facts`'s `--root Type=payload`, which names the payload to shred. keryx runs no solver; the answer set is the consuming tool's own solver's output (§18, R4).
+`explain` is keryx lore delivered at point of use instead of documentation: what each field maps to, why, and where an annotation would change semantics ("`tags` is repeated: treated as ordered; if order is incidental, mark it `set = true`"). `facts` is the single fastest way to learn a generated vocabulary — watching real data become atoms — and makes the decode inspectable rather than trusted (P1, legible rightward). As of the inbound codec, `facts` reads `.binpb`, `.txtpb`, and `.json` payloads, the format named by the extension from one table (§26). `emit` is the outbound command — the answer-set → message half — that replaces the retired `keryx solve --emit` (R4): it reassembles a `.lp` answer set to exactly one message on stdout, `--out` naming the wire form (binary, text, or JSON) and `--root Type` selecting which message when the answer set names more than one root — distinct from `facts`'s `--root Type=payload`, which names the payload to shred. keryx runs no solver; the answer set is the consuming tool's own solver's output (§18, R4). `diff` is the evolution instrument (§13.4, §27): it regenerates both mappings from the old and new `.proto` and compares them by protobuf identity — the migration report on stdout, the changeset as JSON under `--json`, and the bridge views written to the file `--bridge` names; no manifest is read.
 
 ### 26. Interchange and structured failure
 
@@ -493,7 +494,7 @@ protoc-gen-keryx                                  # plugin shim (same gen pipeli
 
 ### 27. Evolution and testing
 
-- **Evolution flow is one-directional through the fence:** spec-side churn surfaces as compiler guidance. A `deprecated = true` field option becomes a model-side lint warning; a rename diffs against the manifest (`keryx diff`) into a migration note plus optional generated bridge view; a field-number change is flagged as the wire-breaking act it is (and buf users get the same from `buf breaking` — the two checks are complementary, manifest guarding the ASP side, buf the wire side).
+- **Evolution flow is one-directional through the fence:** spec-side churn surfaces as compiler guidance. A `deprecated = true` field option becomes a model-side lint warning; a rename diffs (`keryx diff`, which regenerates both mappings from the old and new `.proto` and compares the two generated mappings by protobuf identity — no manifest read) into a migration note plus optional generated bridge view; a field-number change is flagged as the wire-breaking act it is (and buf users get the same from `buf breaking` — the two checks are complementary, `keryx diff` guarding the ASP side, buf the wire side).
 - **Fixture harness.** A directory convention: `fixtures/<name>/{request.txtpb, expect.txtpb | expect.lp | contract.lp}`. The driver shreds the request, solves against the model, and checks the expectation — either exact envelope comparison or an **ASP contract** over the shared vocabulary (`@sat`, `@model`, `@cautious`, cost/optimality tags; solver declared in the contract per the contract's rule). Scenario corpora thus double as regression suites and as documentation-by-example.
 - **Compiler self-tests:** golden descriptor sets → golden module sets and manifests; stage-1 policy under ASP contracts (§21.3); the §21.2 self-application cross-check; property tests for codec round-trips — payload → facts → payload identity on canonical forms, and answer set → payload → facts identity, in all three output forms — with the reassembler's totality (over arbitrary answer sets in every form and arbitrary `.lp` text), depth, determinism, and shape-refusal suites.
 

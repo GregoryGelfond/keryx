@@ -3,8 +3,10 @@
 //! profile, shape), then per package one `sort` line per message/enum and one record per
 //! field/value, binding the fully-qualified proto path and field number to the emitted
 //! name/arity/shape and recording qualifier/escape divergence. A pure, deterministic
-//! function of the [`Mapping`] (P3); *write* only at present — read/diff (`keryx diff`) is
-//! Increment 8. The final grammar is open (spec §32 item 7); this is the v0 form.
+//! function of the [`Mapping`] (P3), and *write-only*: keryx never reads a manifest back —
+//! `keryx diff` regenerates both mappings from the old and new `.proto` and compares those,
+//! so the manifest is the per-version record of what was generated, never an input. The
+//! final grammar is open (spec §32 item 7); this is the v0 form.
 //!
 //! [`Mapping`]: crate::policy::model::Mapping
 
