@@ -22,6 +22,16 @@
 //! nor a change the schema made, so it is skipped, and two schemas sharing nothing but such an
 //! import are not comparable.
 //!
+//! A pure rename — a field's, sort's, or enum's predicate re-spelled with its identity and shape
+//! intact — carries a *bridge view* ([`FieldDiff::bridge`], [`SortDiff::bridge`],
+//! [`EnumDiff::bridge`]; spec §13.4): the one rule `old(…) :- new(…).` through which a model
+//! written against the old vocabulary *reads* the new facts during a cutover. It is constructed
+//! through `emit`'s one themelios construction site and rendered by `emit`'s renderer — syntax
+//! values crossing the emission boundary every generated module crosses (§18), never a format
+//! string (`bridge_rule`). It is inbound-facing only: a model that *emits* old atoms is not
+//! shimmed, and a message-field bridge aliases the field's relational view, not the occupant-term
+//! functor a model might spell directly — limits the rows state rather than paper over.
+//!
 //! [`policy::map`]: crate::policy::map
 //! [`Mapping`]: crate::policy::model::Mapping
 //! [`manifest`]: crate::manifest
@@ -32,8 +42,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use themelios_program::Name;
 
-use crate::descriptor::model::Package;
+use crate::descriptor::model::{FqName, Package};
 use crate::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
+use crate::emit;
 use crate::manifest;
 use crate::policy::model::{
     EmitForm, EnumMapping, EnumValueMapping, FieldMapping, Mapping, SortMapping, Totality, Unit,
@@ -316,13 +327,26 @@ impl<'a> SortDiff<'a> {
         }
     }
 
-    /// The bridge view for a `SortRenamed` sort — the rule aliasing the old sort predicate to the
-    /// new at arity 1 (spec §13.4), which a model written against the old vocabulary reads the
-    /// new facts through — or `None`: for any other kind, and, until bridge views are
-    /// constructed, for a rename too.
+    /// The bridge view for a `SortRenamed` sort (spec §13.4) — the one rule `old(A) :- new(A).`
+    /// aliasing the old sort predicate to the new at arity 1, through which a model written
+    /// against the old vocabulary *reads* the new sort's occupants — or `None` for any other
+    /// kind. Inbound-facing only: a model that *emits* atoms of the old sort is not shimmed.
+    /// Constructed and rendered through `emit` (`bridge_rule`), never string-templated.
     #[must_use]
     pub fn bridge(&self) -> Option<String> {
-        None
+        match self.sides {
+            Pair::Both(old, new) if self.kind() == ChangeKind::SortRenamed => {
+                Some(bridge_rule(Bridge {
+                    old: old.predicate(),
+                    new: new.predicate(),
+                    arity: 1,
+                    from: old.proto(),
+                    to: new.proto(),
+                    view: false,
+                }))
+            }
+            _ => None,
+        }
     }
 
     fn rows(&self, package: &'a str, rows: &mut Vec<Row<'a>>) {
@@ -434,12 +458,27 @@ impl<'a> EnumDiff<'a> {
         }
     }
 
-    /// The bridge view for an `EnumRenamed` enum — the rule aliasing the old enum predicate to
-    /// the new at arity 1 — or `None`: for any other kind, and, until bridge views are
-    /// constructed, for a rename too.
+    /// The bridge view for an `EnumRenamed` enum (spec §13.4) — the one rule `old(A) :- new(A).`
+    /// aliasing the old enum predicate to the new at arity 1, through which a model written
+    /// against the old vocabulary *reads* the new value sort it quantifies over (§7.4) — or
+    /// `None` for any other kind: an enum renamed beside an openness or preserve flip is the flip,
+    /// breaking and unbridged. Inbound-facing only, as [`SortDiff::bridge`]. Constructed and
+    /// rendered through `emit` (`bridge_rule`), never string-templated.
     #[must_use]
     pub fn bridge(&self) -> Option<String> {
-        None
+        match self.sides {
+            Pair::Both(old, new) if self.kind() == ChangeKind::EnumRenamed => {
+                Some(bridge_rule(Bridge {
+                    old: old.predicate(),
+                    new: new.predicate(),
+                    arity: 1,
+                    from: old.proto(),
+                    to: new.proto(),
+                    view: false,
+                }))
+            }
+            _ => None,
+        }
     }
 
     fn rows(&self, package: &'a str, rows: &mut Vec<Row<'a>>) {
@@ -555,13 +594,35 @@ impl<'a> FieldDiff<'a> {
         (!aspect.shape_holds()).then_some(aspect)
     }
 
-    /// The bridge view for a `Renamed` field — the rule aliasing the old predicate to the new at
-    /// the field's arity (spec §13.4), which a model written against the old vocabulary reads the
-    /// new facts through — or `None`: for any other kind, and, until bridge views are
-    /// constructed, for a rename too.
+    /// The bridge view for a `Renamed` field (spec §13.4) — the one rule `old(A, …) :- new(A, …).`
+    /// aliasing the old predicate to the new at the field's arity, through which a model written
+    /// against the old vocabulary *reads* the new facts — or `None` for any other kind, a rename
+    /// that also changed shape (`Changed`) included. The predicate aliased is the model-facing
+    /// one: a scalar, enum, or set field's base predicate at its arity; a message field's
+    /// relational view (§13.2) at the view arity — the projection idiom `readings(B, _, E)` that
+    /// `views.lp` prescribes. Not aliased, because no rule can alias a functor: the occupant-term
+    /// functor `readings(B, I)` inside the child sort atom, which the rename renames too — so a
+    /// model spelling the occupant term directly is not bridged, and the bridge's `%!` line names
+    /// it as the view's. Inbound-facing only: a model that *emits* old atoms is not shimmed.
+    /// Constructed and rendered through `emit` (`bridge_rule`), never string-templated.
     #[must_use]
     pub fn bridge(&self) -> Option<String> {
-        None
+        match self.sides {
+            Pair::Both(old, new) if self.kind() == ChangeKind::Renamed => {
+                Some(bridge_rule(Bridge {
+                    old: old.predicate(),
+                    new: new.predicate(),
+                    // A `Renamed` field's arity holds across the sides, and it is the mapping's
+                    // own: the view arity for a message field with a view, the base arity for a
+                    // scalar, enum, or set field.
+                    arity: old.arity(),
+                    from: old.proto(),
+                    to: new.proto(),
+                    view: old.view().is_some(),
+                }))
+            }
+            _ => None,
+        }
     }
 
     /// Every dimension compared, each present when it differs.
@@ -932,6 +993,70 @@ fn render_value(enumeration: &EnumMapping, value: &EnumValueMapping) -> Rendered
     }
 }
 
+/// What one bridge view aliases (`bridge_rule`): the old and the new predicate, the arity the
+/// two share, the renamed element's proto paths on each side (the `%!` line's provenance), and
+/// whether the predicate is a message field's relational view (§13.2), which the line says. A
+/// handful of borrows beside a count and a flag, so `Copy`.
+#[derive(Clone, Copy)]
+struct Bridge<'a> {
+    old: &'a Name,
+    new: &'a Name,
+    arity: u32,
+    from: &'a FqName,
+    to: &'a FqName,
+    view: bool,
+}
+
+/// The positional variables a bridge view spells its argument positions over — a fixed
+/// compile-time set of valid variable names, one per position of the widest predicate keryx emits
+/// (a sort is unary, a function or set binary, a family ternary; spec §4.1), so the width `expect`
+/// in [`bridge_rule`] is a discharged invariant (§6). A bridge aliases positions and interprets
+/// none, so the letters carry no role.
+const BRIDGE_POSITIONS: [&str; 3] = ["A", "B", "C"];
+
+/// The bridge view for one pure rename (spec §13.4): the one rule `old(A, …) :- new(A, …).`
+/// aliasing the old predicate to the new at their arity over fresh positional variables, its `%!`
+/// line the provenance — `temp_c/2 reads celsius/2  (inbound-facing bridge: <old path> renamed
+/// <new path>)`, `bridge of the view` for a message field. Constructed through `emit::build` and
+/// rendered through `emit::render` — themelios syntax values crossing the emission boundary every
+/// generated module crosses (spec §18), never a format string, so the text is the renderer's one
+/// spelling; the `%!` line is prose the renderer writes verbatim as a comment, no part of the rule.
+/// Inbound-facing (`old :- new.`, one rule): a model written against the old vocabulary *reads*
+/// the new facts through it; one that *emits* old atoms is not shimmed — a limit stated, not
+/// papered over.
+///
+/// Total for what a mapping holds: themelios refuses to spell only a string constant or an
+/// `#include` path bearing a control character, and a bridge spells neither — two validated
+/// `Name`s over variables — so the render `expect` is a discharged invariant (§6), not a live
+/// failure path.
+fn bridge_rule(bridge: Bridge<'_>) -> String {
+    let Bridge {
+        old,
+        new,
+        arity,
+        from,
+        to,
+        view,
+    } = bridge;
+    let width = usize::try_from(arity).expect("an arity is a small count");
+    let letters = BRIDGE_POSITIONS
+        .get(..width)
+        .expect("keryx emits no predicate wider than a ternary family (spec §4.1)");
+    let positions = || letters.iter().map(|letter| emit::build::var(letter));
+    let head = emit::build::atom(old.clone(), positions());
+    let body = emit::build::positive(emit::build::atom(new.clone(), positions()));
+    let of = if view { " of the view" } else { "" };
+    let doc = format!(
+        "{}/{arity} reads {}/{arity}  (inbound-facing bridge{of}: {} renamed {})",
+        old.as_str(),
+        new.as_str(),
+        from.as_str(),
+        to.as_str()
+    );
+    emit::render(vec![emit::build::rule(head, body, doc)])
+        .expect("a bridge spells validated names over variables, which the clingo dialect renders")
+}
+
 /// The sides of one matched node — the old, the new, or both — so a node with neither is
 /// unrepresentable and every classification is total over the three.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1296,7 +1421,11 @@ fn strip_number(s: &str) -> Option<&str> {
 mod tests {
     use std::collections::BTreeSet;
 
-    use themelios_program::Name;
+    use themelios_program::prelude::{
+        Arguments, Atom, BodyElement, DefaultNegation, Dialect, Head, Literal, LiteralInner, Name,
+        Source, SourceId, Statement,
+    };
+    use themelios_program::raise::raise_source;
 
     use super::{
         Change, ChangeKind, Comparison, PackageDiff, SortDiff, compare, is_version_segment,
@@ -1304,6 +1433,7 @@ mod tests {
     };
     use crate::descriptor::model::{FqName, MapKey, Openness, Package, Scalar};
     use crate::diagnostics::DiagnosticKind;
+    use crate::emit::{build, render};
     use crate::policy::model::{
         EmitForm, EnumMapping, EnumValueMapping, FieldMapping, Mapping, ScalarTreatment,
         SortMapping, Totality, Unit, ValueMapping,
@@ -1499,6 +1629,41 @@ mod tests {
             .iter()
             .map(|field| (field.number(), field.kind()))
             .collect()
+    }
+
+    /// Parse a bridge back through themelios and return its one rule as the head atom and the one
+    /// positive atom of its body — the round trip the text must survive as ASP, whatever wrote it.
+    fn parse_bridge(text: &str) -> (Atom, Atom) {
+        let source = Source::new(SourceId::new(0), text.to_owned()).expect("a bridge is small");
+        let raised = raise_source(&source, Dialect::Clingo);
+        assert!(raised.syntax_diagnostics().is_empty(), "parses: {text}");
+        assert!(raised.lowering_diagnostics().is_empty(), "raises: {text}");
+        let statements: Vec<_> = raised.program().statements().collect();
+        let [statement] = statements.as_slice() else {
+            panic!("one statement: {text}")
+        };
+        let Statement::Rule(rule) = statement.get() else {
+            panic!("a rule: {text}")
+        };
+        let Head::Literal(Literal {
+            negation: DefaultNegation::None,
+            inner: LiteralInner::Atom(head),
+        }) = rule.head().get()
+        else {
+            panic!("a positive atom head: {text}")
+        };
+        let elements: Vec<_> = rule.body().get().elements().collect();
+        let [element] = elements.as_slice() else {
+            panic!("one body element: {text}")
+        };
+        let BodyElement::Literal(Literal {
+            negation: DefaultNegation::None,
+            inner: LiteralInner::Atom(body),
+        }) = element.get()
+        else {
+            panic!("a positive body atom: {text}")
+        };
+        (head.get().clone(), body.get().clone())
     }
 
     #[test]
@@ -2315,7 +2480,6 @@ mod tests {
         };
         assert_eq!(level.kind(), ChangeKind::EnumRenamed);
         assert_eq!(level.name(), "Level");
-        assert_eq!(level.bridge(), None);
         assert_eq!(kinds(&comparison), [ChangeKind::EnumRenamed]);
         let changes = comparison.changes();
         assert_eq!(changes[0].old_path(), Some("thermal.v1.Level"));
@@ -3162,5 +3326,298 @@ mod tests {
         );
         assert_eq!(kinds(&comparison), [ChangeKind::Removed]);
         assert!(comparison.is_breaking());
+    }
+
+    #[test]
+    fn a_scalar_field_rename_bridges_the_base_predicate_at_its_arity() {
+        // `temp_c` → `celsius` at #2 with the shape intact: the bridge is one rule aliasing the old
+        // base predicate to the new over fresh positional variables — `old :- new.`, a v1 model
+        // reading v2 facts — its provenance the `%!` line, and the row carries the same text.
+        let old = thermal("v1", vec![reading("v1")], vec![]);
+        let mut renamed = reading("v2");
+        renamed.fields[1] = scalar("thermal.v2.Reading.celsius", 2, "celsius");
+        let new = thermal("v2", vec![renamed], vec![]);
+        let comparison = compare(&old, &new).expect("comparable");
+        let celsius = &comparison.packages()[0].sorts()[0].fields()[1];
+        assert_eq!(celsius.kind(), ChangeKind::Renamed);
+        let bridge = celsius.bridge().expect("a pure rename is bridged");
+        assert_eq!(
+            bridge,
+            "%! temp_c/2 reads celsius/2  (inbound-facing bridge: thermal.v1.Reading.temp_c renamed thermal.v2.Reading.celsius)\ntemp_c(A, B) :- celsius(A, B).\n"
+        );
+        let (head, body) = parse_bridge(&bridge);
+        assert_eq!(head.name.as_str(), "temp_c");
+        assert_eq!(body.name.as_str(), "celsius");
+        assert_eq!(
+            head.arguments,
+            Arguments::Single(vec![build::var("A"), build::var("B")])
+        );
+        assert_eq!(body.arguments, head.arguments);
+        assert_eq!(comparison.changes()[0].bridge(), Some(bridge));
+    }
+
+    #[test]
+    fn a_message_sequence_field_rename_bridges_the_view_predicate_at_the_view_arity() {
+        // `Batch.readings` (a sequence of `Reading`) → `samples`: the bridge aliases the *view*
+        // predicate `readings/3` at the view arity — the projection idiom `readings(B, _, E)` a
+        // model reads — and its `%!` line says so; the occupant-term functor `readings(B, I)`
+        // inside the child sort atom is renamed too, and no rule aliases a functor.
+        let old = thermal("v1", vec![batch_of("v1", "reading"), reading("v1")], vec![]);
+        let mut renamed = batch_of("v2", "reading");
+        renamed.fields[0] = field(
+            "thermal.v2.Batch.samples",
+            1,
+            "samples",
+            EmitForm::Sequence,
+            message("reading"),
+            Totality::Total,
+        );
+        let new = thermal("v2", vec![renamed, reading("v2")], vec![]);
+        let comparison = compare(&old, &new).expect("comparable");
+        let readings = &comparison.packages()[0].sorts()[0].fields()[0];
+        assert_eq!(readings.kind(), ChangeKind::Renamed);
+        assert!(
+            readings
+                .old_field()
+                .is_some_and(|field| field.view().is_some()),
+            "a message sequence field has a view"
+        );
+        let bridge = readings.bridge().expect("a pure rename is bridged");
+        assert_eq!(
+            bridge,
+            "%! readings/3 reads samples/3  (inbound-facing bridge of the view: thermal.v1.Batch.readings renamed thermal.v2.Batch.samples)\nreadings(A, B, C) :- samples(A, B, C).\n"
+        );
+        let (head, body) = parse_bridge(&bridge);
+        assert_eq!(head.name.as_str(), "readings");
+        assert_eq!(body.name.as_str(), "samples");
+        assert_eq!(
+            head.arguments,
+            Arguments::Single(vec![build::var("A"), build::var("B"), build::var("C")])
+        );
+        assert_eq!(body.arguments, head.arguments);
+    }
+
+    #[test]
+    fn a_sort_rename_bridges_at_arity_one() {
+        // `reading/1` re-qualified to `v2__reading/1` (§4.2): the bridge aliases the sort predicate
+        // at arity 1, so a v1 model's `reading(E)` ranges over the v2 occupants.
+        let old = thermal("v1", vec![reading("v1")], vec![]);
+        let mut qualified = reading("v2");
+        qualified.predicate = name("v2__reading");
+        let new = thermal("v2", vec![qualified], vec![]);
+        let comparison = compare(&old, &new).expect("comparable");
+        let reading = &comparison.packages()[0].sorts()[0];
+        assert_eq!(reading.kind(), ChangeKind::SortRenamed);
+        let bridge = reading.bridge().expect("a sort rename is bridged");
+        assert_eq!(
+            bridge,
+            "%! reading/1 reads v2__reading/1  (inbound-facing bridge: thermal.v1.Reading renamed thermal.v2.Reading)\nreading(A) :- v2__reading(A).\n"
+        );
+        let (head, body) = parse_bridge(&bridge);
+        assert_eq!(head.name.as_str(), "reading");
+        assert_eq!(body.name.as_str(), "v2__reading");
+        assert_eq!(head.arguments, Arguments::Single(vec![build::var("A")]));
+        assert_eq!(body.arguments, head.arguments);
+        assert_eq!(comparison.changes()[0].bridge(), Some(bridge));
+    }
+
+    #[test]
+    fn an_enum_rename_bridges_at_arity_one() {
+        // `level/1` → `v2__level/1` with its openness and preserve intact: the bridge aliases the
+        // value sort a model quantifies over (§7.4) at arity 1.
+        let mut qualified = level("v2", vec![value("LEVEL_LOW", 0, "low")]);
+        qualified.predicate = name("v2__level");
+        let old = thermal(
+            "v1",
+            vec![],
+            vec![level("v1", vec![value("LEVEL_LOW", 0, "low")])],
+        );
+        let new = thermal("v2", vec![], vec![qualified]);
+        let comparison = compare(&old, &new).expect("comparable");
+        let level = &comparison.packages()[0].enums()[0];
+        assert_eq!(level.kind(), ChangeKind::EnumRenamed);
+        let bridge = level.bridge().expect("an enum rename is bridged");
+        assert_eq!(
+            bridge,
+            "%! level/1 reads v2__level/1  (inbound-facing bridge: thermal.v1.Level renamed thermal.v2.Level)\nlevel(A) :- v2__level(A).\n"
+        );
+        let (head, body) = parse_bridge(&bridge);
+        assert_eq!(head.name.as_str(), "level");
+        assert_eq!(body.name.as_str(), "v2__level");
+        assert_eq!(head.arguments, Arguments::Single(vec![build::var("A")]));
+        assert_eq!(body.arguments, head.arguments);
+        assert_eq!(comparison.changes()[0].bridge(), Some(bridge));
+    }
+
+    #[test]
+    fn only_a_pure_rename_carries_a_bridge() {
+        // A bridge exists for a `Renamed`, `SortRenamed`, or `EnumRenamed` node and for no other:
+        // not for a rename that also changed shape (pinned with its aspect in
+        // `a_rename_that_also_changes_shape_is_a_change_with_no_bridge`), not for an enum renamed
+        // beside a flip (which is the flip), and not for a one-sided or an unchanged node.
+        let old = thermal(
+            "v1",
+            vec![
+                sort(
+                    "thermal.v1.Alert",
+                    "alert",
+                    vec![scalar("thermal.v1.Alert.n", 1, "n")],
+                ),
+                reading("v1"),
+            ],
+            vec![level("v1", vec![value("LEVEL_LOW", 0, "low")])],
+        );
+        let mut requalified = reading("v2");
+        requalified.predicate = name("v2__reading");
+        requalified.fields[1] = scalar("thermal.v2.Reading.celsius", 2, "celsius");
+        requalified
+            .fields
+            .push(scalar("thermal.v2.Reading.humidity", 3, "humidity"));
+        let mut renamed_and_preserving = level("v2", vec![value("LEVEL_LOW", 0, "low")]);
+        renamed_and_preserving.predicate = name("v2__level");
+        renamed_and_preserving.preserve = true;
+        let new = thermal("v2", vec![requalified], vec![renamed_and_preserving]);
+        let comparison = compare(&old, &new).expect("comparable");
+        let [alert, reading] = comparison.packages()[0].sorts() else {
+            panic!("two sorts: {comparison:?}")
+        };
+        assert_eq!(alert.kind(), ChangeKind::MessageRemoved);
+        assert_eq!(alert.bridge(), None);
+        assert_eq!(alert.fields()[0].bridge(), None);
+        assert_eq!(reading.kind(), ChangeKind::SortRenamed);
+        assert!(reading.bridge().is_some());
+        let [sensor, celsius, humidity] = reading.fields() else {
+            panic!("three fields: {reading:?}")
+        };
+        assert_eq!(
+            (sensor.kind(), sensor.bridge()),
+            (ChangeKind::Unchanged, None)
+        );
+        assert_eq!(celsius.kind(), ChangeKind::Renamed);
+        assert!(celsius.bridge().is_some());
+        assert_eq!(
+            (humidity.kind(), humidity.bridge()),
+            (ChangeKind::Added, None)
+        );
+        let level = &comparison.packages()[0].enums()[0];
+        assert_eq!(
+            (level.kind(), level.bridge()),
+            (ChangeKind::PreserveChanged, None)
+        );
+        let bridged: Vec<ChangeKind> = comparison
+            .changes()
+            .iter()
+            .filter(|change| change.bridge().is_some())
+            .map(Change::kind)
+            .collect();
+        assert_eq!(bridged, [ChangeKind::SortRenamed, ChangeKind::Renamed]);
+    }
+
+    #[test]
+    fn a_bridge_is_the_rendering_of_one_constructed_rule() {
+        // The bridge is byte for byte the rule built through `emit::build` and rendered through
+        // `emit::render` — one spelling, the renderer's — so no format string stands between the
+        // constructed rule and the text: the one `:-` in it is the rendered rule's, and the text
+        // is one documented statement, its `%!` line above its one rule line.
+        let old = thermal("v1", vec![reading("v1")], vec![]);
+        let mut renamed = reading("v2");
+        renamed.fields[1] = scalar("thermal.v2.Reading.celsius", 2, "celsius");
+        let new = thermal("v2", vec![renamed], vec![]);
+        let comparison = compare(&old, &new).expect("comparable");
+        let bridge = comparison.packages()[0].sorts()[0].fields()[1]
+            .bridge()
+            .expect("a pure rename is bridged");
+        let constructed = render(vec![build::rule(
+            build::atom(name("temp_c"), [build::var("A"), build::var("B")]),
+            build::positive(build::atom(
+                name("celsius"),
+                [build::var("A"), build::var("B")],
+            )),
+            "temp_c/2 reads celsius/2  (inbound-facing bridge: thermal.v1.Reading.temp_c renamed thermal.v2.Reading.celsius)".to_owned(),
+        )])
+        .expect("renders");
+        assert_eq!(bridge, constructed);
+        assert_eq!(bridge.matches(":-").count(), 1);
+        assert_eq!(bridge.matches('\n').count(), 2);
+        assert!(bridge.starts_with("%! ") && bridge.ends_with(".\n"));
+    }
+
+    #[test]
+    fn an_enum_field_and_a_set_field_rename_bridge_their_base_predicates() {
+        // The base-arity clause beyond a scalar: an enum-typed field, and a `(keryx.set)` field —
+        // a message set here, which has no view (§13.2) — each bridge the base predicate at arity
+        // 2, and neither line says `of the view`.
+        let panel = |v: &str, predicate: &str| {
+            sort(
+                &format!("thermal.{v}.Panel"),
+                "panel",
+                vec![field(
+                    &format!("thermal.{v}.Panel.{predicate}"),
+                    1,
+                    predicate,
+                    EmitForm::Function,
+                    enum_value("level", false),
+                    Totality::Total,
+                )],
+            )
+        };
+        let batch = |v: &str, predicate: &str| {
+            sort(
+                &format!("thermal.{v}.Batch"),
+                "batch",
+                vec![field(
+                    &format!("thermal.{v}.Batch.{predicate}"),
+                    1,
+                    predicate,
+                    EmitForm::Set,
+                    message("reading"),
+                    Totality::Total,
+                )],
+            )
+        };
+        let old = thermal(
+            "v1",
+            vec![batch("v1", "readings"), panel("v1", "level"), reading("v1")],
+            vec![level("v1", vec![value("LEVEL_LOW", 0, "low")])],
+        );
+        let new = thermal(
+            "v2",
+            vec![batch("v2", "members"), panel("v2", "grade"), reading("v2")],
+            vec![level("v2", vec![value("LEVEL_LOW", 0, "low")])],
+        );
+        let comparison = compare(&old, &new).expect("comparable");
+        let [batch, panel, _] = comparison.packages()[0].sorts() else {
+            panic!("three sorts: {comparison:?}")
+        };
+        let members = &batch.fields()[0];
+        assert_eq!(members.kind(), ChangeKind::Renamed);
+        assert!(
+            members
+                .old_field()
+                .is_some_and(|field| field.view().is_none()),
+            "a message set has no view"
+        );
+        assert_eq!(
+            members.bridge().as_deref(),
+            Some(
+                "%! readings/2 reads members/2  (inbound-facing bridge: thermal.v1.Batch.readings renamed thermal.v2.Batch.members)\nreadings(A, B) :- members(A, B).\n"
+            )
+        );
+        let grade = &panel.fields()[0];
+        assert_eq!(grade.kind(), ChangeKind::Renamed);
+        assert_eq!(
+            grade.bridge().as_deref(),
+            Some(
+                "%! level/2 reads grade/2  (inbound-facing bridge: thermal.v1.Panel.level renamed thermal.v2.Panel.grade)\nlevel(A, B) :- grade(A, B).\n"
+            )
+        );
+        for bridge in [members.bridge(), grade.bridge()] {
+            let (head, body) = parse_bridge(&bridge.expect("a pure rename is bridged"));
+            assert_eq!(
+                head.arguments,
+                Arguments::Single(vec![build::var("A"), build::var("B")])
+            );
+            assert_eq!(body.arguments, head.arguments);
+        }
     }
 }
