@@ -19,6 +19,7 @@ pub mod policy;
 pub mod emit;
 pub mod manifest;
 pub mod codec;
+pub mod diff;
 
 /// The one public path to the foreign-fault containment flag: a consumer's panic hook may consult
 /// `keryx_core::is_containing()` to stay quiet for a fault keryx returns as a value rather than a
