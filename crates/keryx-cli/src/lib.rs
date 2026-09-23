@@ -183,9 +183,9 @@ struct DiffArgs {
     /// Write the changeset as JSON — one array of change records — instead of the report.
     #[arg(long)]
     json: bool,
-    /// Write the bridge views for the clean renames to this `.lp` file.
+    /// Write the bridge views for the clean renames to this `.lp` file, after the report (none is
+    /// written when there is no clean rename).
     #[arg(long, value_name = "PATH")]
-    #[expect(dead_code, reason = "read once the bridge write lands")]
     bridge: Option<PathBuf>,
     /// When the report is coloured: on a terminal unless `NO_COLOR` is set to a non-empty value
     /// (`auto`), `always`, or `never`.
@@ -285,16 +285,9 @@ fn generate(args: &GenArgs, format: Format) -> Exit {
             let path = args
                 .out
                 .join(format!("{}.{suffix}", unit.package().as_str()));
-            // A write failure (a bad `-o` directory, permissions, a full disk) is a file-I/O
-            // error (§6 `Input`), not an internal bug.
-            if let Err(error) = std::fs::write(&path, text) {
-                return note(
-                    format,
-                    Exit::Input,
-                    &format!("cannot write {}: {error}", path.display()),
-                );
+            if let Err(exit) = write(&path, text, format) {
+                return exit;
             }
-            render::progress(&format!("wrote {}", path.display()));
         }
     }
     Exit::Success
@@ -674,18 +667,20 @@ fn dump_schema_facts(args: &SchemaFactsArgs, format: Format) -> Exit {
 /// §5): the old and the new schema, each `.proto` source or a `.binpb` descriptor set as
 /// `gen`/`explain` take it, read through the shipped descriptor doors and mapped ([`read_side`]),
 /// the two mappings compared by protobuf identity ([`diff::compare`]), and the comparison written
-/// to stdout — the migration report, or the JSON changeset under `--json`. No manifest is read:
-/// the two schemas are the source of truth, so the command composes two door loads and opens no
-/// door of its own. Both sides go through one door — both `.proto` or both `.binpb`, a multi-file
-/// schema going in as one self-contained descriptor set — and a mix is refused up front, before
-/// either side is read. Each side is read after a progress line naming it, so the last progress
-/// line on stderr names the side a failure is in. The exit classes (§6): a mix of doors, two
-/// schemas with no package in common once version segments are stripped, or a side declaring two
-/// versions of one package are the caller's arguments — `Usage`, as `facts`'s unknown root type
-/// is; a side that cannot be read is `Input`, one that does not build or map is `Schema`, a
-/// contained engine fault on either door is `Dependency`. A successful comparison exits `0`
-/// whatever it found; under `--exit-code`, a breaking change exits [`Exit::Diverged`] instead — a
-/// verdict, not an error, the product already on stdout.
+/// to stdout — the migration report, or the JSON changeset under `--json` — then, under
+/// `--bridge <path>`, its bridge views to that file ([`bridge`]). No manifest is read: the two
+/// schemas are the source of truth, so the command composes two door loads and opens no door of
+/// its own. Both sides go through one door — both `.proto` or both `.binpb`, a multi-file schema
+/// going in as one self-contained descriptor set — and a mix is refused up front, before either
+/// side is read. Each side is read after a progress line naming it, so the last progress line on
+/// stderr names the side a failure is in. The exit classes (§6): a mix of doors, two schemas with
+/// no package in common once version segments are stripped, or a side declaring two versions of
+/// one package are the caller's arguments — `Usage`, as `facts`'s unknown root type is; a side
+/// that cannot be read is `Input`, as is a bridge file that cannot be written; one that does not
+/// build or map is `Schema`, a contained engine fault on either door is `Dependency`. A successful
+/// comparison exits `0` whatever it found; under `--exit-code`, a breaking change exits
+/// [`Exit::Diverged`] instead — a verdict, not an error, over a product already on stdout and a
+/// bridge file already written ([`verdict`]).
 fn diff(args: &DiffArgs, format: Format) -> Exit {
     if is_descriptor_set(&args.old) != is_descriptor_set(&args.new) {
         return note(format, Exit::Usage, &mixed_doors(&args.old, &args.new));
@@ -727,19 +722,55 @@ fn diff(args: &DiffArgs, format: Format) -> Exit {
         diff_report::render(&comparison, Style::from(color_on(args.color)))
     };
     let produced = product(format, &text);
-    verdict(produced, args.exit_code, comparison.is_breaking())
+    // The bridge file after the product, so the report or changeset is stdout's whatever the file
+    // does, and only over a delivered product: a product that did not arrive ends the delivery
+    // with its own class, as `gen`'s first failed write does. A bridge file that cannot be
+    // written is the requested output not delivered — `Input`, the file-I/O class — and it takes
+    // precedence over the verdict: `Diverged` judges a comparison whose every output arrived,
+    // and a class the delivery raised is one it must not mask. In delivery order, then: the
+    // product's class, the bridge file's, the verdict.
+    let delivered = match &args.bridge {
+        Some(path) if produced == Exit::Success => bridge(&comparison, path, format),
+        _ => produced,
+    };
+    verdict(delivered, args.exit_code, comparison.is_breaking())
 }
 
-/// The exit of a comparison whose product write returned `produced`: the verdict
-/// [`Exit::Diverged`] only over a delivered product — `Success`, which a broken pipe also is, as
-/// [`product`] maps it — when `--exit-code` asks for it and the comparison is `breaking`;
-/// otherwise `produced` itself, so a write that failed keeps its own class rather than being
-/// masked by a verdict over a product that never arrived. Pure, so the rule is a unit test.
-fn verdict(produced: Exit, exit_code: bool, breaking: bool) -> Exit {
-    if produced == Exit::Success && exit_code && breaking {
+/// The exit of a comparison whose delivery — the product write, and the bridge write when asked
+/// for — returned `delivered`: the verdict [`Exit::Diverged`] only over a delivered comparison —
+/// `Success`, which a broken pipe also is, as [`product`] maps it — when `--exit-code` asks for
+/// it and the comparison is `breaking`; otherwise `delivered` itself, so a write that failed
+/// keeps its own class rather than being masked by a verdict over an output that never arrived.
+/// Pure, so the rule is a unit test.
+fn verdict(delivered: Exit, exit_code: bool, breaking: bool) -> Exit {
+    if delivered == Exit::Success && exit_code && breaking {
         Exit::Diverged
     } else {
-        produced
+        delivered
+    }
+}
+
+/// Write the bridge views to the `--bridge` file (spec §13.4): the rendered rule of every clean
+/// rename in the comparison, in the changeset's order, each under the `%!` provenance line the
+/// renderer spelled with it — the rules concatenated as they are, so the file is a generated
+/// module like any other, the renderer's text and nothing of the command's own (no comment, no
+/// rule). No clean rename is a progress note and no file: an empty module would say nothing, and
+/// a comment-only one would be text keryx did not render. `Success` when the file is written, and
+/// said so, or there was nothing to write; `Input` when it cannot be written, rendered as
+/// [`write`] renders it.
+fn bridge(comparison: &diff::Comparison<'_>, path: &Path, format: Format) -> Exit {
+    let rules: Vec<String> = comparison
+        .changes()
+        .iter()
+        .filter_map(diff::Change::bridge)
+        .collect();
+    if rules.is_empty() {
+        render::progress("no bridge views (no clean renames)");
+        return Exit::Success;
+    }
+    match write(path, &rules.concat(), format) {
+        Ok(()) => Exit::Success,
+        Err(exit) => exit,
     }
 }
 
@@ -795,6 +826,22 @@ fn read(path: &Path, format: Format) -> Result<Vec<u8>, Exit> {
             &format!("cannot read {}: {error}", path.display()),
         )
     })
+}
+
+/// Write a file at the CLI boundary and say so: `text` at `path`, reported as progress (`wrote
+/// <path>` on stderr — stdout stays the product), or the `Input` class rendered (§6 — a file that
+/// cannot be written, be the directory missing, the permission lacking, or the disk full: file
+/// I/O, not an internal bug), as [`read`] renders a file that cannot be read.
+fn write(path: &Path, text: &str, format: Format) -> Result<(), Exit> {
+    std::fs::write(path, text).map_err(|error| {
+        note(
+            format,
+            Exit::Input,
+            &format!("cannot write {}: {error}", path.display()),
+        )
+    })?;
+    render::progress(&format!("wrote {}", path.display()));
+    Ok(())
 }
 
 /// Load the schema for `gen`/`explain` from a spec set: [`load`] through the descriptor doors.
@@ -889,15 +936,17 @@ mod tests {
 
     #[test]
     fn the_diverged_verdict_rides_only_over_a_delivered_product() {
-        // `--exit-code` on a breaking comparison is `Diverged` over a delivered product — a
+        // `--exit-code` on a breaking comparison is `Diverged` over a delivered comparison — a
         // broken pipe included, since `product` maps it to `Success` — and nothing else: without
-        // `--exit-code`, or without a breaking change, the product's own exit stands; and a
-        // write that failed keeps its own class rather than being masked by the verdict, so a
-        // script keying on 9 never reads "diverged, delivered" over a product that never arrived.
+        // `--exit-code`, or without a breaking change, the delivery's own exit stands; and a
+        // write that failed — the product's `Internal`, the bridge file's `Input` — keeps its own
+        // class rather than being masked by the verdict, so a script keying on 9 never reads
+        // "diverged, delivered" over an output that never arrived.
         assert_eq!(verdict(Exit::Success, true, true), Exit::Diverged);
         assert_eq!(verdict(Exit::Success, false, true), Exit::Success);
         assert_eq!(verdict(Exit::Success, true, false), Exit::Success);
         assert_eq!(verdict(Exit::Internal, true, true), Exit::Internal);
+        assert_eq!(verdict(Exit::Input, true, true), Exit::Input);
     }
 
     #[test]

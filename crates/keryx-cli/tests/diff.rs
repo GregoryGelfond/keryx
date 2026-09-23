@@ -4,14 +4,18 @@
 //! per-side progress and diagnostics on stderr, and the exit contract: `0` on any successful
 //! comparison, `Diverged` (9) only under `--exit-code` when a change is breaking, `Usage` (2) for
 //! mixed doors or two schemas with no package in common, `Schema` (4) for a side that does not
-//! build — the last progress line naming which side. The thermal pair is keryx-core's evolution
-//! fixture (`evolution_v1.proto` -> `evolution_v2.proto`); the climate pair — two subject packages
-//! a side and a third on the new side, every kind of field change, an unchanged message and enum —
-//! is its report fixture (`report_v1.proto` -> `report_v2.proto`, each with its imports as one
-//! descriptor set); the rest are written here. The report is pinned to goldens (`golden/*.report`)
-//! with the banner's keryx version masked ([`masked`]); coloured under `--color always`, it is the
-//! same text with escape sequences around its roles ([`unstyled`] strips them), and plain on a
-//! pipe under the default `auto`.
+//! build — the last progress line naming which side. Under `--bridge <path>` the bridge views for
+//! the clean renames go to that file after the product — every rename's rendered rule under its
+//! `%!` provenance line, in the changeset's order, as the renderer spelled it (`golden/*.bridge.lp`)
+//! — with a note and no file when there is no clean rename, and `Input` (3) over the verdict when
+//! the file cannot be written. The thermal pair is keryx-core's evolution fixture
+//! (`evolution_v1.proto` -> `evolution_v2.proto`); the climate pair — two subject packages a side
+//! and a third on the new side, every kind of field change, an unchanged message and enum — is its
+//! report fixture (`report_v1.proto` -> `report_v2.proto`, each with its imports as one descriptor
+//! set); the rest are written here. The report is pinned to goldens (`golden/*.report`) with the
+//! banner's keryx version masked ([`masked`]); coloured under `--color always`, it is the same
+//! text with escape sequences around its roles ([`unstyled`] strips them), and plain on a pipe
+//! under the default `auto`.
 
 use keryx_test_support as support;
 
@@ -37,6 +41,21 @@ const EVOLUTION_REPORT: &str = include_str!("golden/evolution.report");
 /// `required` field and the `optional` scalars implicit now, a field into a oneof, maps and
 /// scalars of several kinds — with its version line masked.
 const TELEMETRY_REPORT: &str = include_str!("golden/telemetry.report");
+
+/// The old side of the panel pair: one message, three scalar fields.
+const PANEL_V1: &str = "syntax = \"proto3\";\npackage thermal.v1;\nmessage Reading { string sensor = 1; int32 temp_c = 2; int32 rh = 3; }\n";
+
+/// The new side of the panel pair: two of `Reading`'s fields renamed at their numbers (`temp_c`
+/// → `celsius`, `rh` → `humidity`), and a nested `Panel.Reading` added whose collision re-spells
+/// `Reading`'s predicate `v2__reading` — a sort renamed beside two fields renamed, three clean
+/// renames of two arities.
+const PANEL_V2: &str = "syntax = \"proto3\";\npackage thermal.v2;\nmessage Reading { string sensor = 1; int32 celsius = 2; int32 humidity = 3; }\nmessage Panel { message Reading { int32 n = 1; } Reading inner = 1; }\n";
+
+/// The bridge file for the panel pair: the three views in the changeset's order — the sort's,
+/// then the fields' by number — each its `%!` provenance line and the one rule `old :- new.` at
+/// the shared arity, as the renderer spells them and laid out as a generated module lays out its
+/// rules, one after the other.
+const PANEL_BRIDGES: &str = include_str!("golden/panel.bridge.lp");
 
 /// The keryx version as the report's banner names it — this build's, since the suite and the
 /// binary are one package.
@@ -128,6 +147,21 @@ fn command(old: &Path, new: &Path, includes: &[&Path], args: &[&str]) -> Command
 /// Run [`command`].
 fn diff(old: &Path, new: &Path, includes: &[&Path], args: &[&str]) -> Output {
     command(old, new, includes, args).output().unwrap()
+}
+
+/// Run [`command`] with `--bridge <bridge>`.
+fn diff_bridged(
+    old: &Path,
+    new: &Path,
+    includes: &[&Path],
+    args: &[&str],
+    bridge: &Path,
+) -> Output {
+    command(old, new, includes, args)
+        .arg("--bridge")
+        .arg(bridge)
+        .output()
+        .unwrap()
 }
 
 fn stdout(out: &Output) -> String {
@@ -524,6 +558,190 @@ fn exit_code_diverges_on_a_breaking_change_and_only_then() {
         !product.contains(r#""breaking":true"#),
         "no record is breaking: {product}"
     );
+}
+
+#[test]
+fn the_bridge_file_carries_every_clean_renames_rule_in_the_changesets_order() {
+    // The panel pair under `--bridge`: the file is the three bridge views in the changeset's
+    // order — the sort's (`reading → v2__reading`, arity 1), then the fields' by number (`temp_c
+    // → celsius`, `rh → humidity`, arity 2) — each the renderer's own text, a `%!` line naming
+    // the rename over the one rule `old :- new.`, one after the other as a generated module lays
+    // its rules out: no free-standing `%`, nothing of the command's own; byte for byte the
+    // golden. The product is stdout's first and whole — the changeset, whose three records carry
+    // the same three views — and stderr is the two progress lines and then `wrote <path>`.
+    let dir = scratch("diff_bridge_file");
+    let old = write(&dir, "panel_v1.proto", PANEL_V1);
+    let new = write(&dir, "panel_v2.proto", PANEL_V2);
+    let bridge = dir.join("panel.bridge.lp");
+    let out = diff_bridged(&old, &new, &[&dir], &["--json"], &bridge);
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    let views = std::fs::read_to_string(&bridge).expect("the bridge file is written");
+    assert_eq!(views, PANEL_BRIDGES, "the golden, byte for byte");
+    let rules: Vec<&str> = views
+        .lines()
+        .filter(|line| !line.starts_with("%! "))
+        .collect();
+    assert_eq!(
+        rules,
+        [
+            "reading(A) :- v2__reading(A).",
+            "temp_c(A, B) :- celsius(A, B).",
+            "rh(A, B) :- humidity(A, B).",
+        ],
+        "every rename's rule, the sort's first, then the fields' by number: {views}"
+    );
+    assert_eq!(
+        views.lines().filter(|line| line.starts_with("%! ")).count(),
+        3,
+        "each rule under its own provenance line: {views}"
+    );
+    assert!(
+        !views
+            .lines()
+            .any(|line| line.starts_with('%') && !line.starts_with("%! ")),
+        "no free-standing `%`: {views}"
+    );
+    let product = stdout(&out);
+    assert!(
+        product.starts_with('[') && product.matches(r#""bridge":"#).count() == 3,
+        "the changeset, with the three views in its records: {product}"
+    );
+    let stderr = stderr(&out);
+    let lines: Vec<&str> = stderr.lines().collect();
+    assert_eq!(
+        progress_lines(&stderr).len(),
+        2,
+        "one progress line per side: {stderr}"
+    );
+    assert_eq!(
+        lines.last().copied(),
+        Some(format!("keryx: wrote {}", bridge.display()).as_str()),
+        "the write reported after the sides: {stderr}"
+    );
+    assert_eq!(lines.len(), 3, "nothing else on stderr: {stderr}");
+}
+
+#[test]
+fn a_bridge_that_cannot_be_written_is_input_over_a_delivered_report() {
+    // `--bridge` into a directory that is not there: the report is still the product, on stdout
+    // first and whole (the golden, masked); then the write fails — `Input` (3), the file-I/O
+    // class, naming the path, structured on a pipe like every adapter error — with no `wrote`
+    // line and no file. The product is delivered before the file is attempted, so a bad path
+    // never costs the report.
+    let dir = scratch("diff_bridge_unwritable");
+    let bridge = dir.join("missing").join("thermal.bridge.lp");
+    let (old, new) = thermal_pair();
+    let out = diff_bridged(&old, &new, &[&fixtures()], &["--color", "never"], &bridge);
+    assert_eq!(out.status.code(), Some(3), "exit Input: {}", stderr(&out));
+    assert_eq!(
+        masked(&stdout(&out)),
+        EVOLUTION_REPORT,
+        "the report is delivered first"
+    );
+    let stderr = stderr(&out);
+    assert!(
+        stderr.contains("cannot write") && stderr.contains(&bridge.display().to_string()),
+        "the failure names the path: {stderr}"
+    );
+    assert!(
+        stderr.contains(r#""kind":"input""#),
+        "the class, structured on a pipe: {stderr}"
+    );
+    assert!(!stderr.contains("wrote"), "nothing written: {stderr}");
+    assert!(!bridge.exists(), "no file: {}", bridge.display());
+}
+
+#[test]
+fn a_failed_bridge_write_dominates_the_verdict_and_a_written_one_leaves_it() {
+    // `--exit-code` beside `--bridge` on the breaking thermal pair. Written, the file carries the
+    // rename's view and the exit is the verdict, `Diverged` (9): the bridge is an output, not a
+    // judgement, and delivering it changes none. Not written, the exit is `Input` (3): the
+    // requested output did not arrive, a class the verdict must not mask — the changeset on
+    // stdout either way, first.
+    let dir = scratch("diff_bridge_verdict");
+    let (old, new) = thermal_pair();
+    let written = dir.join("thermal.bridge.lp");
+    let out = diff_bridged(
+        &old,
+        &new,
+        &[&fixtures()],
+        &["--exit-code", "--json"],
+        &written,
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(9),
+        "exit Diverged: {}",
+        stderr(&out)
+    );
+    assert_eq!(
+        stdout(&out),
+        THERMAL_CHANGESET,
+        "the product, then the verdict"
+    );
+    let views = std::fs::read_to_string(&written).expect("the bridge file is written");
+    assert!(
+        views.starts_with("%! temp_c/2 reads celsius/2")
+            && views.ends_with("temp_c(A, B) :- celsius(A, B).\n"),
+        "the rename's view: {views}"
+    );
+    let unwritable = dir.join("missing").join("thermal.bridge.lp");
+    let out = diff_bridged(
+        &old,
+        &new,
+        &[&fixtures()],
+        &["--exit-code", "--json"],
+        &unwritable,
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(3),
+        "exit Input over Diverged: {}",
+        stderr(&out)
+    );
+    assert_eq!(
+        stdout(&out),
+        THERMAL_CHANGESET,
+        "the product is delivered before the file is attempted"
+    );
+    assert!(!unwritable.exists(), "no file: {}", unwritable.display());
+}
+
+#[test]
+fn no_clean_rename_is_a_note_and_no_bridge_file() {
+    // `--bridge` over a comparison with nothing to bridge — the telemetry pair, every kind of
+    // change but no rename, and a schema against itself — is a note on stderr, `no bridge views
+    // (no clean renames)`, and no file: not an empty one, not a comment-only one. The product is
+    // delivered as ever, and the exit is 0.
+    let dir = scratch("diff_bridge_none");
+    let (thermal, _) = thermal_pair();
+    let pairs = [
+        (
+            "telemetry",
+            fixtures().join("telemetry_v1.proto"),
+            fixtures().join("telemetry_v2.proto"),
+        ),
+        ("identical", thermal.clone(), thermal),
+    ];
+    for (name, old, new) in &pairs {
+        let bridge = dir.join(format!("{name}.bridge.lp"));
+        let out = diff_bridged(old, new, &[&fixtures()], &["--color", "never"], &bridge);
+        assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+        assert!(
+            !bridge.exists(),
+            "no file for nothing: {}",
+            bridge.display()
+        );
+        let stderr = stderr(&out);
+        assert!(
+            stderr
+                .lines()
+                .any(|line| line == "keryx: no bridge views (no clean renames)"),
+            "the note: {stderr}"
+        );
+        assert!(!stderr.contains("wrote"), "nothing written: {stderr}");
+        assert!(!stdout(&out).is_empty(), "the report is delivered: {name}");
+    }
 }
 
 #[test]
