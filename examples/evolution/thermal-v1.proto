@@ -1,0 +1,25 @@
+syntax = "proto3";
+package thermal.v1;
+
+import "keryx/options.proto";
+
+// A single sensor reading.
+message Reading      { string sensor = 1; int32 temp_c = 2; }
+// A batch of readings — a sequence.
+message ReadingBatch { repeated Reading readings = 1; }
+
+// An alert raised for a reading, graded by level.
+message Alert    { string sensor = 1; Level level = 2; }
+// The alerts raised for a batch — a set: membership, not order.
+message AlertSet { repeated Alert alerts = 1 [(keryx.set) = true]; }
+
+// A sensor's calibration offset.
+message Calibration { string sensor = 1; int32 offset = 2; }
+
+// How serious an alert is.
+enum Level {
+  LEVEL_UNSPECIFIED = 0;
+  LEVEL_LOW = 1;
+  LEVEL_HIGH = 2;
+  LEVEL_TEST = 3;
+}

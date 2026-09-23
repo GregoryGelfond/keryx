@@ -1,0 +1,5 @@
+syntax = "proto3";
+package station.alarms.v2;
+
+// An alarm policy — the package v2 introduces.
+message Policy { int32 threshold_c = 1; }

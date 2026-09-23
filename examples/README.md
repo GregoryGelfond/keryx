@@ -18,6 +18,8 @@ message ──keryx facts──▶ facts (proto→asp) ──your solver──�
 - **`keryx gen`** compiles a `.proto` into the vocabulary a model is written against.
 - **`keryx facts`** *shreds* a payload — breaks it down into flat, per-field ground facts.
 - **`keryx emit`** *reassembles* an answer set back into a payload.
+- **`keryx diff`** compares two versions of a schema — what changed for a model, and a bridge
+  for a clean rename.
 
 **keryx never runs a solver.** The solve between `facts` and `emit` is yours (clingo today), over
 the vocabulary keryx generated. keryx is the communication glue on both ends — nothing more.
@@ -35,7 +37,7 @@ gets wrong:
 | **Faithful type coverage** — enum, oneof, map, nested, proto2/proto3, three wire formats | your whole schema translates, not the easy 80% | [enum](enum/), [oneof](oneof/), [map](map/), [proto2](proto2/) |
 | **A bidirectional round trip** — answer sets back to canonical bytes | you get protobuf *out*, not just in | [thermal](thermal/), [config](config/) |
 | **Checked serializability** — an answer set that isn't a message is UNSAT, or diagnosed at the field path | you never emit garbage bytes | [thermal](thermal/), [config](config/) |
-| **Evolution as a contract** — a manifest binds every number, name, and predicate | a rename or renumber is a reviewable diff, not a silent break | every example |
+| **Evolution as a contract** — `keryx diff` compares two versions by field number and path, and bridges a clean rename | a rename or renumber is a reviewable diff, not a silent break | [evolution](evolution/) |
 
 ## The examples, in reading order
 
@@ -50,13 +52,17 @@ gets wrong:
    (§7.2, §4.1).
 6. **[proto2](proto2/)** — proto2 alongside proto3: a closed enum and the presence labels, on one
    uniform surface (§5).
+7. **[evolution](evolution/)** — `keryx diff`: the thermal schema at v1 and v2, the migration
+   report, the JSON changeset, and the bridge a v1 model loads to read v2 facts (§13.4, §27);
+   plus two schemas that are not two versions of anything, and a multi-file schema compared as
+   descriptor sets, package by package.
 
 ## What's built, and what's landing
 
-- **Built:** the compiler (`keryx gen`, `keryx explain`) and the inbound codec (`keryx facts` —
-  binary, textproto, and JSON payloads). Every example's proto→asp half runs today.
-- **Being finalized:** the outbound codec (`keryx emit`, asp→proto). The thermal and config
-  examples demonstrate the round trip; these docs will be extended as it lands.
+- **Built:** the compiler (`keryx gen`, `keryx explain`), the inbound codec (`keryx facts` —
+  binary, textproto, and JSON payloads), the outbound codec (`keryx emit`, asp→proto — the
+  thermal and config examples close the round trip), and the evolution instrument
+  (`keryx diff`). Every example runs today.
 - **Not yet:** Protocol Buffers editions.
 
 See the [top-level README](../README.md) for the project overview and

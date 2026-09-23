@@ -1,0 +1,29 @@
+syntax = "proto3";
+package thermal.v2;
+
+import "keryx/options.proto";
+
+// A single sensor reading: `temp_c` renamed `celsius` at its number, `humidity` added.
+message Reading      { string sensor = 1; int32 celsius = 2; int32 humidity = 3; }
+// A batch of readings — unchanged.
+message ReadingBatch { repeated Reading readings = 1; }
+
+// An alert raised for a reading — unchanged.
+message Alert    { string sensor = 1; Level level = 2; }
+// The alerts raised for a batch — an ordered log now, no longer a set.
+message AlertSet { repeated Alert alerts = 1; }
+
+// Where a sensor is installed — new in v2. (`Calibration` is gone.)
+message Site { string name = 1; string region = 2; }
+
+// How serious an alert is: `LEVEL_HIGH` renamed `LEVEL_CRITICAL` at its number, `LEVEL_TEST`
+// dropped (its number reserved), `LEVEL_ADVISORY` added — and an undeclared value is carried
+// rather than refused.
+enum Level {
+  option (keryx.unknown) = PRESERVE;
+  reserved 3;
+  LEVEL_UNSPECIFIED = 0;
+  LEVEL_LOW = 1;
+  LEVEL_CRITICAL = 2;
+  LEVEL_ADVISORY = 4;
+}

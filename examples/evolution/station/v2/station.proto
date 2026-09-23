@@ -1,0 +1,11 @@
+syntax = "proto3";
+package station.v2;
+
+import "alarms.proto";
+
+// A monitoring station and its alarm policy; the maintenance log is gone (its number reserved).
+message Station {
+  reserved 2;
+  string name = 1;
+  station.alarms.v2.Policy alarms = 3;
+}

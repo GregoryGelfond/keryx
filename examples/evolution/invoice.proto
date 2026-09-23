@@ -1,0 +1,7 @@
+syntax = "proto3";
+package billing.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// An invoice, stamped with the same well-known type — and nothing else in common with a beat.
+message Invoice { string id = 1; google.protobuf.Timestamp issued = 2; }
