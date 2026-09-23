@@ -9,7 +9,9 @@
 //! a side and a third on the new side, every kind of field change, an unchanged message and enum —
 //! is its report fixture (`report_v1.proto` -> `report_v2.proto`, each with its imports as one
 //! descriptor set); the rest are written here. The report is pinned to goldens (`golden/*.report`)
-//! with the banner's keryx version masked ([`masked`]).
+//! with the banner's keryx version masked ([`masked`]); coloured under `--color always`, it is the
+//! same text with escape sequences around its roles ([`unstyled`] strips them), and plain on a
+//! pipe under the default `auto`.
 
 use keryx_test_support as support;
 
@@ -107,9 +109,10 @@ fn climate_pair() -> (PathBuf, PathBuf) {
     )
 }
 
-/// Run `keryx diff <old> <new> [-I include]… [args]…`, the runner's `RUST_BACKTRACE` cleared so
-/// the subprocess shows the default panic posture.
-fn diff(old: &Path, new: &Path, includes: &[&Path], args: &[&str]) -> Output {
+/// The command `keryx diff <old> <new> [-I include]… [args]…`, the runner's `RUST_BACKTRACE`
+/// cleared so the subprocess shows the default panic posture, and its `NO_COLOR` cleared so the
+/// colour decision is the test's own.
+fn command(old: &Path, new: &Path, includes: &[&Path], args: &[&str]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_keryx"));
     command.arg("diff").arg(old).arg(new);
     for include in includes {
@@ -118,12 +121,33 @@ fn diff(old: &Path, new: &Path, includes: &[&Path], args: &[&str]) -> Output {
     command
         .args(args)
         .env_remove("RUST_BACKTRACE")
-        .output()
-        .unwrap()
+        .env_remove("NO_COLOR");
+    command
+}
+
+/// Run [`command`].
+fn diff(old: &Path, new: &Path, includes: &[&Path], args: &[&str]) -> Output {
+    command(old, new, includes, args).output().unwrap()
 }
 
 fn stdout(out: &Output) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// `text` with every escape sequence removed: the plain text a coloured report is over.
+fn unstyled(text: &str) -> String {
+    let mut plain = String::new();
+    let mut rest = text;
+    while let Some((before, sequence)) = rest.split_once('\x1b') {
+        plain.push_str(before);
+        assert!(
+            sequence.starts_with('['),
+            "a control sequence: {sequence:?}"
+        );
+        rest = sequence.split_once('m').map_or("", |(_, after)| after);
+    }
+    plain.push_str(rest);
+    plain
 }
 
 fn stderr(out: &Output) -> String {
@@ -289,6 +313,99 @@ fn a_single_package_report_names_the_transition_in_its_banner() {
         "the transition and the version: {banner}"
     );
     assert_eq!(masked(&report), EVOLUTION_REPORT);
+}
+
+#[test]
+fn the_report_is_coloured_under_always_and_plain_on_a_pipe() {
+    // The thermal pair under `--color always`: the report carries escape sequences by role — on
+    // the rename row, the gutter dim, `~ renamed` yellow, the two names bold around a dim arrow,
+    // the shared arity dim, the annotation unpainted — and stripped of them it is the `--color
+    // never` report byte for byte, so the plain golden pins the coloured layout too. `always`
+    // decides alone: `NO_COLOR=1` in the environment moves it no more than the pipe does. Under
+    // the default `auto`, stdout here is a pipe and not a terminal, so the report is plain.
+    let (old, new) = thermal_pair();
+    let out = diff(&old, &new, &[&fixtures()], &["--color", "always"]);
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    let colored = stdout(&out);
+    let plain = stdout(&diff(&old, &new, &[&fixtures()], &["--color", "never"]));
+    assert!(!plain.contains('\x1b'), "no escape sequence: {plain:?}");
+    assert_ne!(colored, plain, "the coloured report carries sequences");
+    assert_eq!(unstyled(&colored), plain, "the same text under the colour");
+    let row = colored
+        .lines()
+        .find(|line| unstyled(line).starts_with("  #2  ~ renamed   temp_c → celsius"))
+        .expect("the rename row");
+    assert!(
+        row.starts_with("\x1b[2m  #2\x1b[0m  \x1b[33m~ renamed\x1b[0m   ")
+            && row.contains(
+                "\x1b[1mtemp_c\x1b[0m\x1b[2m → \x1b[0m\x1b[1mcelsius\x1b[0m  \x1b[2m/2\x1b[0m"
+            )
+            && row.ends_with("  bridge available"),
+        "the roles' sequences: {row:?}"
+    );
+    let forced = command(&old, &new, &[&fixtures()], &["--color", "always"])
+        .env("NO_COLOR", "1")
+        .output()
+        .unwrap();
+    assert_eq!(stdout(&forced), colored, "`always` overrides `NO_COLOR`");
+    let auto = stdout(&diff(&old, &new, &[&fixtures()], &[]));
+    assert_eq!(auto, plain, "`auto` on a pipe is the plain report");
+}
+
+#[test]
+fn a_referent_renamed_is_the_sorts_change_not_the_fields_emphasis() {
+    // `Batch.readings` names `Reading` on both sides and goes from a sequence to a singular field
+    // (whose presence, explicit for a proto3 message field, is partial where the sequence's was
+    // total); on the new side a nested `Panel.Reading` collides with `Reading`, whose predicate
+    // the collision re-spells `v2__reading`. The field's signature strings therefore differ in
+    // the type too (`reading` → `v2__reading`), but the comparison records the form, the arity,
+    // and the presence as the field's own change and not the type — the referent is the same
+    // sort on both sides — and the emphasis is read from that record: the row bolds those three
+    // deltas and names the re-spelling nowhere; it appears once in the report, bold on the
+    // sort's own header as its rename.
+    let dir = scratch("diff_referent_renamed");
+    let old = write(
+        &dir,
+        "referent_v1.proto",
+        "syntax = \"proto3\";\npackage thermal.v1;\nmessage Reading { string sensor = 1; }\nmessage Batch { repeated Reading readings = 1; }\n",
+    );
+    let new = write(
+        &dir,
+        "referent_v2.proto",
+        "syntax = \"proto3\";\npackage thermal.v2;\nmessage Reading { string sensor = 1; }\nmessage Batch { Reading readings = 1; }\nmessage Panel { message Reading { int32 n = 1; } Reading inner = 1; }\n",
+    );
+    let out = diff(&old, &new, &[&dir], &["--color", "always"]);
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    let report = stdout(&out);
+    let row = report
+        .lines()
+        .find(|line| unstyled(line).starts_with("  #1  ! changed   readings"))
+        .expect("the changed field's row");
+    assert!(
+        unstyled(row).contains("seq → singular, /3 → /2, total → partial  no bridge"),
+        "the form, the arity, and the presence, and no type delta: {row:?}"
+    );
+    assert!(
+        row.contains("\x1b[1mseq\x1b[0m\x1b[2m → \x1b[0m\x1b[1msingular\x1b[0m")
+            && row.contains("\x1b[1m/3\x1b[0m\x1b[2m → \x1b[0m\x1b[1m/2\x1b[0m")
+            && row.contains("\x1b[1mtotal\x1b[0m\x1b[2m → \x1b[0m\x1b[1mpartial\x1b[0m")
+            && !row.contains("v2__reading"),
+        "the aspect's dimensions bold, the re-spelling not on the row: {row:?}"
+    );
+    let header = report
+        .lines()
+        .find(|line| unstyled(line).starts_with(" reading → v2__reading · thermal.Reading"))
+        .expect("the sort's header");
+    assert!(
+        header.contains("\x1b[1mreading\x1b[0m\x1b[2m → \x1b[0m\x1b[1mv2__reading\x1b[0m")
+            && unstyled(header).ends_with("~ renamed · bridge available"),
+        "the sort's own rename, bold on its header: {header:?}"
+    );
+    assert_eq!(
+        report.matches("v2__reading").count(),
+        1,
+        "the re-spelling is on the header alone: {report}"
+    );
 }
 
 #[test]

@@ -20,9 +20,12 @@
 //! spell is the manifest's (spec §13.4), the words the changeset's signatures carry, pinned to
 //! them by test.
 //!
-//! Styled through a [`Style`]: the writer paints each part by its role, and the plain style —
-//! the one style here, the form for `NO_COLOR` and for a stdout that is not a terminal — paints
-//! every role as the identity, so padding is measured on the text a reader sees.
+//! Styled through a [`Style`]: the writer paints each part by its role — a mark in its
+//! category's colour, the gutter and the context of a change dim, a predicate and a token that
+//! differs bold — and measures every column on the plain text, so the coloured report is the
+//! plain one with sequences around its spans and nothing else. The plain style — the form for
+//! `NO_COLOR`, for a stdout that is not a terminal, and for `--color never` — paints every role
+//! as the identity.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -55,13 +58,26 @@ const SIGNATURE_WIDTH: usize = 30;
 /// The least gap between two columns' texts.
 const GAP: usize = 2;
 
+/// The sequences the coloured style paints with — ECMA-48's select-graphic-rendition control,
+/// `ESC [ n m`: an attribute (bold, dim) or a foreground colour (`3n`), never a background fill
+/// (`4n`), each painted span closed by the reset.
+const RESET: &str = "\x1b[0m";
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+const RED: &str = "\x1b[31m";
+const GREEN: &str = "\x1b[32m";
+const YELLOW: &str = "\x1b[33m";
+const MAGENTA: &str = "\x1b[35m";
+
 /// How the report is styled: a table of terminal sequences, one per role the writer paints — the
-/// dimmed context (rules, the gutter, the stable remainder of a row, a header's status), the
-/// emphasized text (a header's predicate, the token that differs), and the four marks by
-/// category — each closed by `reset`. The plain style — no escape sequence, the form for
-/// `NO_COLOR` and for a stdout that is not a terminal — is the table with every entry empty, so
-/// each hook is the identity by construction. The command's colour decision reaches the renderer
-/// through [`Style::from`]; the coloured table is not filled in yet, so both decisions are plain.
+/// dimmed context (rules, the gutter, the stable remainder of a row beside its change, a header's
+/// path and status), the emphasized text (a header's predicate, the token that differs), and the
+/// four marks by category — each closed by `reset`. The plain style — no escape sequence, the
+/// form for `NO_COLOR`, for a stdout that is not a terminal, and for `--color never` — is the
+/// table with every entry empty, so each hook is the identity by construction; the coloured style
+/// is the table filled: yellow for a rename, red for a removal, green for an addition, magenta
+/// for a change, dim for the context and bold for the emphasis. The command's colour decision
+/// reaches the renderer through [`Style::from`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Style {
     dim: &'static str,
@@ -88,16 +104,39 @@ impl Style {
         }
     }
 
-    /// The style for the command's colour decision: coloured when `colored`, else plain. The
-    /// coloured table is not filled in yet, so both are the plain style.
+    /// The coloured style: each role's sequence, a mark in its category's colour.
     #[must_use]
-    pub fn from(_colored: bool) -> Style {
-        Style::plain()
+    pub fn colored() -> Style {
+        Style {
+            dim: DIM,
+            bold: BOLD,
+            renamed: YELLOW,
+            removed: RED,
+            added: GREEN,
+            changed: MAGENTA,
+            reset: RESET,
+        }
     }
 
-    /// `text` between `open` and the reset.
+    /// The style for the command's colour decision: [`Style::colored`] when `colored`, else
+    /// [`Style::plain`].
+    #[must_use]
+    pub fn from(colored: bool) -> Style {
+        if colored {
+            Style::colored()
+        } else {
+            Style::plain()
+        }
+    }
+
+    /// `text` between `open` and the reset — `text` itself when `open` is empty, so a role the
+    /// style leaves unpainted adds no stray reset.
     fn paint(&self, open: &str, text: &str) -> String {
-        format!("{open}{text}{}", self.reset)
+        if open.is_empty() {
+            text.to_owned()
+        } else {
+            format!("{open}{text}{}", self.reset)
+        }
     }
 
     /// A rule.
@@ -561,7 +600,7 @@ impl Report {
         line.push(path, |text| style.stable(text));
         if let Some(delta) = delta {
             line.plain("  ");
-            piece(&mut line, delta, style);
+            piece(&mut line, delta, style, true);
         }
         if let Some(status) = status {
             line.right(&status);
@@ -641,7 +680,8 @@ impl Report {
     }
 
     /// One row: the gutter, the mark, the name column, the rest of the signature, and the
-    /// annotation at its column.
+    /// annotation at its column — the signature's stable pieces dimmed as the context of a change
+    /// when the row carries a delta, unpainted on a one-sided row.
     fn row(&mut self, number: i32, glyph: Glyph, name: &Piece, rest: &[Piece], annotation: &str) {
         let style = self.style;
         let mut line = Line::default();
@@ -650,14 +690,17 @@ impl Report {
         line.plain("  ");
         line.push(glyph.mark(), |text| style.mark(glyph, text));
         line.column(ROW_START, 3);
-        piece(&mut line, name, style);
+        let beside_change = std::iter::once(name)
+            .chain(rest)
+            .any(|piece| matches!(piece, Piece::Delta(..)));
+        piece(&mut line, name, style, beside_change);
         if !rest.is_empty() {
             line.column(ROW_START + NAME_WIDTH, GAP);
             for (index, dimension) in rest.iter().enumerate() {
                 if index > 0 {
                     line.push(", ", |text| style.stable(text));
                 }
-                piece(&mut line, dimension, style);
+                piece(&mut line, dimension, style, beside_change);
             }
         }
         if !annotation.is_empty() {
@@ -732,10 +775,14 @@ fn posture(glyph: Glyph, bridged: bool) -> Option<&'static str> {
     }
 }
 
-/// Append `piece` to `line`: stable text as context, a delta as its two tokens around an arrow.
-fn piece(line: &mut Line, piece: &Piece, style: Style) {
+/// Append `piece` to `line`: a delta as its two tokens, emphasized, around a dimmed arrow; stable
+/// text as dimmed context when it stands `beside_change` — in a row or a header carrying a delta
+/// — and unpainted otherwise, since a one-sided row's whole signature is stable and holds no
+/// change to be the context of.
+fn piece(line: &mut Line, piece: &Piece, style: Style, beside_change: bool) {
     match piece {
-        Piece::Stable(text) => line.push(text, |text| style.stable(text)),
+        Piece::Stable(text) if beside_change => line.push(text, |text| style.stable(text)),
+        Piece::Stable(text) => line.plain(text),
         Piece::Delta(old, new) => {
             line.push(old, |text| style.token(text));
             line.push(" → ", |text| style.stable(text));
@@ -852,11 +899,21 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use keryx_core::descriptor::ingest;
-    use keryx_core::diff::{self, ChangeKind, Comparison};
+    use keryx_core::diff::{self, ChangeKind, Comparison, FieldDiff, PackageDiff, SortDiff};
     use keryx_core::policy::{self, Mapping};
     use keryx_test_support as support;
 
-    use super::{Category, Glyph, Line, WIDTH, declared, descriptor, enum_descriptor, noun, width};
+    use super::{
+        Category, Glyph, Line, Piece, Style, WIDTH, declared, descriptor, dimensions,
+        enum_descriptor, noun, piece, render, width,
+    };
+
+    /// The three fixture pairs the goldens pin, old then new.
+    const PAIRS: [(&str, &str); 3] = [
+        ("evolution_v1.proto", "evolution_v2.proto"),
+        ("report_v1.proto", "report_v2.proto"),
+        ("telemetry_v1.proto", "telemetry_v2.proto"),
+    ];
 
     /// The seventeen kinds of change and the baseline, each once.
     const KINDS: [ChangeKind; 18] = [
@@ -944,11 +1001,7 @@ mod tests {
         // simplified out of a word fails here. `(closed, preserve)` is no such descriptor: PRESERVE
         // on a closed enum is refused at the policy door, so no mapping, and no report, holds it.
         let mut covered: BTreeSet<String> = BTreeSet::new();
-        for (old, new) in [
-            ("evolution_v1.proto", "evolution_v2.proto"),
-            ("report_v1.proto", "report_v2.proto"),
-            ("telemetry_v1.proto", "telemetry_v2.proto"),
-        ] {
+        for (old, new) in PAIRS {
             let (old, new) = (mapping_of(old), mapping_of(new));
             let comparison = diff::compare(&old, &new).expect("comparable");
             let spelled = spellings(&comparison);
@@ -1054,5 +1107,247 @@ mod tests {
         line.right(&status);
         assert_eq!(line.width, WIDTH);
         assert!(line.text.ends_with("   unchanged"));
+    }
+
+    /// `text` with every escape sequence removed: the plain text a coloured render is over.
+    fn unstyled(text: &str) -> String {
+        let mut plain = String::new();
+        let mut rest = text;
+        while let Some((before, sequence)) = rest.split_once('\x1b') {
+            plain.push_str(before);
+            assert!(
+                sequence.starts_with('['),
+                "a control sequence: {sequence:?}"
+            );
+            rest = sequence.split_once('m').map_or("", |(_, after)| after);
+        }
+        plain.push_str(rest);
+        plain
+    }
+
+    /// The field of the tree whose proto path on either side is `path`.
+    fn field<'c, 'a>(comparison: &'c Comparison<'a>, path: &str) -> &'c FieldDiff<'a> {
+        comparison
+            .packages()
+            .iter()
+            .flat_map(PackageDiff::sorts)
+            .flat_map(SortDiff::fields)
+            .find(|field| {
+                [field.old_field(), field.new_field()]
+                    .into_iter()
+                    .flatten()
+                    .any(|side| side.proto().as_str() == path)
+            })
+            .unwrap_or_else(|| panic!("{path} is a field of the tree"))
+    }
+
+    /// The line of `report` whose plain text starts with `prefix`.
+    fn line_starting<'r>(report: &'r str, prefix: &str) -> &'r str {
+        report
+            .lines()
+            .find(|line| unstyled(line).starts_with(prefix))
+            .unwrap_or_else(|| panic!("a line starting `{prefix}`: {report}"))
+    }
+
+    #[test]
+    fn the_coloured_style_paints_each_role_and_the_plain_one_nothing() {
+        // `Style::from` maps the command's decision: `false` is the plain style — every role the
+        // identity — and `true` the coloured one, a table of select-graphic-rendition sequences,
+        // attributes and foreground colours only (no background fill), each painted span closed by
+        // the reset: a mark in its category's colour — yellow for a rename, red for a removal,
+        // green for an addition, magenta for a change — the gutter, a rule, stable context, and a
+        // status dim, a predicate and a differing token bold. The annotation is painted in neither
+        // style, and adds no stray reset.
+        let plain = Style::from(false);
+        assert_eq!(plain, Style::plain());
+        assert_eq!(
+            (plain.token("x"), plain.stable("x"), plain.gutter("x")),
+            ("x".to_owned(), "x".to_owned(), "x".to_owned())
+        );
+        assert_eq!(plain.mark(Glyph::Renamed, "x"), "x");
+        let colored = Style::from(true);
+        assert_eq!(
+            colored,
+            Style {
+                dim: "\x1b[2m",
+                bold: "\x1b[1m",
+                renamed: "\x1b[33m",
+                removed: "\x1b[31m",
+                added: "\x1b[32m",
+                changed: "\x1b[35m",
+                reset: "\x1b[0m",
+            }
+        );
+        assert_eq!(
+            colored.mark(Glyph::Renamed, "~ renamed"),
+            "\x1b[33m~ renamed\x1b[0m"
+        );
+        assert_eq!(
+            colored.mark(Glyph::Removed, "- removed"),
+            "\x1b[31m- removed\x1b[0m"
+        );
+        assert_eq!(
+            colored.mark(Glyph::Added, "+ added"),
+            "\x1b[32m+ added\x1b[0m"
+        );
+        assert_eq!(
+            colored.mark(Glyph::Changed, "! changed"),
+            "\x1b[35m! changed\x1b[0m"
+        );
+        assert_eq!(colored.gutter("  #2"), "\x1b[2m  #2\x1b[0m");
+        assert_eq!(colored.stable("/2"), "\x1b[2m/2\x1b[0m");
+        assert_eq!(colored.rule(" ─"), "\x1b[2m ─\x1b[0m");
+        assert_eq!(colored.status("unchanged"), "\x1b[2munchanged\x1b[0m");
+        assert_eq!(colored.token("celsius"), "\x1b[1mcelsius\x1b[0m");
+        assert_eq!(colored.predicate("reading"), "\x1b[1mreading\x1b[0m");
+        assert_eq!(colored.annotation("no bridge"), "no bridge");
+    }
+
+    #[test]
+    fn a_delta_is_emphasized_from_its_structure() {
+        // The emphasis keys on the piece's variant: a delta's two tokens are bold around a dim
+        // arrow, and stable text beside a change is dim as its context — painted from the
+        // structure, never by comparing two rendered strings — the width the plain text's either
+        // way. Stable text in a row with no change — a one-sided field's whole signature — is
+        // unpainted: there is no change in it to be the context of. Under the plain style the
+        // same pieces are their text.
+        let colored = Style::from(true);
+        let mut delta = Line::default();
+        piece(
+            &mut delta,
+            &Piece::Delta("temp_c".to_owned(), "celsius".to_owned()),
+            colored,
+            true,
+        );
+        assert_eq!(
+            delta.text,
+            "\x1b[1mtemp_c\x1b[0m\x1b[2m → \x1b[0m\x1b[1mcelsius\x1b[0m"
+        );
+        assert_eq!(delta.width, width("temp_c → celsius"));
+        let mut context = Line::default();
+        piece(&mut context, &Piece::Stable("/2".to_owned()), colored, true);
+        assert_eq!(
+            (context.text.as_str(), context.width),
+            ("\x1b[2m/2\x1b[0m", 2)
+        );
+        let mut alone = Line::default();
+        piece(
+            &mut alone,
+            &Piece::Stable("note/2".to_owned()),
+            colored,
+            false,
+        );
+        assert_eq!((alone.text.as_str(), alone.width), ("note/2", 6));
+        let mut plain = Line::default();
+        piece(
+            &mut plain,
+            &Piece::Delta("temp_c".to_owned(), "celsius".to_owned()),
+            Style::plain(),
+            true,
+        );
+        piece(
+            &mut plain,
+            &Piece::Stable("/2".to_owned()),
+            Style::plain(),
+            true,
+        );
+        assert_eq!(
+            (plain.text.as_str(), plain.width),
+            ("temp_c → celsius/2", 18)
+        );
+    }
+
+    #[test]
+    fn a_changed_rows_emphasis_reads_the_aspect() {
+        // `AlertSet.alerts` in the climate pair changed its form and, with it, its arity: the
+        // aspect's differing dimensions — those and no other — become the row's deltas, each bold
+        // in the coloured report around a dim arrow, the field's stable name the dim context
+        // beside them. The emphasis is read from the aspect's per-side values, never found by
+        // comparing two rendered signatures: `Reading.grade` names an enum re-spelled
+        // `v2__grade` on the new side, so its signature strings differ, yet it is unchanged by the
+        // comparison — no aspect, no row, nothing emphasized — the re-spelling being the enum's own
+        // rename, bold on the enum's header alone.
+        let (old, new) = (mapping_of("report_v1.proto"), mapping_of("report_v2.proto"));
+        let comparison = diff::compare(&old, &new).expect("comparable");
+        let alerts = field(&comparison, "climate.v1.AlertSet.alerts");
+        let aspect = alerts.aspect().expect("a changed field has an aspect");
+        assert_eq!(
+            dimensions(&aspect),
+            vec![
+                Piece::Delta("set".to_owned(), "seq".to_owned()),
+                Piece::Delta("/2".to_owned(), "/3".to_owned()),
+            ]
+        );
+        let grade = field(&comparison, "climate.v1.Reading.grade");
+        assert_eq!(grade.kind(), ChangeKind::Unchanged);
+        assert!(grade.aspect().is_none(), "no change of the field's own");
+        let report = render(&comparison, Style::from(true));
+        let row = line_starting(&report, "  #1  ! changed   alerts");
+        assert!(
+            row.contains("\x1b[2malerts\x1b[0m")
+                && row.contains("\x1b[1mset\x1b[0m\x1b[2m → \x1b[0m\x1b[1mseq\x1b[0m")
+                && row.contains("\x1b[1m/2\x1b[0m\x1b[2m → \x1b[0m\x1b[1m/3\x1b[0m"),
+            "the stable name dim, each dimension's tokens bold: {row:?}"
+        );
+        let header = line_starting(&report, " grade → v2__grade · climate.Grade");
+        assert!(
+            header.contains("\x1b[1mgrade\x1b[0m\x1b[2m → \x1b[0m\x1b[1mv2__grade\x1b[0m"),
+            "the enum's rename, bold on its header: {header:?}"
+        );
+        assert_eq!(
+            report.matches("v2__grade").count(),
+            1,
+            "the re-spelling is on the header alone: {report}"
+        );
+    }
+
+    #[test]
+    fn the_coloured_report_is_the_plain_one_with_sequences_added() {
+        // Over the three fixture pairs: the plain style writes no escape sequence, and the
+        // coloured report stripped of its sequences is the plain report byte for byte — colour
+        // adds sequences around the roles and nothing else, so the plain goldens pin the coloured
+        // layout too, every column measured on the plain text. On the thermal rename row: the
+        // gutter dim, the mark yellow, the two names bold around a dim arrow, the shared arity dim
+        // as the context of the change, the annotation unpainted. A one-sided row — the removed
+        // `note` — carries no change to be the context of, so its signature is unpainted beside its
+        // red mark; and a header's predicate is bold beside its dim path.
+        for (old, new) in PAIRS {
+            let (old, new) = (mapping_of(old), mapping_of(new));
+            let comparison = diff::compare(&old, &new).expect("comparable");
+            let plain = render(&comparison, Style::plain());
+            assert!(!plain.contains('\x1b'), "no escape sequence: {plain:?}");
+            let colored = render(&comparison, Style::from(true));
+            assert_ne!(colored, plain, "the coloured report carries sequences");
+            assert_eq!(unstyled(&colored), plain, "the same text under the colour");
+        }
+        let (old, new) = (
+            mapping_of("evolution_v1.proto"),
+            mapping_of("evolution_v2.proto"),
+        );
+        let comparison = diff::compare(&old, &new).expect("comparable");
+        let report = render(&comparison, Style::from(true));
+        let row = line_starting(&report, "  #2  ~ renamed   temp_c → celsius");
+        assert!(
+            row.starts_with("\x1b[2m  #2\x1b[0m  \x1b[33m~ renamed\x1b[0m   "),
+            "the gutter dim, the mark yellow: {row:?}"
+        );
+        assert!(
+            row.contains(
+                "\x1b[1mtemp_c\x1b[0m\x1b[2m → \x1b[0m\x1b[1mcelsius\x1b[0m  \x1b[2m/2\x1b[0m"
+            ),
+            "the names bold, the arity dim: {row:?}"
+        );
+        assert!(row.ends_with("  bridge available"), "unpainted: {row:?}");
+        let removed = line_starting(&report, "  #3  - removed   note/2");
+        assert!(
+            removed
+                .ends_with("\x1b[31m- removed\x1b[0m   note/2            string,total  no bridge"),
+            "a one-sided signature unpainted beside its mark: {removed:?}"
+        );
+        let header = line_starting(&report, " reading · thermal.Reading");
+        assert_eq!(
+            header,
+            " \x1b[1mreading\x1b[0m\x1b[2m · \x1b[0m\x1b[2mthermal.Reading\x1b[0m"
+        );
     }
 }
