@@ -17,6 +17,7 @@ pub mod exit;
 pub mod render;
 
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
 use std::fmt::Write as _;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -208,17 +209,26 @@ enum ColorChoice {
     Never,
 }
 
-/// Whether the report is coloured, by `--color`: `always` and `never` decide; `auto` colours when
-/// stdout — the stream the report travels on — is a terminal and `NO_COLOR` is absent or empty
-/// (no-color.org: the variable present and non-empty disables colour, whatever its value).
+/// Whether the report is coloured, by `--color`: the rule [`colored`] over what the command
+/// observes — whether stdout, the stream the report travels on, is a terminal, and `NO_COLOR` as
+/// the environment holds it.
 fn color_on(choice: ColorChoice) -> bool {
+    colored(
+        choice,
+        std::io::stdout().is_terminal(),
+        std::env::var_os("NO_COLOR").as_deref(),
+    )
+}
+
+/// The colour rule: `always` and `never` decide alone; `auto` colours a `terminal` unless
+/// `no_color` — `NO_COLOR` as the environment holds it — is present and non-empty (no-color.org:
+/// the variable set to anything at all disables colour, whatever it says; empty does not). Pure
+/// over what was observed, so the rule is a unit test without a terminal.
+fn colored(choice: ColorChoice, terminal: bool, no_color: Option<&OsStr>) -> bool {
     match choice {
         ColorChoice::Always => true,
         ColorChoice::Never => false,
-        ColorChoice::Auto => {
-            std::io::stdout().is_terminal()
-                && std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty())
-        }
+        ColorChoice::Auto => terminal && no_color.is_none_or(OsStr::is_empty),
     }
 }
 
@@ -844,14 +854,38 @@ fn with_descriptor_set_hint(mut diagnostics: Diagnostics) -> Diagnostics {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsStr;
     use std::path::Path;
 
     use keryx_core::codec::PayloadFormat;
 
     use super::{
-        Exit, PAYLOAD_FORMATS, admitted_payload_formats, parse_root, payload_format, type_matches,
-        verdict,
+        ColorChoice, Exit, PAYLOAD_FORMATS, admitted_payload_formats, color_on, colored,
+        parse_root, payload_format, type_matches, verdict,
     };
+
+    #[test]
+    fn colour_follows_the_choice_then_the_terminal_and_no_color() {
+        // `always` and `never` decide alone — a pipe, or `NO_COLOR` set, moves neither. `auto`
+        // colours a terminal unless `NO_COLOR` is present and non-empty, as no-color.org has it:
+        // unset colours, the empty string colours (an empty variable does not disable), and any
+        // other value — `1`, `0`, a word — disables, whatever it says; and a stdout that is not a
+        // terminal is plain under `auto`. The rule is pure over what the command observed, so it
+        // is tested here without a terminal; the explicit choices hold through `color_on` itself.
+        assert!(colored(ColorChoice::Always, false, Some(OsStr::new("1"))));
+        assert!(!colored(ColorChoice::Never, true, None));
+        assert!(colored(ColorChoice::Auto, true, None));
+        assert!(colored(ColorChoice::Auto, true, Some(OsStr::new(""))));
+        for value in ["1", "0", "false", "no"] {
+            assert!(
+                !colored(ColorChoice::Auto, true, Some(OsStr::new(value))),
+                "NO_COLOR={value} disables"
+            );
+        }
+        assert!(!colored(ColorChoice::Auto, false, None));
+        assert!(color_on(ColorChoice::Always));
+        assert!(!color_on(ColorChoice::Never));
+    }
 
     #[test]
     fn the_diverged_verdict_rides_only_over_a_delivered_product() {
