@@ -1,0 +1,28 @@
+syntax = "proto3";
+package thermal.v2;
+
+// The new side of the evolution instrument's fixture pair (`evolution_v1.proto` is the old): the
+// version bump `thermal.v1` -> `thermal.v2` with `Reading.temp_c` renamed `celsius` at its number
+// (a pure rename, bridged), `Reading.humidity` added, `Alert.note` removed, the message `Batch`
+// added with its one field, and `LEVEL_CRITICAL` added to `Level`.
+message Reading {
+  string sensor = 1;
+  int32 celsius = 2;
+  int32 humidity = 3;
+}
+
+message Batch {
+  repeated Reading readings = 1;
+}
+
+message Alert {
+  string sensor = 1;
+  Level severity = 2;
+}
+
+enum Level {
+  LEVEL_UNSPECIFIED = 0;
+  LEVEL_LOW = 1;
+  LEVEL_HIGH = 2;
+  LEVEL_CRITICAL = 3;
+}

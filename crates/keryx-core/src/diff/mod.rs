@@ -14,8 +14,9 @@
 //! The comparison is a model, not a change list: [`compare`] builds a [`Comparison`] — a matched
 //! tree of packages, then sorts and enums, then fields and values, each node carrying its
 //! per-side references with the unchanged nodes present — and every node classifies itself
-//! ([`ChangeKind`]). The flat rows of [`Comparison::changes`] serve a machine-readable changeset
-//! and an exit code; the tree serves a report that shows what stayed beside what changed.
+//! ([`ChangeKind`]). The flat rows of [`Comparison::changes`] serve the JSON changeset
+//! ([`Comparison::to_json`]) and an exit code; the tree serves a report that shows what stayed
+//! beside what changed.
 //!
 //! Only *subject* vocabulary is compared ([`SortMapping::is_subject`]): the referent closure a
 //! subject pulls in — a well-known type, an imported dependency — is neither the schema's own
@@ -40,6 +41,7 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde_json::{Map, Value};
 use themelios_program::Name;
 
 use crate::descriptor::model::{FqName, Package};
@@ -122,6 +124,34 @@ impl<'a> Comparison<'a> {
         }
         rows.sort_by_key(|(key, _)| *key);
         rows.into_iter().map(|(_, change)| change).collect()
+    }
+
+    /// The JSON changeset — the `--json` product (spec §13.4, §27): the rows of
+    /// [`changes`](Comparison::changes) as one flat array, one record per changed node in that
+    /// order, so the text is a function of the two mappings alone (P3). A record carries
+    /// `package` (the normalized package), `kind` (the change's slug — the [`ChangeKind`]
+    /// variant's name in `snake_case`: `renamed`, `removed`, `added`, `changed`, `sort_renamed`,
+    /// `enum_renamed`, `message_added`, `message_removed`, `enum_added`, `enum_removed`,
+    /// `value_added`, `value_removed`, `value_renamed`, `openness_changed`, `preserve_changed`,
+    /// `package_added`, `package_removed`), `old_path` and `new_path` (the element's
+    /// fully-qualified proto path per side, `null` on a side the element is not on), `old` and
+    /// `new` (the per-side rendered signatures, [`old_signature`](Change::old_signature) and its
+    /// twin — `null` on a missing side and on a package row, which has none), and `breaking`
+    /// (the kind's classification); and, only where the row has one, `number` (a field's or
+    /// value's — absent on a package, sort, or enum row) and `bridge` (the rendered bridge view
+    /// of a pure rename, its newlines escaped). Compact — one line, no trailing newline — with a
+    /// record's keys in `serde_json`'s sorted order.
+    ///
+    /// Built over `serde_json::Value` and serialized by `serde_json` — the crate's JSON
+    /// serializer already, for the payload door's JSON form — rather than by a writer of its own:
+    /// the one job a hand-rolled writer would take on is JSON string escaping (a bridge carries
+    /// newlines), which is exactly where a hand-rolled writer goes wrong, for no gain over the
+    /// dependency in hand.
+    #[must_use]
+    pub fn to_json(&self) -> String {
+        let records = self.changes().iter().map(Change::record).collect();
+        serde_json::to_string(&Value::Array(records))
+            .expect("a changeset is strings, integers, booleans, and nulls, which serialize")
     }
 }
 
@@ -825,6 +855,34 @@ impl ChangeKind {
             | ChangeKind::PackageAdded => false,
         }
     }
+
+    /// The kind's slug in the JSON changeset ([`Comparison::to_json`]): the variant's name in
+    /// `snake_case`, one per kind of change — or `None` for `Unchanged`, the baseline, which is
+    /// no change and never a row of [`Comparison::changes`], so it names no record. That arm is
+    /// its own rather than a wildcard, so the match stays exhaustive over the seventeen and a
+    /// kind added without a slug fails to compile.
+    fn slug(self) -> Option<&'static str> {
+        match self {
+            ChangeKind::Unchanged => None,
+            ChangeKind::Renamed => Some("renamed"),
+            ChangeKind::Removed => Some("removed"),
+            ChangeKind::Added => Some("added"),
+            ChangeKind::Changed => Some("changed"),
+            ChangeKind::SortRenamed => Some("sort_renamed"),
+            ChangeKind::EnumRenamed => Some("enum_renamed"),
+            ChangeKind::MessageAdded => Some("message_added"),
+            ChangeKind::MessageRemoved => Some("message_removed"),
+            ChangeKind::EnumAdded => Some("enum_added"),
+            ChangeKind::EnumRemoved => Some("enum_removed"),
+            ChangeKind::ValueAdded => Some("value_added"),
+            ChangeKind::ValueRemoved => Some("value_removed"),
+            ChangeKind::ValueRenamed => Some("value_renamed"),
+            ChangeKind::OpennessChanged => Some("openness_changed"),
+            ChangeKind::PreserveChanged => Some("preserve_changed"),
+            ChangeKind::PackageAdded => Some("package_added"),
+            ChangeKind::PackageRemoved => Some("package_removed"),
+        }
+    }
 }
 
 /// One row of [`Comparison::changes`]: a changed node flattened with what a changeset record or
@@ -932,6 +990,35 @@ impl<'a> Change<'a> {
     #[must_use]
     pub fn bridge(&self) -> Option<String> {
         self.bridge.clone()
+    }
+
+    /// The row as one record of the JSON changeset ([`Comparison::to_json`]): the fixed keys
+    /// always, a missing side `null`; `number` and `bridge` only where the row has them.
+    fn record(&self) -> Value {
+        let mut record = Map::new();
+        let mut put = |key: &str, value: Value| {
+            record.insert(key.to_owned(), value);
+        };
+        put("package", self.package.into());
+        put(
+            "kind",
+            self.kind
+                .slug()
+                .expect("a row of `changes` is a change; the baseline is skipped at the flatten")
+                .into(),
+        );
+        put("old_path", self.old_path().into());
+        put("new_path", self.new_path().into());
+        put("old", self.old_signature().into());
+        put("new", self.new_signature().into());
+        put("breaking", self.is_breaking().into());
+        if let Some(number) = self.number {
+            put("number", number.into());
+        }
+        if let Some(bridge) = &self.bridge {
+            put("bridge", bridge.as_str().into());
+        }
+        Value::Object(record)
     }
 }
 
@@ -1421,6 +1508,7 @@ fn strip_number(s: &str) -> Option<&str> {
 mod tests {
     use std::collections::BTreeSet;
 
+    use serde_json::Value;
     use themelios_program::prelude::{
         Arguments, Atom, BodyElement, DefaultNegation, Dialect, Head, Literal, LiteralInner, Name,
         Source, SourceId, Statement,
@@ -3619,5 +3707,103 @@ mod tests {
             );
             assert_eq!(body.arguments, head.arguments);
         }
+    }
+
+    #[test]
+    fn every_kind_of_change_has_its_slug_and_the_baseline_has_none() {
+        // The seventeen, each the variant's name in `snake_case` and no two alike; `Unchanged` is
+        // no change and never a row, so it names no record.
+        let table = [
+            (ChangeKind::Renamed, "renamed"),
+            (ChangeKind::Removed, "removed"),
+            (ChangeKind::Added, "added"),
+            (ChangeKind::Changed, "changed"),
+            (ChangeKind::SortRenamed, "sort_renamed"),
+            (ChangeKind::EnumRenamed, "enum_renamed"),
+            (ChangeKind::MessageAdded, "message_added"),
+            (ChangeKind::MessageRemoved, "message_removed"),
+            (ChangeKind::EnumAdded, "enum_added"),
+            (ChangeKind::EnumRemoved, "enum_removed"),
+            (ChangeKind::ValueAdded, "value_added"),
+            (ChangeKind::ValueRemoved, "value_removed"),
+            (ChangeKind::ValueRenamed, "value_renamed"),
+            (ChangeKind::OpennessChanged, "openness_changed"),
+            (ChangeKind::PreserveChanged, "preserve_changed"),
+            (ChangeKind::PackageAdded, "package_added"),
+            (ChangeKind::PackageRemoved, "package_removed"),
+        ];
+        for (kind, slug) in table {
+            assert_eq!(kind.slug(), Some(slug), "{kind:?}");
+        }
+        let distinct: BTreeSet<&str> = table.iter().map(|(_, slug)| *slug).collect();
+        assert_eq!(distinct.len(), 17);
+        assert_eq!(ChangeKind::Unchanged.slug(), None);
+    }
+
+    #[test]
+    fn a_comparison_with_no_change_serializes_to_the_empty_array() {
+        let old = thermal("v1", vec![reading("v1")], vec![]);
+        let new = thermal("v2", vec![reading("v2")], vec![]);
+        let comparison = compare(&old, &new).expect("comparable");
+        assert_eq!(comparison.to_json(), "[]");
+    }
+
+    #[test]
+    fn a_record_spells_its_keys_in_sorted_order_and_its_bridge_verbatim() {
+        // One rename: the record's keys serialize in `serde_json`'s sorted order — one fixed
+        // spelling whatever order they were put in — and the bridge text round-trips through
+        // JSON's escaping of its newlines, so a consumer reads the rule as the renderer wrote it.
+        let old = thermal("v1", vec![reading("v1")], vec![]);
+        let mut renamed = reading("v2");
+        renamed.fields[1] = scalar("thermal.v2.Reading.celsius", 2, "celsius");
+        let new = thermal("v2", vec![renamed], vec![]);
+        let comparison = compare(&old, &new).expect("comparable");
+        let bridge = comparison.changes()[0].bridge().expect("bridged");
+        assert!(bridge.contains('\n'));
+        let text = comparison.to_json();
+        assert_eq!(
+            text,
+            format!(
+                "[{{\"breaking\":false,\"bridge\":{},\"kind\":\"renamed\",\"new\":\"celsius/2 int32 total\",\"new_path\":\"thermal.v2.Reading.celsius\",\"number\":2,\"old\":\"temp_c/2 int32 total\",\"old_path\":\"thermal.v1.Reading.temp_c\",\"package\":\"thermal\"}}]",
+                serde_json::to_string(&bridge).expect("a string serializes")
+            )
+        );
+        let parsed: Value = serde_json::from_str(&text).expect("the changeset is JSON");
+        assert_eq!(parsed[0]["bridge"], Value::from(bridge));
+    }
+
+    #[test]
+    fn a_package_row_serializes_without_a_number_or_a_signature() {
+        // `legacy.v1` is on the old side alone: its row is a `package_removed` record whose old
+        // path is the package's dotted name, with no new side and no signature on either side (a
+        // package has none) — the absent sides null — and neither a number nor a bridge — the
+        // absent keys absent. Its sort rides beneath it as a `message_removed` record.
+        let old = mapping(vec![
+            unit(
+                "legacy.v1",
+                vec![sort("legacy.v1.Old", "old", vec![])],
+                vec![],
+            ),
+            unit("thermal.v1", vec![reading("v1")], vec![]),
+        ]);
+        let new = thermal("v2", vec![reading("v2")], vec![]);
+        let comparison = compare(&old, &new).expect("comparable");
+        let json: Value = serde_json::from_str(&comparison.to_json()).expect("JSON");
+        assert_eq!(json.as_array().map(Vec::len), Some(2));
+        let package = &json[0];
+        assert_eq!(package["kind"], "package_removed");
+        assert_eq!(package["package"], "legacy");
+        assert_eq!(package["old_path"], "legacy.v1");
+        assert_eq!(package["new_path"], Value::Null);
+        assert_eq!(package["old"], Value::Null);
+        assert_eq!(package["new"], Value::Null);
+        assert_eq!(package["breaking"], Value::Bool(true));
+        assert!(package.get("number").is_none(), "{package}");
+        assert!(package.get("bridge").is_none(), "{package}");
+        let removed = &json[1];
+        assert_eq!(removed["kind"], "message_removed");
+        assert_eq!(removed["old_path"], "legacy.v1.Old");
+        assert_eq!(removed["old"], "old/1");
+        assert!(removed.get("number").is_none(), "{removed}");
     }
 }

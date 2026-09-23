@@ -1,0 +1,25 @@
+syntax = "proto3";
+package thermal.v1;
+
+// The old side of the evolution instrument's fixture pair (`evolution_v2.proto` is the new):
+// a thermal `Reading` and `Alert` with a `Level` enum, as they stand before the changes v2 makes —
+// a field renamed with its shape intact (`Reading.temp_c` -> `celsius`, bridged), a field added
+// (`Reading.humidity`), a field removed (`Alert.note`, breaking), a message added (`Batch`), and an
+// enum value added (`LEVEL_CRITICAL`). The predicate `sensor` is shared by the two sorts on both
+// sides and never changes, so no row names it.
+message Reading {
+  string sensor = 1;
+  int32 temp_c = 2;
+}
+
+message Alert {
+  string sensor = 1;
+  Level severity = 2;
+  string note = 3;
+}
+
+enum Level {
+  LEVEL_UNSPECIFIED = 0;
+  LEVEL_LOW = 1;
+  LEVEL_HIGH = 2;
+}
