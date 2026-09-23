@@ -5,7 +5,7 @@
 //! against `keryx(descriptor.proto)` is deferred (architecture §11). Not a policy input
 //! under the Rust policy.
 //! Plain (canonical) `render`: proto docs are `doc/2` facts, so no `%!` annotation
-//! or free-standing comment is needed (themelios gap #2 untouched). Deterministic,
+//! or free-standing comment is needed (a known themelios limitation, untouched). Deterministic,
 //! de-duplicated (themelios's canonical statement order) — golden-comparable (P3).
 //!
 //! [`Schema`]: crate::descriptor::model::Schema
