@@ -3118,7 +3118,8 @@ mod tests {
         //
         //   Unchanged        unchanged_sorts_and_enums_are_present_in_the_comparison
         //
-        // The evolution example's goldens exercise the same seventeen end to end.
+        // These tests pin all seventeen; the worked evolution example (`examples/evolution`)
+        // demonstrates twelve of them end to end, and the CLI suite's report goldens the other five.
         match ChangeKind::Unchanged {
             ChangeKind::Unchanged
             | ChangeKind::Renamed

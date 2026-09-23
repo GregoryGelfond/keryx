@@ -1,0 +1,5 @@
+syntax = "proto3";
+package station.log.v1;
+
+// A maintenance-log entry — the package v2 retires.
+message Entry { string note = 1; }

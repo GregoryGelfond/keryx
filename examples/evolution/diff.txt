@@ -1,0 +1,40 @@
+━━ keryx diff ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   thermal.v1  →  thermal.v2                               keryx 0.1.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ alert · thermal.Alert                                       unchanged
+ ─────────────────────────────────────────────────────────────────────
+
+ alert_set · thermal.AlertSet
+ ─────────────────────────────────────────────────────────────────────
+  #1  ! changed   alerts            set → seq, /2 → /3  no bridge
+
+ calibration · thermal.Calibration               - removed · no bridge
+ ─────────────────────────────────────────────────────────────────────
+  #1  - removed   sensor/2          string,total  no bridge
+  #2  - removed   offset/2          int32,total   no bridge
+
+ reading · thermal.Reading
+ ─────────────────────────────────────────────────────────────────────
+  #2  ~ renamed   temp_c → celsius  /2            bridge available
+  #3  + added     humidity/2        int32,total
+
+ reading_batch · thermal.ReadingBatch                        unchanged
+ ─────────────────────────────────────────────────────────────────────
+
+ site · thermal.Site                                           + added
+ ─────────────────────────────────────────────────────────────────────
+  #1  + added     name/2            string,total
+  #2  + added     region/2          string,total
+
+ level · thermal.Level  (open) → (open, preserve)  ! changed · no bridge
+ ─────────────────────────────────────────────────────────────────────
+  #2  ~ renamed   high → critical                 no bridge · constant
+  #3  - removed   test                            no bridge
+  #4  + added     advisory
+
+ ─────────────────────────────────────────────────────────────────────
+  7 breaking   2 removed · 1 changed · 1 message removed · 1 value removed · 1 value renamed · 1 preserve change
+  1 bridged    1 renamed (inbound-facing)
+  5 additive   3 added · 1 message added · 1 value added
+  → rerun with --bridge <path>  to write the 1 bridge view

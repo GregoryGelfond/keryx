@@ -1,0 +1,7 @@
+syntax = "proto3";
+package station.v1;
+
+import "log.proto";
+
+// A monitoring station and its maintenance log, which lives in a package of its own.
+message Station { string name = 1; repeated station.log.v1.Entry log = 2; }

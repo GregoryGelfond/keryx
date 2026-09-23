@@ -1,0 +1,4 @@
+# proto-file: thermal-v2.proto
+# proto-message: thermal.v2.ReadingBatch
+readings { sensor: "s-101" celsius: 44 humidity: 40 }
+readings { sensor: "s-107" celsius: 21 humidity: 55 }

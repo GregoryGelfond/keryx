@@ -1,0 +1,29 @@
+━━ keryx diff ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   3 packages                                              keryx 0.1.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ station.v1  →  station.v2
+ ═════════════════════════════════════════════════════════════════════
+
+ station · station.Station
+ ─────────────────────────────────────────────────────────────────────
+  #2  - removed   log/3             entry,seq     no bridge
+  #3  + added     alarms/2          policy,partial
+
+ station.alarms.v2                                             + added
+ ═════════════════════════════════════════════════════════════════════
+
+ policy · station.alarms.Policy                                + added
+ ─────────────────────────────────────────────────────────────────────
+  #1  + added     threshold_c/2     int32,total
+
+ station.log.v1                                  - removed · no bridge
+ ═════════════════════════════════════════════════════════════════════
+
+ entry · station.log.Entry                       - removed · no bridge
+ ─────────────────────────────────────────────────────────────────────
+  #1  - removed   note/2            string,total  no bridge
+
+ ─────────────────────────────────────────────────────────────────────
+  4 breaking   2 removed · 1 message removed · 1 package removed
+  4 additive   2 added · 1 message added · 1 package added
