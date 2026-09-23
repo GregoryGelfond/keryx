@@ -1,7 +1,8 @@
 //! The option file-name heuristic (architecture §6): `descriptor::options::read` admits a
 //! custom option only when its extension is declared in a file *named* `keryx/options.proto`,
 //! not merely because the extension's full name starts with `keryx.` — a best-effort stand-in
-//! for true extension identity, which waits for the real registry (Increment 5). A foreign
+//! for true extension identity, which remains an additive follow-up (the threat model's named
+//! vector at the descriptor door: `policy::annotate` validates every applied option). A foreign
 //! schema can coin its own extension under `package keryx` in a differently-named file; this
 //! fixture (`foreign_option.proto`) does exactly that, and the heuristic excludes it at
 //! ingestion, so its non-identifier field name never reaches an `Annotation`. The render check

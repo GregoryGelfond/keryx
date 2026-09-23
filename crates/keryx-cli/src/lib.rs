@@ -187,8 +187,10 @@ fn dispatch(cli: Cli) -> Exit {
 
 /// Load, map, and write `<out>/<pkg>.core.lp`, `.views.lp`, the `.emit.lp` variant(s)
 /// `--shape` names, and `.keryx-manifest` per package (spec §13, §28). stdout stays clean;
-/// written paths are reported to stderr. The schema hash is not computed at present (`-`);
-/// content hashing lands with `keryx diff` (Increment 5).
+/// written paths are reported to stderr. The schema hash is not computed (`-`): the manifest is
+/// a write-only record keryx never reads back — `keryx diff` regenerates both mappings from the
+/// two `.proto`s — so nothing of keryx's consumes a hash; a library caller may supply its own
+/// through `manifest::write`.
 fn generate(args: &GenArgs, format: Format) -> Exit {
     let schema = match load_schema(&args.protos, &args.includes, format) {
         Ok(schema) => schema,
