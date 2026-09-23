@@ -142,11 +142,8 @@ impl<'a> Comparison<'a> {
     /// of a pure rename, its newlines escaped). Compact — one line, no trailing newline — with a
     /// record's keys in `serde_json`'s sorted order.
     ///
-    /// Built over `serde_json::Value` and serialized by `serde_json` — the crate's JSON
-    /// serializer already, for the payload door's JSON form — rather than by a writer of its own:
-    /// the one job a hand-rolled writer would take on is JSON string escaping (a bridge carries
-    /// newlines), which is exactly where a hand-rolled writer goes wrong, for no gain over the
-    /// dependency in hand.
+    /// Built over `serde_json::Value` and serialized by `serde_json` — already the payload
+    /// door's JSON serializer — which escapes the newlines a bridge string carries.
     #[must_use]
     pub fn to_json(&self) -> String {
         let records = self.changes().iter().map(Change::record).collect();
