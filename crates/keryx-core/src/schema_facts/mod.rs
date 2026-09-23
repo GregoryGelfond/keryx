@@ -281,6 +281,7 @@ mod tests {
             }],
             doc: None,
             recursive: false,
+            subject: true,
         };
         Schema {
             files: Vec::new(),

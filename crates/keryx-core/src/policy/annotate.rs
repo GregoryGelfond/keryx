@@ -565,6 +565,7 @@ mod tests {
             }],
             options,
             doc: None,
+            subject: true,
         }
     }
 

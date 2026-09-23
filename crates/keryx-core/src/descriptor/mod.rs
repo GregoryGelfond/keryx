@@ -463,7 +463,9 @@ fn unreadable_set(detail: String) -> Diagnostics {
 /// uses it, while `descriptor.proto`'s option messages, referenced by no field, never do. The closure
 /// makes every `ValueType::Message`/`Enum` referent an element — and the lexical parent of any nested
 /// one, so an `outer` never names a non-element either — so neither a reference nor a `nested` outer
-/// ever dangles. Deterministically ordered (P3).
+/// ever dangles. Each element records the pass that built it — `subject` (`Message::is_subject`,
+/// `Enum::is_subject`), `true` from the subject pass and `false` from the closure — so a consumer
+/// can tell the opened vocabulary from what was pulled in for it. Deterministically ordered (P3).
 fn build_schema(
     pool: &DescriptorPool,
     is_subject: impl Fn(&str) -> bool,
@@ -485,10 +487,10 @@ fn build_schema(
             if message.is_map_entry() {
                 continue;
             }
-            messages.push(build_message(message, file.name())?);
+            messages.push(build_message(message, file.name(), true)?);
         }
         for enumeration in subject_enums(&file, &file_messages) {
-            enums.push(build_enum(&enumeration, file.name(), version)?);
+            enums.push(build_enum(&enumeration, file.name(), version, true)?);
         }
     }
 
@@ -517,14 +519,14 @@ fn build_schema(
             }
             let file = message.parent_file();
             add_file(&mut files, &mut file_names, &file)?;
-            let built = build_message(&message, file.name())?;
+            let built = build_message(&message, file.name(), false)?;
             queue.extend(message_referents(&built));
             queue.extend(built.outer.clone()); // the container of a nested referent is an element too
             messages.push(built);
         } else if let Some(enumeration) = pool.get_enum_by_name(referent.as_str()) {
             let file = enumeration.parent_file();
             add_file(&mut files, &mut file_names, &file)?;
-            let built = build_enum(&enumeration, file.name(), desugar::version(&file))?;
+            let built = build_enum(&enumeration, file.name(), desugar::version(&file), false)?;
             queue.extend(built.outer.clone()); // a nested enum's container is an element too
             enums.push(built);
         }
@@ -608,7 +610,14 @@ fn subject_enums(file: &FileDescriptor, messages: &[MessageDescriptor]) -> Vec<E
     out
 }
 
-fn build_message(message: &MessageDescriptor, file: &str) -> Result<Message, Diagnostics> {
+/// One message as a schema element — its fields in number order, its real oneofs by name — with
+/// `subject` recording the pass that built it: `true` from the subject pass, `false` from the
+/// referent closure ([`Message::is_subject`]). `recursive` is set afterwards by `recursion::mark`.
+fn build_message(
+    message: &MessageDescriptor,
+    file: &str,
+    subject: bool,
+) -> Result<Message, Diagnostics> {
     let mut fields = Vec::new();
     for field in message.fields() {
         fields.push(build_field(&field)?);
@@ -631,6 +640,7 @@ fn build_message(message: &MessageDescriptor, file: &str) -> Result<Message, Dia
         options: options::read(&message.options(), message.full_name())?,
         doc: docs::for_path(&message.parent_file(), message.path()),
         recursive: false,
+        subject,
     })
 }
 
@@ -721,10 +731,14 @@ fn build_oneof(oneof: &OneofDescriptor) -> Result<Oneof, Diagnostics> {
     })
 }
 
+/// One enum as a schema element — its values in number order, its openness resolved from the
+/// file's `version` — with `subject` recording the pass that built it: `true` from the subject
+/// pass, `false` from the referent closure ([`Enum::is_subject`]).
 fn build_enum(
     enumeration: &EnumDescriptor,
     file: &str,
     version: SchemaVersion,
+    subject: bool,
 ) -> Result<Enum, Diagnostics> {
     let mut values = enumeration
         .values()
@@ -741,6 +755,7 @@ fn build_enum(
         values,
         options: options::read(&enumeration.options(), enumeration.full_name())?,
         doc: docs::for_path(&enumeration.parent_file(), enumeration.path()),
+        subject,
     })
 }
 

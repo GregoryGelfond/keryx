@@ -823,6 +823,7 @@ mod tests {
                     2,
                 ),
             ],
+            subject: true,
         };
         let item = SortMapping {
             proto: FqName::new("keryx.t.Item"),
@@ -845,6 +846,7 @@ mod tests {
                 escaped: false,
                 doc: None,
             }],
+            subject: true,
         };
         Unit {
             package: Package::parse("keryx.t").expect("valid package"),

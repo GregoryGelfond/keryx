@@ -343,7 +343,9 @@ pub struct File {
 
 /// A message type — a sort (§4.1). Identity is `path`; `outer` is its lexical
 /// nesting parent (Appendix C `nested/2`), `None` at file top level. `recursive`
-/// marks participation in a containment cycle (§8).
+/// marks participation in a containment cycle (§8); `subject` marks a type declared
+/// in a subject file, as against one the referent closure pulled in (§10,
+/// [`Message::is_subject`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Message {
     pub(crate) path: FqName,
@@ -354,6 +356,7 @@ pub struct Message {
     pub(crate) options: Vec<Annotation>,
     pub(crate) doc: Option<String>,
     pub(crate) recursive: bool,
+    pub(crate) subject: bool,
 }
 
 impl Message {
@@ -404,6 +407,21 @@ impl Message {
     #[must_use]
     pub fn is_recursive(&self) -> bool {
         self.recursive
+    }
+
+    /// Whether this message is *subject* vocabulary — declared in a file the walk took as a
+    /// subject — rather than referent closure: a type pulled in only because a subject field names
+    /// it, or as the lexical container of one (§10). Every element of the schema is a sort either
+    /// way; the mark says which were opened. The two doors define a subject differently by design
+    /// — the front door (`compile`) takes the files *opened*, the bytes door (`ingest`) every file
+    /// of the set that is not a well-known-type or option-registry file — so, this type deriving
+    /// `PartialEq`, the two doors' schemas are equal for a schema importing dependency files alone
+    /// and unequal for one importing a *user* file, whose types are closure through the front door
+    /// and subjects through the bytes door. Read by no generation stage — it changes no emitted
+    /// text; it exists for the evolution instrument, which compares subject vocabulary alone.
+    #[must_use]
+    pub fn is_subject(&self) -> bool {
+        self.subject
     }
 }
 
@@ -473,7 +491,9 @@ pub struct Oneof {
 }
 
 /// An enum type — a closed sort of symbolic constants (§7.4). `openness` is the
-/// resolved `enum_type` feature (see the resolution rule in `desugar`).
+/// resolved `enum_type` feature (see the resolution rule in `desugar`); `subject`
+/// marks an enum declared in a subject file, as against one the referent closure
+/// pulled in (§10, [`Enum::is_subject`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Enum {
     pub(crate) path: FqName,
@@ -483,6 +503,7 @@ pub struct Enum {
     pub(crate) values: Vec<EnumValue>,
     pub(crate) options: Vec<Annotation>,
     pub(crate) doc: Option<String>,
+    pub(crate) subject: bool,
 }
 
 impl Enum {
@@ -527,6 +548,14 @@ impl Enum {
     pub fn doc(&self) -> Option<&str> {
         self.doc.as_deref()
     }
+
+    /// Whether this enum is *subject* vocabulary — declared in a file the walk took as a subject —
+    /// rather than referent closure, an enum pulled in only because a subject field names it (§10).
+    /// As [`Message::is_subject`], which states the cross-door consequence of the mark.
+    #[must_use]
+    pub fn is_subject(&self) -> bool {
+        self.subject
+    }
 }
 
 /// An enum value: its name and number (Appendix C `enum_value/3`); `path` keys its
@@ -559,7 +588,9 @@ pub struct Annotation {
 
 /// The schema model root (§3, §5): the de-sugared files, messages, and enums of
 /// one descriptor set, each list in deterministic order (P3) — files by name,
-/// messages and enums by fully-qualified path.
+/// messages and enums by fully-qualified path. Two schemas are equal only when their
+/// elements agree in every mark, the subject mark included — the one mark on which
+/// the front and bytes doors differ by design ([`Message::is_subject`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Schema {
     pub(crate) files: Vec<File>,

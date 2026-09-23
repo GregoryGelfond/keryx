@@ -390,6 +390,7 @@ mod tests {
                 escaped: false,
                 doc: None,
             }],
+            subject: true,
         };
         let unit = Unit {
             package: Package::parse("keryx.t").expect("valid package"),
@@ -419,6 +420,7 @@ mod tests {
                 escaped: false,
                 doc: None,
             }],
+            subject: true,
         };
         let unit = Unit {
             package: Package::parse("keryx.t").expect("valid package"),
@@ -458,6 +460,7 @@ mod tests {
                 escaped: false,
                 doc: None,
             }],
+            subject: true,
         };
         let unit = Unit {
             package: Package::parse("keryx.t").expect("valid package"),
@@ -507,6 +510,7 @@ mod tests {
             recursive: true,
             doc: None,
             fields: vec![],
+            subject: true,
         };
         let enumeration = EnumMapping {
             proto: FqName::new("keryx.t.Grade"),
@@ -517,6 +521,7 @@ mod tests {
             preserve: false,
             doc: None,
             values: vec![],
+            subject: true,
         };
         let unit = Unit {
             package: Package::parse("keryx.t").expect("valid package"),
@@ -541,6 +546,7 @@ mod tests {
             recursive: false,
             doc: None,
             fields: vec![],
+            subject: true,
         };
         let unit = Unit {
             package: Package::parse("keryx.t").expect("valid package"),
