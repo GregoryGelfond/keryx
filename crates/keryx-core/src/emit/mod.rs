@@ -7,10 +7,12 @@
 //! a standalone reader; architecture §4 gap #2 — themelios has no free-standing `%` block at
 //! `86c7dfb`). This module emits `core.lp` (§13.1), `views.lp` (§13.2), and `emit.lp` (§13.3);
 //! the manifest (§13.4) is generated elsewhere.
-//! Submodules: `build` (themelios constructors), `signature` (the §13.1 lines), `core`,
-//! `views`, `emit_lp`.
+//! Submodules: `build` (themelios constructors — crate-visible, since the evolution
+//! instrument's bridge views (`diff`, §13.4) are built through the same one construction site and
+//! rendered by `render`, the emission boundary every generated module crosses), `signature`
+//! (the §13.1 lines), `core`, `views`, `emit_lp`.
 
-mod build;
+pub(crate) mod build;
 mod core;
 mod emit_lp;
 mod signature;
@@ -85,8 +87,10 @@ pub(super) fn doc_line(proto: Option<&str>, signature: &str) -> String {
 /// spell — and it lands here as a diagnostic, never a panic. So the mapping is a live path
 /// with no known trigger from a compiled `.proto`, not a witnessed-impossible one. The doc
 /// text (proto prose, signature lines) rides as `%!` comment lines, which `render_docs`
-/// writes verbatim and never passes through `spell_string` either.
-pub(super) fn render(statements: Vec<WithProvenance<Statement>>) -> Result<String, Diagnostics> {
+/// writes verbatim and never passes through `spell_string` either. The evolution instrument's
+/// bridge views (`diff`, §13.4) reach this door too, with two validated predicate `Name`s over
+/// variables and a `%!` line — no string is spelled there, so that caller's render cannot refuse.
+pub(crate) fn render(statements: Vec<WithProvenance<Statement>>) -> Result<String, Diagnostics> {
     let program = Program::of_nodes(statements);
     render_documented(&program, Dialect::Clingo).map_err(|unspellable| {
         Diagnostics::from(Diagnostic::new(

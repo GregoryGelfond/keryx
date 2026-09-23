@@ -5,21 +5,25 @@
 //! integrity constraint, an atom's positive and default-negated body occurrences, the
 //! comparison, and the few terms an obligation spells beside a variable: the anonymous `_`,
 //! an integer, the difference `I - 1`, and the one string constant `emit` builds, a diagnostic
-//! head's field path. The one place emit touches themelios's construction surface, so the
-//! binding is confined and greppable. Emitted predicate names arrive pre-validated as `Name`s
-//! from the `Mapping` (policy), so nothing here re-validates or `expect`s a runtime string;
-//! the only `expect` is on the fixed compile-time set of view-variable letters (a discharged
-//! invariant, §6).
+//! head's field path. The one place in the crate that touches themelios's construction surface
+//! — `emit`'s own modules and the evolution instrument's bridge views (`diff`, spec §13.4)
+//! alike build here, the crate-visible constructors being exactly those a bridge rule needs —
+//! so the binding is confined and greppable. Emitted predicate names arrive pre-validated as
+//! `Name`s from the `Mapping` (policy), so nothing here re-validates or `expect`s a runtime
+//! string; the only `expect` is on the fixed compile-time set of view-variable letters (a
+//! discharged invariant, §6).
 
 use themelios_program::construct::not;
 use themelios_program::prelude::*;
 
-/// A view variable, `A`/`E`/`I`/`K`/`P`/`V`/`V1`/`V2`/`X` — a fixed compile-time set of valid
-/// `VARIABLE`s, so the `expect` is a discharged invariant (§6); no runtime string reaches here.
-/// keryx writes `P` (parent) where §13.2's own example writes `S` (subject) — the same role,
-/// this module's own letter — `X` for the reached parent in `emit.lp`'s closure, §12.1's own
-/// letter, and `V`, `V1`, `V2` for the values an obligation holds or compares.
-pub(super) fn var(letter: &str) -> Term {
+/// A view variable, `A`/`E`/`I`/`K`/`P`/`V`/`V1`/`V2`/`X` — or a bridge view's positional
+/// `A`/`B`/`C` — a fixed compile-time set of valid `VARIABLE`s, so the `expect` is a discharged
+/// invariant (§6); no runtime string reaches here. keryx writes `P` (parent) where §13.2's own
+/// example writes `S` (subject) — the same role, this module's own letter — `X` for the reached
+/// parent in `emit.lp`'s closure, §12.1's own letter, and `V`, `V1`, `V2` for the values an
+/// obligation holds or compares; a bridge view (`diff`) spells its argument positions `A`, `B`,
+/// `C`, aliasing positions and interpreting none.
+pub(crate) fn var(letter: &str) -> Term {
     Term::Variable(Variable::Named(
         VarName::new(letter).expect("view variables are valid variable names"),
     ))
@@ -60,9 +64,10 @@ pub(super) fn apply(name: Name, args: Vec<Term>) -> Term {
 }
 
 /// An atom `name(args…)` (a constant when `args` is empty) — a view rule's head or referent
-/// (§13.2). The `Name` is pre-validated (from the `Mapping`). The one place `emit` builds a
-/// themelios [`Atom`], so the construction binding stays confined to this module.
-pub(super) fn atom(name: Name, args: impl IntoIterator<Item = Term>) -> Atom {
+/// (§13.2), or a bridge view's head and body atom (`diff`). The `Name` is pre-validated (from the
+/// `Mapping`). The one place the crate builds a themelios [`Atom`], so the construction binding
+/// stays confined to this module.
+pub(crate) fn atom(name: Name, args: impl IntoIterator<Item = Term>) -> Atom {
     Atom::new(name, args)
 }
 
@@ -122,9 +127,10 @@ pub(super) fn constraint(body: impl IntoBody, doc: String) -> WithProvenance<Sta
 }
 
 /// A rule `head :- body.` carrying `doc` as one `%!` doc string — a reach rule (spec §12.1),
-/// a witness an obligation reads, or a diagnostic obligation deriving `violates` (§12.2). The
-/// body is themelios's set, as [`constraint`]'s.
-pub(super) fn rule(head: Atom, body: impl IntoBody, doc: String) -> WithProvenance<Statement> {
+/// a witness an obligation reads, a diagnostic obligation deriving `violates` (§12.2), or the
+/// evolution instrument's bridge view `old(…) :- new(…).` (§13.4, built in `diff`). The body is
+/// themelios's set, as [`constraint`]'s.
+pub(crate) fn rule(head: Atom, body: impl IntoBody, doc: String) -> WithProvenance<Statement> {
     WithProvenance::new(
         Statement::Rule(head.into_head().when(body)),
         Provenance::empty().with_doc(doc),
@@ -189,9 +195,10 @@ pub(super) fn not_atom(atom: Atom) -> BodyElement {
 }
 
 /// An atom's positive body occurrence, `p(…)` — the element a mixed body (atoms beside a
-/// comparison) is assembled from, since a body's elements are one type. The lift is
-/// themelios's own coercion, spelled here so no emitter reaches its construction surface for it.
-pub(super) fn positive(atom: Atom) -> BodyElement {
+/// comparison) is assembled from, since a body's elements are one type, and a bridge view's
+/// whole body (`diff`). The lift is themelios's own coercion, spelled here so no emitter reaches
+/// its construction surface for it.
+pub(crate) fn positive(atom: Atom) -> BodyElement {
     BodyElement::from(atom)
 }
 
