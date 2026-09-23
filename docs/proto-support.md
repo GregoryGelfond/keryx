@@ -151,3 +151,97 @@ story's *alert* half — an `AlertSet` of alerts emitted from a batch — closes
 sequence, so a natural `overheating` model that names its alerts by their own provenance
 (`alerts(out, al(R))`, not the dense indices a sequence needs) reassembles, and `keryx emit` closes
 the `AlertSet` round trip byte-for-byte, its members in clingo's total symbol order (§7.1).
+
+## Schema evolution
+
+The evolution instrument (`keryx diff`; spec §13.4, §27) compares two versions of one schema on
+the model side — what a model written against the old vocabulary survives, what it does not, and
+the bridge that carries it across the one kind of change a rule can alias — as of the evolution
+instrument (Increment 6). Both sides come in through the doors this ledger describes, so the
+proto-version support above is the instrument's too: a proto2 side and a proto3 side compare
+alike (presence is read from each mapping's totality, never from the syntax era), and an editions
+file is refused on either side with the same `UnsupportedEdition` diagnostic.
+
+**Both mappings are regenerated; no manifest is read.** `keryx diff <old> <new>` compiles each
+side through the descriptor door `keryx gen` uses — a `.proto` source (with `-I` include roots,
+one list shared by both sides) or a `protoc`-compiled descriptor set (`.binpb`) — maps each as
+`gen` would, annotations included, and compares the two mappings. The manifest `gen` writes is a
+per-version record, never an input: the comparison sees exactly the vocabulary each side generates
+today, and nothing has to be kept in step with a stored file.
+
+**Matching is by protobuf identity, with the version stripped.** Two versions of one schema are
+two packages under buf's convention (`thermal.v1`, `thermal.v2`), so a package is matched by its
+name with the trailing version segment removed, a message or enum by its path within that package,
+and a field or enum value by its number. Names are free to change, so a renamed field is reported
+as a rename rather than as a removal beside an addition; a renumbered field is the reverse — a
+removal beside an addition, the wire-breaking act it is. Two schemas with no package in common
+once normalized are refused as not comparable (`NoComparableSchemas`, a usage error, no report),
+and a side that declares two versions of one package is refused as ambiguous
+(`AmbiguousVersionPackages`).
+
+**Only subject vocabulary is compared, and the door decides the subject.** What a side *is*
+depends on how it came in:
+
+- through the `.proto` door, a side is the one file named on the command line; what it imports is
+  referent closure — resolved, and translated where a field references it, but not compared;
+- through the `.binpb` door, a side is every file in the set except the well-known types
+  (`google/protobuf/*`) and keryx's option registry (`keryx/options.proto`).
+
+Both sides go through one door. A `.proto` on one side and a `.binpb` on the other would scope
+the two sides differently — one file against a whole set — so the mix is refused before either
+side is read, a usage error naming which side is which, rather than reported as a page of
+spurious additions and removals.
+
+**A schema of several files goes in as descriptor sets.** Compile each revision with
+`--include_imports` to its own self-contained set, and diff the sets:
+
+```sh
+protoc -I v1 --include_imports --descriptor_set_out=v1.binpb v1/station.proto
+protoc -I v2 --include_imports --descriptor_set_out=v2.binpb v2/station.proto
+keryx diff v1.binpb v2.binpb
+```
+
+The comparison then spans every file of the schema, package by package; a package on one side
+only rides as a whole addition or removal, its elements as rows of their own.
+
+**Two revisions sharing a file name take that route, or distinct names.** The `.proto` door
+reduces the path it is given to a name relative to an include root (`v1/station.proto` under
+`-I v1` is `station.proto`) and opens that name through the include roots in order — protoc's
+own rule. So `keryx diff v1/station.proto v2/station.proto -I v1 -I v2` reduces *both* sides to
+`station.proto`, and both open under `v1`, the first root that holds it: the same file is loaded
+twice, and the report is a version diffed against itself — `no changes`, exit `0`. The banner
+exposes it: both sides show the same package (`station.v1  →  station.v1`), where two revisions
+would show the bump. For two revisions of one file name, compile each to its own descriptor set
+against its own root, as above, or name the files distinctly (`thermal-v1.proto`,
+`thermal-v2.proto`), as the worked example does.
+
+**The bridge is inbound-facing, and it aliases a predicate, never a term.** For a clean rename — a
+field, message, or enum whose predicate changed with its identity and shape intact (the same
+number or path, arity, type, presence, form, and oneof membership) — `--bridge <path>` writes one
+rule, `old(…) :- new(…).`, under a `%!` provenance line: a generated module like any other, and
+loaded beside the new facts it lets a model written against the old vocabulary read them without
+a line of it changing. Two limits, stated on the row rather than papered over. The bridge lets an
+old model *read* new facts; a model that *asserts* the old atoms for `keryx emit` is not shimmed —
+the new theory obliges the new predicate, and the reassembler reads it. And a message-field bridge
+aliases the field's relational view (`readings(P, I, E) :- samples(P, I, E).`, spec §13.2), not the
+occupant term: `samples(r0, 0)` inside `reading(samples(r0, 0))` is renamed too, and no rule can
+alias a term, so a model that spells the path term directly is not bridged. A renamed enum
+constant has no bridge either — a constant is not a predicate — and neither has a changed form
+(a `(keryx.set)` dropped turns `alerts/2` into `alerts/3`), a removal, or an enum whose openness or
+`(keryx.unknown)` setting flipped: each is breaking, and the report says so on the row.
+
+**The report, the changeset, and the exit.** The migration report on stdout groups the changes by
+package, then by message or enum, then by field number, and shows what stayed beside what moved;
+`--json` writes the changeset instead — one array of records in a stable order, each carrying the
+change's kind, its element's path and rendered signature per side, and whether it breaks — for a
+review bot or a check of your own. A breaking change is a finding, not a failure: the exit is `0`
+whatever the comparison found, and `--exit-code` turns a breaking comparison into exit `9`
+(diverged), the report still on stdout and the bridge file still written, for a pipeline that
+should stop on one. An error on the way — a side that does not read, build, or map — keeps its
+own exit class.
+
+**Complementary to `buf breaking`.** buf guards the wire: a field renumbered, a type changed. The
+protobuf contract lets a name change freely, so buf passes a rename — and on the ASP side a
+predicate's identity *is* its name, so that rename silently forks the vocabulary; an annotation
+dropped, which the wire never sees, changes an arity. `keryx diff` catches both. Run the two
+together: buf for the wire, keryx for the model side.

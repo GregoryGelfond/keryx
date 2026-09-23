@@ -69,16 +69,21 @@ three wire forms:
 - **`keryx facts`** — a message becomes ground facts (binary, textproto, or JSON payload).
 - **`keryx emit`** — an answer set becomes a message again, a byte-for-byte round trip in
   every format.
+- **`keryx diff`** — two versions of a schema (`.proto` or `.binpb` apiece) become a migration
+  report for the model side: what a model written against the old vocabulary survives and what
+  it does not, the changeset as JSON (`--json`), and a bridge view per clean rename through
+  which the old model reads the new facts (`--bridge`); `--exit-code` makes a breaking change
+  the exit.
 - **Annotations** give a field or enum its precise ASP treatment, validated at the policy
   door (a mis-targeted or malformed option is a structured diagnostic, never a silent
-  mis-lowering): `(keryx.numeric)` for integer width, `(keryx.scale)` / `(keryx.opaque)`
-  for floats, and `(keryx.unknown) = PRESERVE` to carry an open enum's unknown wire values
-  through translation. A proto2 `required` field carries its outbound totality obligation —
-  full proto2/proto3 parity.
+  mis-lowering): `(keryx.set)` for a repeated field whose order is incidental (a membership
+  relation, not a sequence), `(keryx.numeric)` for integer width, `(keryx.scale)` /
+  `(keryx.opaque)` for floats, and `(keryx.unknown) = PRESERVE` to carry an open enum's
+  unknown wire values through translation. A proto2 `required` field carries its outbound
+  totality obligation — full proto2/proto3 parity.
 
 **Not yet:**
 
-- **Set semantics** (`(keryx.set)`) — the annotation is reserved but not yet wired.
 - **`views.lp` usage descriptions** — the projection views carry their signature line today;
   the schema-composed usage prose is in progress.
 - **Editions** (2023, 2024) — an editions schema is refused with a specific diagnostic,
@@ -86,9 +91,10 @@ three wire forms:
   engine does. keryx branches on *resolved features*, not syntax era, so editions land
   without a redesign. See [`docs/proto-support.md`](docs/proto-support.md).
 
-The worked [`examples/`](examples/) are a guided tour — six runnable examples covering schema
-to vocabulary and payloads to facts, with the thermal and config walkthroughs closing the
-round trip. See [`docs/design/architecture.md`](docs/design/architecture.md) for the design
+The worked [`examples/`](examples/) are a guided tour — seven runnable examples covering schema
+to vocabulary, payloads to facts, and a schema's evolution, with the thermal and config
+walkthroughs closing the round trip and the evolution walkthrough diffing thermal v1 against
+v2. See [`docs/design/architecture.md`](docs/design/architecture.md) for the design
 overview and [`docs/specification.md`](docs/specification.md) for the full specification.
 
 ## Built on
