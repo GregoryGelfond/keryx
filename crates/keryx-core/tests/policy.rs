@@ -620,3 +620,16 @@ fn set_annotated_repeated_fields_map_to_the_set_form() {
         "a message set has no views.lp projection — membership is a base relation"
     );
 }
+
+#[test]
+fn the_mapping_carries_the_subject_mark_of_its_schema_element() {
+    // The subject-versus-referent-closure mark rides from each schema element onto its sort or
+    // enum mapping — read by nothing in generation (the flag changes no emitted text; the goldens
+    // and the grounding gate pin that); it exists for the evolution instrument, which compares
+    // subject vocabulary alone. The opened `Event` is a subject sort; the `Timestamp` its `at`
+    // field pulled in (§10) is closure; a subject file's own enum is a subject enum.
+    let wkt = mapping("well_known.proto");
+    assert!(sort(&wkt, "keryx.wkt.Event").is_subject());
+    assert!(!sort(&wkt, "google.protobuf.Timestamp").is_subject());
+    assert!(enumeration(&mapping("proto3.proto"), "keryx.p3.Level").is_subject());
+}

@@ -212,6 +212,7 @@ fn build_sort(
         recursive: message.is_recursive(),
         doc: message.doc().map(str::to_owned),
         fields,
+        subject: message.is_subject(),
     })
 }
 
@@ -421,6 +422,7 @@ fn build_enum(
         preserve,
         doc: enumeration.doc().map(str::to_owned),
         values,
+        subject: enumeration.is_subject(),
     })
 }
 
@@ -495,6 +497,7 @@ mod tests {
                 options: Vec::new(),
                 doc: None,
                 recursive: false,
+                subject: true,
             }],
             enums: Vec::new(),
         };
@@ -524,6 +527,7 @@ mod tests {
                 options: Vec::new(),
                 doc: None,
                 recursive: false,
+                subject: true,
             }],
             enums: Vec::new(),
         };
@@ -563,6 +567,7 @@ mod tests {
                 options: Vec::new(),
                 doc: None,
                 recursive: false,
+                subject: true,
             }],
             enums: Vec::new(),
         };
@@ -602,6 +607,7 @@ mod tests {
             options: Vec::new(),
             doc: None,
             recursive: false,
+            subject: true,
         }
     }
 
@@ -648,6 +654,7 @@ mod tests {
             }],
             options: Vec::new(),
             doc: None,
+            subject: true,
         }
     }
 
@@ -842,6 +849,7 @@ mod tests {
                     escaped: false,
                     doc: None,
                 }],
+                subject: true,
             }],
             enums: Vec::new(),
         };

@@ -173,7 +173,9 @@ pub enum ViewKind {
 /// A message type's mapping — its sort predicate and the mapping of each field. `proto`
 /// is the identity (spec §13.4); `predicate` is the emitted sort `s/1` (qualifier/escape
 /// decisions already materialized in). `recursive` carries the §8 containment-cycle mark
-/// through for `explain` and the manifest.
+/// through for `explain` and the manifest; `subject` carries the schema's
+/// subject-versus-referent-closure mark through for the evolution instrument
+/// ([`SortMapping::is_subject`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SortMapping {
     pub(crate) proto: FqName,
@@ -183,6 +185,7 @@ pub struct SortMapping {
     pub(crate) recursive: bool,
     pub(crate) doc: Option<String>,
     pub(crate) fields: Vec<FieldMapping>,
+    pub(crate) subject: bool,
 }
 
 impl SortMapping {
@@ -228,6 +231,17 @@ impl SortMapping {
     #[must_use]
     pub fn fields(&self) -> &[FieldMapping] {
         &self.fields
+    }
+
+    /// Whether this sort is *subject* vocabulary — its message declared in a file the walk took as
+    /// a subject — rather than referent closure, carried from the schema element
+    /// ([`crate::descriptor::Message::is_subject`], which states the cross-door consequence: this
+    /// type deriving `PartialEq`, the front and bytes doors' mappings are unequal for a schema
+    /// importing a *user* file). Read by no generation stage — it changes no emitted text; it
+    /// exists for the evolution instrument, which compares subject vocabulary alone.
+    #[must_use]
+    pub fn is_subject(&self) -> bool {
+        self.subject
     }
 }
 
@@ -325,7 +339,8 @@ impl FieldMapping {
 }
 
 /// An enum type's mapping (spec §7.4): its sort predicate, resolved openness, and the
-/// lowered constant of each value.
+/// lowered constant of each value; `subject` carries the schema's
+/// subject-versus-referent-closure mark through ([`EnumMapping::is_subject`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EnumMapping {
     pub(crate) proto: FqName,
@@ -336,6 +351,7 @@ pub struct EnumMapping {
     pub(crate) preserve: bool,
     pub(crate) doc: Option<String>,
     pub(crate) values: Vec<EnumValueMapping>,
+    pub(crate) subject: bool,
 }
 
 impl EnumMapping {
@@ -390,6 +406,14 @@ impl EnumMapping {
     #[must_use]
     pub fn values(&self) -> &[EnumValueMapping] {
         &self.values
+    }
+
+    /// Whether this enum is *subject* vocabulary rather than referent closure, carried from the
+    /// schema element ([`crate::descriptor::Enum::is_subject`]) — as [`SortMapping::is_subject`],
+    /// which states the cross-door consequence of the mark.
+    #[must_use]
+    pub fn is_subject(&self) -> bool {
+        self.subject
     }
 }
 
@@ -468,7 +492,9 @@ impl Unit {
 }
 
 /// The mapping model root (spec §3, §21.3): the generation units of one schema, in
-/// deterministic package order (P3).
+/// deterministic package order (P3). As with the schema it is a function of, two mappings are
+/// equal only when their sorts and enums agree in every mark, the subject mark included
+/// ([`SortMapping::is_subject`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Mapping {
     pub(crate) units: Vec<Unit>,
@@ -613,6 +639,7 @@ mod tests {
             recursive: false,
             doc: Some("the sample sort".to_owned()),
             fields: vec![sample_field()],
+            subject: true,
         };
         let enumeration = EnumMapping {
             proto: FqName::new("keryx.test.Kind"),
@@ -629,6 +656,7 @@ mod tests {
                 escaped: false,
                 doc: Some("the active value".to_owned()),
             }],
+            subject: true,
         };
         let unit = Unit {
             package: Package::parse("keryx.test").expect("valid package"),
@@ -649,6 +677,7 @@ mod tests {
         assert_eq!(sort.qualifier(), ["keryx", "test"]);
         assert!(!sort.escaped());
         assert!(!sort.is_recursive());
+        assert!(sort.is_subject());
         assert_eq!(sort.doc(), Some("the sample sort"));
         assert_eq!(sort.fields().len(), 1);
 
@@ -656,6 +685,7 @@ mod tests {
         assert_eq!(enumeration.proto().as_str(), "keryx.test.Kind");
         assert_eq!(enumeration.predicate().as_str(), "kind");
         assert_eq!(enumeration.openness(), Openness::Open);
+        assert!(enumeration.is_subject());
         assert_eq!(enumeration.doc(), Some("the sample enum"));
         assert_eq!(enumeration.values().len(), 1);
 

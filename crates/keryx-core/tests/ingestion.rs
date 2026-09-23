@@ -298,3 +298,24 @@ fn every_editions_file_in_a_set_is_reported() {
         assert_eq!(diagnostic.kind(), DiagnosticKind::UnsupportedEdition);
     }
 }
+
+#[test]
+fn a_subject_is_marked_apart_from_its_referent_closure() {
+    // The walk's two passes mark every element (§10, §20): a type declared in a subject file is a
+    // *subject*; one the referent closure pulled in — a well-known type a subject field names, or
+    // the lexical container of a nested one — is not, though it is a sort of the schema all the
+    // same. The opened `Event` is subject vocabulary; the `Timestamp` and `Duration` its fields
+    // name are closure.
+    let wkt = schema("well_known.proto");
+    assert!(message(&wkt, "keryx.wkt.Event").is_subject());
+    assert!(!message(&wkt, "google.protobuf.Timestamp").is_subject());
+    assert!(!message(&wkt, "google.protobuf.Duration").is_subject());
+
+    // A nested referent enum and the container pulled in for it are closure alike; a subject
+    // file's own enum is a subject.
+    let nested = schema("nested_dependency.proto");
+    assert!(message(&nested, "keryx.wktnested.Uses").is_subject());
+    assert!(!enumeration(&nested, "google.protobuf.Field.Kind").is_subject());
+    assert!(!message(&nested, "google.protobuf.Field").is_subject());
+    assert!(enumeration(&schema("proto3.proto"), "keryx.p3.Level").is_subject());
+}
