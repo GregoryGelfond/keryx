@@ -8,8 +8,7 @@ license.workspace = true
 
 # The arm's-length dependency on the themelios program tier, pinned to the
 # consolidated rev. themelios is a public repo, so this fetches over HTTPS with
-# no credentials. keryx never modifies themelios; gaps go to a themelios session
-# (docs/themelios-gaps.md). The outbound door's `.lp` answer-set read goes through
+# no credentials. keryx never modifies themelios. The outbound door's `.lp` answer-set read goes through
 # `themelios_program::raise_source` (parse → raise behind one door), so keryx names
 # only the program tier; the syntax tier is a transitive dependency it never touches.
 [dependencies]

@@ -2,7 +2,7 @@
 
 **Version:** 0.1 (preliminary design, for local refinement)
 **Date:** 2026-08-28
-**Status:** The founding specification — the design of record *beneath* `docs/design/architecture.md`, which is the architecture of record and reconciles this document via its "deltas from the spec" table. Where the two differ, the architecture governs. In particular, keryx is **translation-only** — it invokes no solver and defines no solver backend (architecture R4/R5) — so this document's aspis / `keryx-driver` / `keryx solve` material (§18, §23, §25; §22 is reconciled in place) is superseded: the consuming tool invokes the solver and composes keryx's translation.
+**Status:** The founding specification — the design of record *beneath* `docs/design/architecture.md`, which is the architecture of record and reconciles this document via its "deltas from the spec" table. Where the two differ, the architecture governs. In particular, keryx is **translation-only** — it invokes no solver and defines no solver backend (architecture R4/R5) — so this document's solver-backend / `keryx-driver` / `keryx solve` material (§18, §23, §25; §22 is reconciled in place) is superseded: the consuming tool invokes the solver and composes keryx's translation.
 
 **Name:** *keryx* (κῆρυξ — the herald who carries messages between parties) is provisional and the maintainer's to change. Candidate alternates in the house style: *angelia*, *hermeneus*. All names in this document (crates, CLI, options namespace) follow the provisional name and rename mechanically with it.
 
@@ -359,7 +359,7 @@ The canonical data plane is the **clingo symbol algebra** — numbers, strings, 
 
 Because this spec must be self-contained, the neighboring projects are characterized here to the depth keryx needs; keryx must remain buildable if any of them lags, per the posture noted with each.
 
-- **aspis** — the maintainer's Rust API over clingo and clingcon (richer, Rust-idiomatic layer above libclingo; minimal FFI; supports solving, optimization, multi-shot). keryx's solve profiles (§23) are written against aspis: symbol construction, `Backend` access (adding rules/externals programmatically), assumptions, model iteration, unsat cores. *Posture:* hard dependency of `keryx-driver`; `keryx-core` (compile + codec-to-symbols-as-data) must not depend on it, so the compiler is usable solverless.
+- **A Rust solver API** — a Rust API over clingo and clingcon (a richer, Rust-idiomatic layer above libclingo; minimal FFI; supports solving, optimization, multi-shot). keryx's solve profiles (§23) were written against such an API: symbol construction, `Backend` access (adding rules/externals programmatically), assumptions, model iteration, unsat cores. *Posture:* a hard dependency of `keryx-driver`; `keryx-core` (compile + codec-to-symbols-as-data) must not depend on it, so the compiler is usable solverless.
 - **themelios** — the maintainer's foundation library providing ASP syntax parsing and AST generation for an alternative toolchain. *Posture:* preferred provider behind an emission boundary, not a hard dependency (see below).
 - **ASP contract testing** — a declarative ASP testing approach: contracts as `@`-annotations inside `.lp` files (sat/unsat, model counts, brave/cautious consequences, costs, optimality, clingcon assignments, three-valued `@query`); verdicts PASS/FAIL/UNDECIDED; solver declared in the contract. keryx's fixture harness (§27) emits contract-consumable artifacts.
 - **Rust crates:** `prost-reflect` (dynamic descriptor pool + dynamic messages; §20 explains why the dynamic layer is mandatory), `protox` (pure-Rust protobuf compiler producing `FileDescriptorSet`, enabling the no-protoc single-binary story), `prost`/`prost-types` (one typed decode on ingestion — the editions-`syntax` inspection, whose decoded struct is discarded; no typed struct ever feeds the schema, §20). External binaries `protoc` and `buf` are *optional producers*, never build dependencies.
@@ -378,14 +378,13 @@ keryx/                          (Cargo workspace)
     codec/                      payload ⇄ symbolic-value data model (Sym enum), validation
     manifest/                   write (the per-version record; never read back)
     diff/                       two generated mappings → migration report, JSON changeset, bridge views (§13.4, §27)
-  keryx-driver/                 aspis-backed runtimes: one-shot + episodic solve,
-                                envelope assembly, brave/cautious, fixture harness
   keryx-cli/                    the `keryx` binary (§25)
-  protoc-gen-keryx/             thin plugin shim (§20): stdin CodeGeneratorRequest →
-                                keryx-core → stdout CodeGeneratorResponse
+  keryx-protoc/                 thin plugin shim (§20): the `protoc-gen-keryx` binary —
+                                stdin CodeGeneratorRequest → keryx-core → stdout CodeGeneratorResponse
+  keryx-test-support/           dev-only fixture compilation shared across the test suites
 ```
 
-Stage-1 policy programs ship as embedded `.lp` assets of `keryx-core`. Their evaluation needs a solver: `keryx-core` exposes policy *facts* and expects a `PolicyEval` callback; `keryx-driver` supplies the aspis-backed evaluator; a vendored fallback (shelling to a user-provided clingo) is acceptable for `keryx-core`-only consumers but not required in v0.
+Stage-1 policy programs ship as embedded `.lp` assets of `keryx-core`. Their evaluation needs a solver: `keryx-core` exposes policy *facts* and expects a `PolicyEval` callback that a consuming tool supplies; a vendored fallback (shelling to a user-provided clingo) is acceptable for `keryx-core`-only consumers but not required in v0. (Reconciled: the architecture computes the mapping policy in Rust — R3 — so no evaluator is needed on the production path.)
 
 ### 20. Descriptor ingestion
 
@@ -675,7 +674,7 @@ The service loop, per batch *k* — the pipeline is the point:
                                              { diagnoses:[{abnormal:["c9"]}] } ] }
 ```
 
-The base program grounded once at startup; each batch enters through aspis straight into the backend — no text, no parse, no grounding on the request path. Episode policy is assumption policy and nothing else: sliding window, cumulative scenario, or what-if subsets; permanent retirement releases the external and the solver may simplify. Brave/cautious diagnoses are envelope-level union/intersection over `models[]`, computed without touching the solver. On UNSAT, the unsat core over episode guards names *which batches* jointly broke consistency — diagnosis of the diagnosis service, free.
+The base program grounded once at startup; each batch enters through the solver API straight into the backend — no text, no parse, no grounding on the request path. Episode policy is assumption policy and nothing else: sliding window, cumulative scenario, or what-if subsets; permanent retirement releases the external and the solver may simplify. Brave/cautious diagnoses are envelope-level union/intersection over `models[]`, computed without touching the solver. On UNSAT, the unsat core over episode guards names *which batches* jointly broke consistency — diagnosis of the diagnosis service, free.
 
 ---
 
@@ -686,11 +685,11 @@ The base program grounded once at startup; each batch enters through aspis strai
 Ordered for local development; each milestone leaves the workspace green and demonstrable.
 
 - **M0 — Ingestion + facts.** `keryx-core::descriptor` over `prost-reflect` (dynamic-layer rule enforced by construction); de-sugaring; schema model; hand-written stage 0; golden tests on fixture descriptor sets (maps, proto3-optional, oneofs, recursion, custom options via a vendored `keryx/options.proto`; editions carry a refusal test, not a golden — deferred per M1). Deliverable: internal schema-facts dump command.
-- **M1 — gen.** Stage-1 policy `.lp` + evaluator (aspis via driver); stage-2 emission of `core/views/manifest` for the clingo target through the internal emission backend; embedded protox front door (`keryx gen foo.proto`) with the **editions verification gate**: while the descriptor engine has no editions support, `gen` refuses editions files — both the `.proto` and descriptor-set routes — with a specific diagnostic and says so. `keryx explain` (mapping verdicts). Self-application cross-check (§21.2).
+- **M1 — gen.** Stage-1 policy `.lp` + evaluator (the solver API via the driver); stage-2 emission of `core/views/manifest` for the clingo target through the internal emission backend; embedded protox front door (`keryx gen foo.proto`) with the **editions verification gate**: while the descriptor engine has no editions support, `gen` refuses editions files — both the `.proto` and descriptor-set routes — with a specific diagnostic and says so. `keryx explain` (mapping verdicts). Self-application cross-check (§21.2).
 - **M2 — Inbound + one-shot solve.** Codec inbound (binary/JSON/textproto → `Sym` atoms → `.lp`); `keryx facts`; `keryx solve` one-shot with text-include fact path (temporary, flagged); envelope with SAT/UNSAT/stats.
 - **M3 — Outbound.** `emit.lp` generation (strict + diagnostic); reachable-subgraph reassembler; canonical serialization; `--emit`; envelope models; structured shape diagnostics at field paths.
 - **M4 — Annotations + overlays.** Full Appendix A vocabulary; TOML overlays with precedence + typo errors; scalar policies enforced end-to-end (float mandatory-annotation error with fix-it; NATIVE_CHECKED ranges; open-enum policy; zero-as-absent incl. unary bool); `keryx diff` migration notes + bridge views.
-- **M5 — Episodic.** Driver episodic API on aspis backend (externals, assumptions, release); the P10 fact path replaces M2's text include everywhere; brave/cautious envelope ops; unsat-core episode blame; minimal CLI exposure (scripted episode files for fixtures).
+- **M5 — Episodic.** Driver episodic API on the solver backend (externals, assumptions, release); the P10 fact path replaces M2's text include everywhere; brave/cautious envelope ops; unsat-core episode blame; minimal CLI exposure (scripted episode files for fixtures).
 - **M6 — Ring.** `keryx scaffold`; fixture harness with ASP contracts; `keryx check` lint *if* the parsing provider (themelios or successor decision) is available — otherwise explicitly deferred, not faked.
 - **M7 — Targets + plugins.** `--profile clingcon` (`&dom`/`&sum` lowering); `protoc-gen-keryx` shim with editions handshake, verified against protoc and buf; `--target <typed-dialect>` to the extent the dialect exists, emitting the degradation report (§24) for missing rows.
 
@@ -706,8 +705,8 @@ Tracked here so refinement sessions burn them down deliberately.
 6. Envelope customization (§12.4): user-supplied envelopes vs. generated-only; single-payload bypass flag semantics.
 7. Manifest wire format (Appendix B): stay text, or dual text+binary (it is itself describable as a proto — pleasingly, by keryx).
 8. Totalized-default view naming: `f_or_default` (current) vs. suffix conventions — bikeshed, decide once, record in manifest.
-9. Emission/parsing provider timeline: themelios vs. the aspis-adjacent syntax effort — keryx tracks the family decision; the trait boundary (§18) exists so this never blocks.
-10. Stage-1 policy evaluation without aspis (vendored clingo shell-out) — needed by any solverless `keryx-core` consumer?
+9. Emission/parsing provider timeline: themelios vs. an alternative syntax effort — keryx tracks the family decision; the trait boundary (§18) exists so this never blocks.
+10. Stage-1 policy evaluation without a solver backend (vendored clingo shell-out) — needed by any solverless `keryx-core` consumer?
 11. Static per-spec codec codegen (§21.4) — profile first, generate later.
 12. The name.
 

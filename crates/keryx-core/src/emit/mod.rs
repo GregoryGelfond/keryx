@@ -82,10 +82,11 @@ pub(super) fn doc_line(proto: Option<&str>, signature: &str) -> String {
 /// `views`/`emit_lp` build is a variable, a `Function` over variables, or an integer). A
 /// path's package and message segments passed the descriptor and policy doors as
 /// identifiers, and a field's own name lowered into a validated `Name` before any `Unit`
-/// formed; a oneof's name, which the exclusivity obligation's path ends in, is the
-/// descriptor's own string, so a hand-built descriptor set could carry one the dialect cannot
-/// spell — and it lands here as a diagnostic, never a panic. So the mapping is a live path
-/// with no known trigger from a compiled `.proto`, not a witnessed-impossible one. The doc
+/// formed; a oneof's name, which the exclusivity obligation's path ends in, is
+/// validated at the descriptor door like every other name segment (`check_ident`), so it too
+/// carries no character the dialect cannot spell. So the refusal here is defense-in-depth — a
+/// diagnostic, never a panic — on a path no door-admitted descriptor (a compiled `.proto` or a
+/// hand-built set) can reach. The doc
 /// text (proto prose, signature lines) rides as `%!` comment lines, which `render_docs`
 /// writes verbatim and never passes through `spell_string` either. The evolution instrument's
 /// bridge views (`diff`, §13.4) reach this door too, with two validated predicate `Name`s over
