@@ -13,7 +13,7 @@ license.workspace = true
 # `themelios_program::raise_source` (parse → raise behind one door), so keryx names
 # only the program tier; the syntax tier is a transitive dependency it never touches.
 [dependencies]
-themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", rev = "4f02758", package = "themelios-program" }
+themelios-program = { git = "https://github.com/GregoryGelfond/themelios.git", rev = "9f8879b", package = "themelios-program" }
 
 # The dynamic protobuf-descriptor engine — the ingestion path (§20) and the payload
 # door's decode engine (§22). Read only through the `descriptor` module — its private
