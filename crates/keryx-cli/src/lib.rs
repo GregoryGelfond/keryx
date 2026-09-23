@@ -3,18 +3,22 @@
 //! CLI is a satellite that composes the library; §6: stdout is the product, stderr is
 //! diagnostics/progress, exit codes are stable and class-distinguishing). The public surface
 //! (§25) is `gen` (schema → ASP vocabulary), `explain` (mapping verdicts), `facts` (payload →
-//! ground facts), and `emit` (answer set → payload — the outbound door, the mirror of `facts`),
-//! with the internal `schema-facts` dump kept. The `keryx` binary is a shim over [`run`].
+//! ground facts), `emit` (answer set → payload — the outbound door, the mirror of `facts`), and
+//! `diff` (two versions of one schema → the migration report or changeset — the evolution
+//! instrument), with the internal `schema-facts` dump kept. The `keryx` binary is a shim over
+//! [`run`].
 //!
 //! Design of record: `docs/design/architecture.md` (the architecture) over
 //! `docs/specification.md` (the spec).
 #![forbid(unsafe_code)]
 
+pub mod diff_report;
 pub mod exit;
 pub mod render;
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -23,8 +27,9 @@ use keryx_core::descriptor::{Schema, compile, ingest};
 use keryx_core::diagnostics::{Diagnostic, DiagnosticKind, Diagnostics, Locus};
 use keryx_core::emit::Shape;
 use keryx_core::policy::{Mapping, Unit};
-use keryx_core::{emit, manifest, policy, schema_facts};
+use keryx_core::{diff, emit, manifest, policy, schema_facts};
 
+use crate::diff_report::Style;
 use crate::exit::Exit;
 use crate::render::{Format, note, product, product_bytes, report};
 
@@ -49,6 +54,9 @@ enum Command {
     Facts(FactsArgs),
     /// Reassemble an answer set to one payload over the schema's vocabulary (bytes on stdout, §12.3).
     Emit(EmitArgs),
+    /// Compare two versions of one schema (§13.4, §27): the migration report on stdout, or the
+    /// changeset as JSON (`--json`); bridge views for the clean renames (`--bridge`).
+    Diff(DiffArgs),
     /// Dump a descriptor set's stage-0 descriptor facts (internal).
     SchemaFacts(SchemaFactsArgs),
 }
@@ -161,6 +169,60 @@ impl From<OutFormat> for PayloadFormat {
 }
 
 #[derive(clap::Args)]
+struct DiffArgs {
+    /// The old schema: a `.proto` source, or a serialized descriptor set (`.binpb`) — through the
+    /// same door as the new schema.
+    old: PathBuf,
+    /// The new schema: a `.proto` source, or a serialized descriptor set (`.binpb`) — through the
+    /// same door as the old schema.
+    new: PathBuf,
+    /// Include directories for import resolution, for both sides (repeatable).
+    #[arg(short = 'I', long = "include")]
+    includes: Vec<PathBuf>,
+    /// Write the changeset as JSON — one array of change records — instead of the report.
+    #[arg(long)]
+    json: bool,
+    /// Write the bridge views for the clean renames to this `.lp` file.
+    #[arg(long, value_name = "PATH")]
+    #[expect(dead_code, reason = "read once the bridge write lands")]
+    bridge: Option<PathBuf>,
+    /// When the report is coloured: on a terminal unless `NO_COLOR` is set to a non-empty value
+    /// (`auto`), `always`, or `never`.
+    #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
+    color: ColorChoice,
+    /// Exit `9` (diverged) rather than `0` when a change is breaking.
+    #[arg(long = "exit-code")]
+    exit_code: bool,
+}
+
+/// The `--color` values — when `diff`'s report carries colour: the command-line face of the
+/// decision [`color_on`] makes, so clap's value names and their help are keryx's own. Named apart
+/// from clap's own `ColorChoice`, which styles clap's help text, not keryx's product.
+#[derive(Clone, Copy, ValueEnum)]
+enum ColorChoice {
+    /// Colour when stdout is a terminal and `NO_COLOR` is unset or empty.
+    Auto,
+    /// Colour always, terminal or not.
+    Always,
+    /// Colour never.
+    Never,
+}
+
+/// Whether the report is coloured, by `--color`: `always` and `never` decide; `auto` colours when
+/// stdout — the stream the report travels on — is a terminal and `NO_COLOR` is absent or empty
+/// (no-color.org: the variable present and non-empty disables colour, whatever its value).
+fn color_on(choice: ColorChoice) -> bool {
+    match choice {
+        ColorChoice::Always => true,
+        ColorChoice::Never => false,
+        ColorChoice::Auto => {
+            std::io::stdout().is_terminal()
+                && std::env::var_os("NO_COLOR").is_none_or(|value| value.is_empty())
+        }
+    }
+}
+
+#[derive(clap::Args)]
 struct SchemaFactsArgs {
     /// A serialized `FileDescriptorSet`.
     set: PathBuf,
@@ -181,6 +243,7 @@ fn dispatch(cli: Cli) -> Exit {
         Command::Explain(args) => explain(&args, cli.format),
         Command::Facts(args) => facts(&args, cli.format),
         Command::Emit(args) => emit(&args, cli.format),
+        Command::Diff(args) => diff(&args, cli.format),
         Command::SchemaFacts(args) => dump_schema_facts(&args, cli.format),
     }
 }
@@ -597,6 +660,115 @@ fn dump_schema_facts(args: &SchemaFactsArgs, format: Format) -> Exit {
     }
 }
 
+/// Compare two versions of one schema — the evolution instrument (spec §13.4, §27; architecture
+/// §5): the old and the new schema, each `.proto` source or a `.binpb` descriptor set as
+/// `gen`/`explain` take it, read through the shipped descriptor doors and mapped ([`read_side`]),
+/// the two mappings compared by protobuf identity ([`diff::compare`]), and the comparison written
+/// to stdout — the migration report, or the JSON changeset under `--json`. No manifest is read:
+/// the two schemas are the source of truth, so the command composes two door loads and opens no
+/// door of its own. Both sides go through one door — both `.proto` or both `.binpb`, a multi-file
+/// schema going in as one self-contained descriptor set — and a mix is refused up front, before
+/// either side is read. Each side is read after a progress line naming it, so the last progress
+/// line on stderr names the side a failure is in. The exit classes (§6): a mix of doors, two
+/// schemas with no package in common once version segments are stripped, or a side declaring two
+/// versions of one package are the caller's arguments — `Usage`, as `facts`'s unknown root type
+/// is; a side that cannot be read is `Input`, one that does not build or map is `Schema`, a
+/// contained engine fault on either door is `Dependency`. A successful comparison exits `0`
+/// whatever it found; under `--exit-code`, a breaking change exits [`Exit::Diverged`] instead — a
+/// verdict, not an error, the product already on stdout.
+fn diff(args: &DiffArgs, format: Format) -> Exit {
+    if is_descriptor_set(&args.old) != is_descriptor_set(&args.new) {
+        return note(format, Exit::Usage, &mixed_doors(&args.old, &args.new));
+    }
+    // The comparison borrows both mappings, so both live through the render below.
+    let old = match read_side("old", &args.old, &args.includes, format) {
+        Ok(mapping) => mapping,
+        Err(exit) => return exit,
+    };
+    let new = match read_side("new", &args.new, &args.includes, format) {
+        Ok(mapping) => mapping,
+        Err(exit) => return exit,
+    };
+    let comparison = match diff::compare(&old, &new) {
+        Ok(comparison) => comparison,
+        // The comparison is interior — over two mappings keryx built, no foreign input — so no
+        // contained fault arises here. Its refusals are the caller's arguments at fault (two
+        // schemas that are not two versions of one; a side carrying two versions of one package):
+        // usage, as `facts`'s unknown root type is; any other cause would be the schemas' own.
+        Err(diagnostics) => {
+            let class = if diagnostics.contains_kind(DiagnosticKind::NoComparableSchemas)
+                || diagnostics.contains_kind(DiagnosticKind::AmbiguousVersionPackages)
+            {
+                Exit::Usage
+            } else {
+                Exit::Schema
+            };
+            return report(format, class, &diagnostics);
+        }
+    };
+    // The product ends with one line terminator either way: the changeset is the compact
+    // serialization and nothing beside it, so the terminator is added here; the report renders
+    // with its own.
+    let text = if args.json {
+        let mut changeset = comparison.to_json();
+        changeset.push('\n');
+        changeset
+    } else {
+        diff_report::render(&comparison, Style::from(color_on(args.color)))
+    };
+    let produced = product(format, &text);
+    verdict(produced, args.exit_code, comparison.is_breaking())
+}
+
+/// The exit of a comparison whose product write returned `produced`: the verdict
+/// [`Exit::Diverged`] only over a delivered product — `Success`, which a broken pipe also is, as
+/// [`product`] maps it — when `--exit-code` asks for it and the comparison is `breaking`;
+/// otherwise `produced` itself, so a write that failed keeps its own class rather than being
+/// masked by a verdict over a product that never arrived. Pure, so the rule is a unit test.
+fn verdict(produced: Exit, exit_code: bool, breaking: bool) -> Exit {
+    if produced == Exit::Success && exit_code && breaking {
+        Exit::Diverged
+    } else {
+        produced
+    }
+}
+
+/// Read one side of a comparison: `spec` through the descriptor doors ([`load_schema`]) and
+/// mapped ([`policy::map`]), after a progress line naming the side — so a failure on either step
+/// follows a line saying which side it is in, the last progress line on stderr. Renders any
+/// diagnostic itself, as [`load`] does, and returns the classified [`Exit`]: the door's classes
+/// for the read; `Schema` for a mapping refusal, which is interior (over keryx's own schema
+/// model, where no contained fault arises), as `gen`/`explain` class it.
+fn read_side(
+    side: &str,
+    spec: &PathBuf,
+    includes: &[PathBuf],
+    format: Format,
+) -> Result<Mapping, Exit> {
+    render::progress(&format!("reading the {side} schema {}", spec.display()));
+    let schema = load_schema(std::slice::from_ref(spec), includes, format)?;
+    policy::map(&schema).map_err(|diagnostics| report(format, Exit::Schema, &diagnostics))
+}
+
+/// The usage note refusing a comparison whose two sides go through different doors: which side
+/// is which, and the rule — one door for both, a multi-file schema going in as one descriptor set.
+fn mixed_doors(old: &Path, new: &Path) -> String {
+    let door = |spec: &Path| {
+        if is_descriptor_set(spec) {
+            "a `.binpb` descriptor set"
+        } else {
+            "`.proto` source"
+        }
+    };
+    format!(
+        "the old schema {} is {} and the new schema {} is {}: both sides go through one door — both `.proto` source or both `.binpb` descriptor sets (a multi-file schema goes in as one self-contained `.binpb`)",
+        old.display(),
+        door(old),
+        new.display(),
+        door(new)
+    )
+}
+
 /// A `.binpb` spec is a serialized descriptor set; any other extension is `.proto` source.
 fn is_descriptor_set(spec: &Path) -> bool {
     spec.extension()
@@ -677,8 +849,22 @@ mod tests {
     use keryx_core::codec::PayloadFormat;
 
     use super::{
-        PAYLOAD_FORMATS, admitted_payload_formats, parse_root, payload_format, type_matches,
+        Exit, PAYLOAD_FORMATS, admitted_payload_formats, parse_root, payload_format, type_matches,
+        verdict,
     };
+
+    #[test]
+    fn the_diverged_verdict_rides_only_over_a_delivered_product() {
+        // `--exit-code` on a breaking comparison is `Diverged` over a delivered product — a
+        // broken pipe included, since `product` maps it to `Success` — and nothing else: without
+        // `--exit-code`, or without a breaking change, the product's own exit stands; and a
+        // write that failed keeps its own class rather than being masked by the verdict, so a
+        // script keying on 9 never reads "diverged, delivered" over a product that never arrived.
+        assert_eq!(verdict(Exit::Success, true, true), Exit::Diverged);
+        assert_eq!(verdict(Exit::Success, false, true), Exit::Success);
+        assert_eq!(verdict(Exit::Success, true, false), Exit::Success);
+        assert_eq!(verdict(Exit::Internal, true, true), Exit::Internal);
+    }
 
     #[test]
     fn a_root_is_a_type_and_a_payload_split_at_the_first_equals() {

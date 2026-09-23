@@ -45,6 +45,13 @@ pub enum Exit {
     /// (`Schema`), the distinction spec §26 asks of the exit codes. The integer is tunable and
     /// named here alone.
     Translation = 8,
+    /// Diverged — the comparison (`keryx diff`) found a breaking change and `--exit-code` asked
+    /// for the verdict as an exit. Not an error class: no diagnostic is on stderr, and the report
+    /// or changeset is on stdout as on any successful comparison — a verdict a script branches on.
+    /// Returned by the comparison command directly, never a `classify` default: an error on the
+    /// way to the verdict keeps its own class. `5` stays reserved for the `Admission` class; the
+    /// integer is tunable and named here alone.
+    Diverged = 9,
 }
 
 impl Exit {
@@ -62,6 +69,7 @@ impl Exit {
             Exit::Shape => "shape",
             Exit::Dependency => "dependency",
             Exit::Translation => "translation",
+            Exit::Diverged => "diverged",
         }
     }
 
@@ -301,6 +309,15 @@ mod tests {
             "x",
         ));
         assert_eq!(Exit::classify(Exit::Shape, &fault), Exit::Dependency);
+    }
+
+    #[test]
+    fn the_diverged_verdict_is_its_own_code_and_slug() {
+        // The comparison's breaking verdict under `--exit-code`: code 9, slug "diverged" — a
+        // verdict rather than an error class, returned directly and never a `classify` default,
+        // its integer apart from every error class's.
+        assert_eq!(Exit::Diverged as u8, 9);
+        assert_eq!(Exit::Diverged.slug(), "diverged");
     }
 
     #[test]
