@@ -332,6 +332,22 @@ pub enum DiagnosticKind {
     /// each output form refuses only what it alone cannot represent, keeping the translation
     /// symmetric across the forms. The outbound JSON encode's, Increment 4.
     UnrepresentableJson,
+    /// The two schemas handed to the evolution instrument (`keryx diff`, spec §27) share no
+    /// subject package after version normalization — each side's subject packages, their trailing
+    /// buf version segment stripped (`thermal.v1` and `thermal.v2` are both `thermal`), are
+    /// disjoint — so there is nothing to compare: the instrument compares two versions of one
+    /// schema, never two unrelated schemas, and a shared import (`google.protobuf`) is referent
+    /// closure rather than subject vocabulary, so it makes no two schemas comparable. A caller's
+    /// arguments error like `UnknownRootType`, routed by the CLI to `Exit::Usage`, not
+    /// `Translation`. Named at the whole-input locus; the detail names each side's subject
+    /// packages. The comparison's (`diff::compare`).
+    NoComparableSchemas,
+    /// One side of a comparison (`keryx diff`, spec §27) declares two subject packages that
+    /// normalize to one — two versions of one package (`thermal.v1` beside `thermal.v2`) in one
+    /// schema — so the instrument cannot tell which version that side is. A caller's arguments
+    /// error like `NoComparableSchemas` (`Exit::Usage`), named at the whole-input locus; the
+    /// detail names the side and the colliding packages. The comparison's (`diff::compare`).
+    AmbiguousVersionPackages,
 }
 
 impl DiagnosticKind {
@@ -370,6 +386,8 @@ impl DiagnosticKind {
             DiagnosticKind::ReassembledTooLarge => "reassembled_too_large",
             DiagnosticKind::UnreadableAnswerSet => "unreadable_answer_set",
             DiagnosticKind::UnrepresentableJson => "unrepresentable_json",
+            DiagnosticKind::NoComparableSchemas => "no_comparable_schemas",
+            DiagnosticKind::AmbiguousVersionPackages => "ambiguous_version_packages",
         }
     }
 }
@@ -656,104 +674,56 @@ mod tests {
 
     #[test]
     fn kind_wire_names_are_stable() {
-        // Stable wire names (Appendix B `kind`), asserted independently.
-        assert_eq!(
-            DiagnosticKind::UnreadableDescriptorSet.as_str(),
-            "unreadable_descriptor_set"
-        );
-        assert_eq!(
-            DiagnosticKind::UnsupportedEdition.as_str(),
-            "unsupported_edition"
-        );
-        assert_eq!(
-            DiagnosticKind::MalformedDescriptor.as_str(),
-            "malformed_descriptor"
-        );
-        assert_eq!(DiagnosticKind::MalformedOption.as_str(), "malformed_option");
-        assert_eq!(
-            DiagnosticKind::UnmappableOptionKey.as_str(),
-            "unmappable_option_key"
-        );
-        assert_eq!(
-            DiagnosticKind::UnrenderableFacts.as_str(),
-            "unrenderable_facts"
-        );
-        assert_eq!(
-            DiagnosticKind::UncompilableSource.as_str(),
-            "uncompilable_source"
-        );
-        assert_eq!(DiagnosticKind::PackagelessFile.as_str(), "packageless_file");
-        assert_eq!(DiagnosticKind::UnmappableName.as_str(), "unmappable_name");
-        assert_eq!(
-            DiagnosticKind::AmbiguousConstant.as_str(),
-            "ambiguous_constant"
-        );
-        assert_eq!(DiagnosticKind::DependencyFault.as_str(), "dependency_fault");
-        assert_eq!(DiagnosticKind::SourceTooDeep.as_str(), "source_too_deep");
-        assert_eq!(
-            DiagnosticKind::SourceOutsideRoot.as_str(),
-            "source_outside_root"
-        );
-        assert_eq!(
-            DiagnosticKind::SourceImportGraphTooLarge.as_str(),
-            "source_import_graph_too_large"
-        );
-        assert_eq!(
-            DiagnosticKind::UndecodablePayload.as_str(),
-            "undecodable_payload"
-        );
-        assert_eq!(
-            DiagnosticKind::ValueOutOfRange.as_str(),
-            "value_out_of_range"
-        );
-        assert_eq!(DiagnosticKind::InteriorNul.as_str(), "interior_nul");
-        assert_eq!(
-            DiagnosticKind::UnrepresentableText.as_str(),
-            "unrepresentable_text"
-        );
-        assert_eq!(
-            DiagnosticKind::UnknownEnumValue.as_str(),
-            "unknown_enum_value"
-        );
-        assert_eq!(
-            DiagnosticKind::UnannotatedFloat.as_str(),
-            "unannotated_float"
-        );
-        assert_eq!(
-            DiagnosticKind::ValueNotOnScale.as_str(),
-            "value_not_on_scale"
-        );
-        assert_eq!(DiagnosticKind::NonFiniteFloat.as_str(), "non_finite_float");
-        assert_eq!(
-            DiagnosticKind::UnknownRootType.as_str(),
-            "unknown_root_type"
-        );
-        assert_eq!(DiagnosticKind::PayloadTooDeep.as_str(), "payload_too_deep");
-        assert_eq!(
-            DiagnosticKind::GeneratedPredicateCollision.as_str(),
-            "generated_predicate_collision"
-        );
-        assert_eq!(
-            DiagnosticKind::TermTypeMismatch.as_str(),
-            "term_type_mismatch"
-        );
-        assert_eq!(DiagnosticKind::ShapeViolation.as_str(), "shape_violation");
-        assert_eq!(
-            DiagnosticKind::ReassembledTooDeep.as_str(),
-            "reassembled_too_deep"
-        );
-        assert_eq!(
-            DiagnosticKind::ReassembledTooLarge.as_str(),
-            "reassembled_too_large"
-        );
-        assert_eq!(
-            DiagnosticKind::UnreadableAnswerSet.as_str(),
-            "unreadable_answer_set"
-        );
-        assert_eq!(
-            DiagnosticKind::UnrepresentableJson.as_str(),
-            "unrepresentable_json"
-        );
+        // Stable wire names (Appendix B `kind`), asserted independently — one row per kind.
+        for (kind, wire) in [
+            (
+                DiagnosticKind::UnreadableDescriptorSet,
+                "unreadable_descriptor_set",
+            ),
+            (DiagnosticKind::UnsupportedEdition, "unsupported_edition"),
+            (DiagnosticKind::MalformedDescriptor, "malformed_descriptor"),
+            (DiagnosticKind::MalformedOption, "malformed_option"),
+            (DiagnosticKind::UnmappableOptionKey, "unmappable_option_key"),
+            (DiagnosticKind::UnrenderableFacts, "unrenderable_facts"),
+            (DiagnosticKind::UncompilableSource, "uncompilable_source"),
+            (DiagnosticKind::PackagelessFile, "packageless_file"),
+            (DiagnosticKind::UnmappableName, "unmappable_name"),
+            (DiagnosticKind::AmbiguousConstant, "ambiguous_constant"),
+            (DiagnosticKind::DependencyFault, "dependency_fault"),
+            (DiagnosticKind::SourceTooDeep, "source_too_deep"),
+            (DiagnosticKind::SourceOutsideRoot, "source_outside_root"),
+            (
+                DiagnosticKind::SourceImportGraphTooLarge,
+                "source_import_graph_too_large",
+            ),
+            (DiagnosticKind::UndecodablePayload, "undecodable_payload"),
+            (DiagnosticKind::ValueOutOfRange, "value_out_of_range"),
+            (DiagnosticKind::InteriorNul, "interior_nul"),
+            (DiagnosticKind::UnrepresentableText, "unrepresentable_text"),
+            (DiagnosticKind::UnknownEnumValue, "unknown_enum_value"),
+            (DiagnosticKind::UnannotatedFloat, "unannotated_float"),
+            (DiagnosticKind::ValueNotOnScale, "value_not_on_scale"),
+            (DiagnosticKind::NonFiniteFloat, "non_finite_float"),
+            (DiagnosticKind::UnknownRootType, "unknown_root_type"),
+            (DiagnosticKind::PayloadTooDeep, "payload_too_deep"),
+            (
+                DiagnosticKind::GeneratedPredicateCollision,
+                "generated_predicate_collision",
+            ),
+            (DiagnosticKind::TermTypeMismatch, "term_type_mismatch"),
+            (DiagnosticKind::ShapeViolation, "shape_violation"),
+            (DiagnosticKind::ReassembledTooDeep, "reassembled_too_deep"),
+            (DiagnosticKind::ReassembledTooLarge, "reassembled_too_large"),
+            (DiagnosticKind::UnreadableAnswerSet, "unreadable_answer_set"),
+            (DiagnosticKind::UnrepresentableJson, "unrepresentable_json"),
+            (DiagnosticKind::NoComparableSchemas, "no_comparable_schemas"),
+            (
+                DiagnosticKind::AmbiguousVersionPackages,
+                "ambiguous_version_packages",
+            ),
+        ] {
+            assert_eq!(kind.as_str(), wire, "{kind:?}");
+        }
     }
 
     #[test]
@@ -792,7 +762,9 @@ mod tests {
             | DiagnosticKind::ReassembledTooDeep
             | DiagnosticKind::ReassembledTooLarge
             | DiagnosticKind::UnreadableAnswerSet
-            | DiagnosticKind::UnrepresentableJson => {}
+            | DiagnosticKind::UnrepresentableJson
+            | DiagnosticKind::NoComparableSchemas
+            | DiagnosticKind::AmbiguousVersionPackages => {}
         }
     }
 
