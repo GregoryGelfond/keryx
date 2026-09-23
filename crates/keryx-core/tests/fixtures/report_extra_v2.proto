@@ -1,0 +1,9 @@
+syntax = "proto3";
+package climate.extra.v2;
+
+// A package on the new side of the report renderer's fixture pair only (`report_v2.proto` imports
+// it, `report_v1.proto` has no counterpart): the report shows it as a package added, its message
+// and that message's field riding as additions.
+message Probe {
+  string id = 1;
+}

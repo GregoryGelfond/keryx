@@ -1,0 +1,51 @@
+syntax = "proto3";
+package climate.v1;
+
+import "keryx/options.proto";
+import "report_alerts_v1.proto";
+
+// The old side of the report renderer's fixture pair (`report_v2.proto` is the new), read as one
+// descriptor set with the alerts package it imports (`report_alerts_v1.proto`), so the comparison
+// spans two packages — this one changed, the alerts one untouched — beside every kind of field
+// change: `Reading.sensor` removed, `Reading.temp_c` renamed `celsius` at its number (bridged),
+// `Reading.humidity` added, `AlertSet.alerts` turned from a set into a sequence (its form
+// changed), `Station.readings` renamed `series` (a message field, bridged through its view), the
+// message `Legacy` removed, the message `Batch` added, and `Unit`'s values renamed, removed, and
+// added. Of the enums, `Quality` comes to preserve unknown values on the new side (its preserve
+// flag flipped), and `Grade` is renamed there by a collision — a `Grade` nested in the new `Batch`
+// qualifies it — while `Reading.grade`, which names it on both sides, is no change of the field.
+// The new side also brings a package of its own (`report_extra_v2.proto`).
+message Reading {
+  string sensor = 1;
+  int32 temp_c = 2;
+  Grade grade = 4;
+}
+
+message AlertSet {
+  repeated climate.alerts.v1.Alert alerts = 1 [(keryx.set) = true];
+}
+
+message Station {
+  repeated Reading readings = 1;
+}
+
+message Legacy {
+  string note = 1;
+}
+
+enum Unit {
+  UNIT_UNSPECIFIED = 0;
+  UNIT_C = 1;
+  UNIT_F = 2;
+}
+
+enum Quality {
+  QUALITY_UNSPECIFIED = 0;
+  QUALITY_GOOD = 1;
+  QUALITY_POOR = 2;
+}
+
+enum Grade {
+  GRADE_UNSPECIFIED = 0;
+  GRADE_A = 1;
+}

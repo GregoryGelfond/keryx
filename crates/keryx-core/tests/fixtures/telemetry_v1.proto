@@ -1,0 +1,32 @@
+syntax = "proto2";
+package telemetry.v1;
+
+// The old side of the syntax-migration fixture pair (`telemetry_v2.proto` is the new, in proto3):
+// a proto2 file, so its enums are closed and its singular fields carry proto2 presence —
+// `required` and `optional` — which the new side's proto3 declarations flip: `Mode` opens (its
+// openness changed), `Frame.id` loses its `required`, every `optional` scalar becomes implicit,
+// `ticks` widens from int32 to int64, `armed` joins a oneof, `offset` and the map `labels` go
+// beside a map and two scalars that arrive, and `Band` goes while `Health` arrives. The report's
+// words for a proto2 `required` field, a closed enum, a map's key, and the wider scalar family are
+// pinned over it.
+message Frame {
+  required string id = 1;
+  optional int32 ticks = 2;
+  optional bytes payload = 3;
+  optional bool armed = 4;
+  optional double level = 6;
+  optional sfixed32 offset = 7;
+  map<int32, string> labels = 8;
+  optional Mode mode = 11;
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  MODE_IDLE = 1;
+  MODE_ACTIVE = 2;
+}
+
+enum Band {
+  BAND_UNSPECIFIED = 0;
+  BAND_LOW = 1;
+}

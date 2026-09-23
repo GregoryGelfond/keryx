@@ -1,0 +1,32 @@
+syntax = "proto3";
+package telemetry.v2;
+
+// The new side of the syntax-migration fixture pair (`telemetry_v1.proto` is the old, in proto2):
+// the same schema re-declared in proto3, so `Mode` is open now, `Frame.id` is implicit rather than
+// `required`, the `optional` scalars are implicit, `ticks` is an int64, `armed` is an arm of the
+// oneof `state` beside the new `code`, `offset` and `labels` are gone, the map `counters` and the
+// float `ratio` are new, `Band` is gone, and `Health` is new.
+message Frame {
+  string id = 1;
+  int64 ticks = 2;
+  bytes payload = 3;
+  oneof state {
+    bool armed = 4;
+    uint32 code = 5;
+  }
+  double level = 6;
+  map<string, int32> counters = 9;
+  float ratio = 10;
+  Mode mode = 11;
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  MODE_IDLE = 1;
+  MODE_ACTIVE = 2;
+}
+
+enum Health {
+  HEALTH_UNSPECIFIED = 0;
+  HEALTH_OK = 1;
+}

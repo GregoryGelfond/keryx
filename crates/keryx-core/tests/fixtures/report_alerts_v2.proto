@@ -1,0 +1,16 @@
+syntax = "proto3";
+package climate.alerts.v2;
+
+// The alerts package of the report renderer's fixture pair on its new side (`report_v2.proto`
+// imports it): the version bump of `report_alerts_v1.proto` and nothing else, so the comparison
+// finds its message and its enum unchanged.
+message Alert {
+  string sensor = 1;
+  Level severity = 2;
+}
+
+enum Level {
+  LEVEL_UNSPECIFIED = 0;
+  LEVEL_LOW = 1;
+  LEVEL_HIGH = 2;
+}
