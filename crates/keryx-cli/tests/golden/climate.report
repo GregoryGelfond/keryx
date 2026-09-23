@@ -1,0 +1,69 @@
+━━ keryx diff ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   3 packages  keryx <version>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ climate.v1  →  climate.v2
+ ═════════════════════════════════════════════════════════════════════
+
+ alert_set · climate.AlertSet
+ ─────────────────────────────────────────────────────────────────────
+  #1  ! changed   alerts            set → seq, /2 → /3  no bridge
+
+ batch · climate.Batch                                         + added
+ ─────────────────────────────────────────────────────────────────────
+  #1  + added     readings/3        reading,seq
+  #2  + added     sampler/2         probe,partial
+  #3  + added     grade/2           batch__grade,total
+
+ legacy · climate.Legacy                         - removed · no bridge
+ ─────────────────────────────────────────────────────────────────────
+  #1  - removed   note/2            string,total  no bridge
+
+ reading · climate.Reading
+ ─────────────────────────────────────────────────────────────────────
+  #1  - removed   sensor/2          string,total  no bridge
+  #2  ~ renamed   temp_c → celsius  /2            bridge available
+  #3  + added     humidity/2        int32,total
+
+ station · climate.Station
+ ─────────────────────────────────────────────────────────────────────
+  #1  ~ renamed   readings → series  /3           bridge available (view)
+
+ batch__grade · climate.Batch.Grade                            + added
+ ─────────────────────────────────────────────────────────────────────
+  #0  + added     unspecified
+  #1  + added     fine
+
+ grade → v2__grade · climate.Grade        ~ renamed · bridge available
+ ─────────────────────────────────────────────────────────────────────
+
+ quality · climate.Quality  (open) → (open, preserve)  ! changed · no bridge
+ ─────────────────────────────────────────────────────────────────────
+
+ unit · climate.Unit
+ ─────────────────────────────────────────────────────────────────────
+  #1  ~ renamed   c → centigrade                  no bridge · constant
+  #2  - removed   f                               no bridge
+  #3  + added     k
+
+ climate.alerts.v1  →  climate.alerts.v2
+ ═════════════════════════════════════════════════════════════════════
+
+ alert · climate.alerts.Alert                                unchanged
+ ─────────────────────────────────────────────────────────────────────
+
+ level · climate.alerts.Level                                unchanged
+ ─────────────────────────────────────────────────────────────────────
+
+ climate.extra.v2                                              + added
+ ═════════════════════════════════════════════════════════════════════
+
+ probe · climate.extra.Probe                                   + added
+ ─────────────────────────────────────────────────────────────────────
+  #1  + added     id/2              string,total
+
+ ─────────────────────────────────────────────────────────────────────
+  7 breaking   2 removed · 1 changed · 1 message removed · 1 value removed · 1 value renamed · 1 preserve change
+  3 bridged    2 renamed · 1 enum renamed (inbound-facing)
+ 12 additive   5 added · 2 messages added · 1 enum added · 3 values added · 1 package added
+  → rerun with --bridge <path>  to write the 3 bridge views

@@ -1,0 +1,57 @@
+syntax = "proto3";
+package climate.v2;
+
+import "keryx/options.proto";
+import "report_alerts_v2.proto";
+import "report_extra_v2.proto";
+
+// The new side of the report renderer's fixture pair (`report_v1.proto` is the old): the version
+// bump `climate.v1` -> `climate.v2` with `Reading.sensor` removed, `Reading.temp_c` renamed
+// `celsius` at its number, `Reading.humidity` added, `AlertSet.alerts` a plain sequence now,
+// `Station.readings` renamed `series`, `Legacy` gone, `Batch` new — its `sampler` naming a message
+// of the package `climate.extra.v2` (`report_extra_v2.proto`), which is on this side only, and its
+// nested `Grade` colliding with the package's `Grade`, which the collision qualifies to
+// `v2__grade` (a rename the instrument bridges) — `Unit`'s `UNIT_C` renamed `UNIT_CENTIGRADE`,
+// `UNIT_F` removed, `UNIT_K` added, and `Quality` under `(keryx.unknown) = PRESERVE`.
+message Reading {
+  int32 celsius = 2;
+  int32 humidity = 3;
+  Grade grade = 4;
+}
+
+message AlertSet {
+  repeated climate.alerts.v2.Alert alerts = 1;
+}
+
+message Station {
+  repeated Reading series = 1;
+}
+
+message Batch {
+  repeated Reading readings = 1;
+  climate.extra.v2.Probe sampler = 2;
+  Grade grade = 3;
+
+  enum Grade {
+    GRADE_UNSPECIFIED = 0;
+    GRADE_FINE = 1;
+  }
+}
+
+enum Unit {
+  UNIT_UNSPECIFIED = 0;
+  UNIT_CENTIGRADE = 1;
+  UNIT_K = 3;
+}
+
+enum Quality {
+  option (keryx.unknown) = PRESERVE;
+  QUALITY_UNSPECIFIED = 0;
+  QUALITY_GOOD = 1;
+  QUALITY_POOR = 2;
+}
+
+enum Grade {
+  GRADE_UNSPECIFIED = 0;
+  GRADE_A = 1;
+}

@@ -1,0 +1,34 @@
+━━ keryx diff ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   telemetry.v1  →  telemetry.v2  keryx <version>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ frame · telemetry.Frame
+ ─────────────────────────────────────────────────────────────────────
+  #1  ! changed   id                required → total  no bridge
+  #2  ! changed   ticks             int32 → int64, partial → total  no bridge
+  #3  ! changed   payload           partial → total  no bridge
+  #4  ! changed   armed             singular → oneof, no oneof → oneof{4}  no bridge
+  #5  + added     code/2            uint32,partial
+  #6  ! changed   level             partial → total  no bridge
+  #7  - removed   offset/2          sfixed32,partial  no bridge
+  #8  - removed   labels/3          string,map<int32>  no bridge
+  #9  + added     counters/3        int32,map<string>
+ #10  + added     ratio/2           float,total
+ #11  ! changed   mode              partial → total  no bridge
+
+ band · telemetry.Band                           - removed · no bridge
+ ─────────────────────────────────────────────────────────────────────
+  #0  - removed   unspecified                     no bridge
+  #1  - removed   low                             no bridge
+
+ health · telemetry.Health                                     + added
+ ─────────────────────────────────────────────────────────────────────
+  #0  + added     unspecified
+  #1  + added     ok
+
+ mode · telemetry.Mode  (closed) → (open)        ! changed · no bridge
+ ─────────────────────────────────────────────────────────────────────
+
+ ─────────────────────────────────────────────────────────────────────
+ 12 breaking   2 removed · 6 changed · 1 enum removed · 2 values removed · 1 openness change
+  6 additive   3 added · 1 enum added · 2 values added

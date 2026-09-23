@@ -5,7 +5,11 @@
 //! comparison, `Diverged` (9) only under `--exit-code` when a change is breaking, `Usage` (2) for
 //! mixed doors or two schemas with no package in common, `Schema` (4) for a side that does not
 //! build — the last progress line naming which side. The thermal pair is keryx-core's evolution
-//! fixture (`evolution_v1.proto` -> `evolution_v2.proto`); the rest are written here.
+//! fixture (`evolution_v1.proto` -> `evolution_v2.proto`); the climate pair — two subject packages
+//! a side and a third on the new side, every kind of field change, an unchanged message and enum —
+//! is its report fixture (`report_v1.proto` -> `report_v2.proto`, each with its imports as one
+//! descriptor set); the rest are written here. The report is pinned to goldens (`golden/*.report`)
+//! with the banner's keryx version masked ([`masked`]).
 
 use keryx_test_support as support;
 
@@ -18,6 +22,47 @@ use support::fixtures;
 /// plus one line terminator, which the golden file (newline-terminated like every text file
 /// beside it) already is.
 const THERMAL_CHANGESET: &str = include_str!("../../keryx-core/tests/golden/evolution.json");
+
+/// The plain report for the climate pair — three packages, every kind of field change, the
+/// unchanged shown — with its version line masked.
+const CLIMATE_REPORT: &str = include_str!("golden/climate.report");
+
+/// The plain report for the thermal pair — one package, so the banner names the transition — with
+/// its version line masked.
+const EVOLUTION_REPORT: &str = include_str!("golden/evolution.report");
+
+/// The plain report for the telemetry pair — proto2 to proto3: an enum's openness flipped, a
+/// `required` field and the `optional` scalars implicit now, a field into a oneof, maps and
+/// scalars of several kinds — with its version line masked.
+const TELEMETRY_REPORT: &str = include_str!("golden/telemetry.report");
+
+/// The keryx version as the report's banner names it — this build's, since the suite and the
+/// binary are one package.
+fn version() -> String {
+    format!("keryx {}", env!("CARGO_PKG_VERSION"))
+}
+
+/// The report with its version masked: the banner line ending in `keryx <this version>` — the one
+/// volatile text in a report, as the manifest goldens' header is — has its padding trimmed and the
+/// version replaced by `<version>`, so the golden pins the transition the line names and nothing a
+/// version bump would move. Newline-terminated as the report is. Panics unless exactly one line
+/// carried the version.
+fn masked(report: &str) -> String {
+    let version = version();
+    let mut carried = 0;
+    let text: String = report
+        .lines()
+        .map(|line| match line.strip_suffix(version.as_str()) {
+            Some(left) => {
+                carried += 1;
+                format!("{}  keryx <version>\n", left.trim_end())
+            }
+            None => format!("{line}\n"),
+        })
+        .collect();
+    assert_eq!(carried, 1, "one version line: {report}");
+    text
+}
 
 /// A fresh scratch directory per test (parallel-safe), for the sources a test writes itself.
 fn scratch(name: &str) -> PathBuf {
@@ -39,6 +84,26 @@ fn thermal_pair() -> (PathBuf, PathBuf) {
     (
         fixtures().join("evolution_v1.proto"),
         fixtures().join("evolution_v2.proto"),
+    )
+}
+
+/// The climate pair: keryx-core's report fixture, old then new, each compiled with its imports to
+/// one descriptor set — the multi-package route, since a `.proto` side scopes its subject
+/// vocabulary to the one opened file while a `.binpb` side carries every non-dependency file it
+/// holds.
+fn climate_pair() -> (PathBuf, PathBuf) {
+    let dir = scratch("diff_climate_pair");
+    (
+        write(
+            &dir,
+            "climate_v1.binpb",
+            support::compile_fixture("report_v1.proto"),
+        ),
+        write(
+            &dir,
+            "climate_v2.binpb",
+            support::compile_fixture("report_v2.proto"),
+        ),
     )
 }
 
@@ -126,6 +191,131 @@ fn the_human_report_is_the_product_by_default() {
         "the rename's two names: {report}"
     );
     assert!(report.ends_with('\n'), "newline-terminated: {report:?}");
+}
+
+#[test]
+fn the_report_is_pinned_to_its_golden_with_the_version_masked() {
+    // The climate pair under `--color never`: the plain report, byte for byte the golden once the
+    // version line is masked, and no escape sequence in it. The alerts package's message and
+    // enum, untouched by the new side, are present as headers marked `unchanged` — shown only
+    // because the renderer reads the comparison's tree, where the unchanged nodes are, and not
+    // its flat change rows, where they are not.
+    let (old, new) = climate_pair();
+    let out = diff(&old, &new, &[], &["--color", "never"]);
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    let report = stdout(&out);
+    assert!(!report.contains('\x1b'), "no escape sequence: {report:?}");
+    let unchanged: Vec<&str> = report
+        .lines()
+        .filter(|line| line.ends_with("unchanged"))
+        .collect();
+    assert_eq!(
+        unchanged.len(),
+        2,
+        "the alerts package's message and enum: {report}"
+    );
+    assert!(
+        unchanged[0].starts_with(" alert · climate.alerts.Alert")
+            && unchanged[1].starts_with(" level · climate.alerts.Level"),
+        "each shown under its predicate and version-free path: {report}"
+    );
+    // `Grade`'s predicate is re-spelled `v2__grade` by a collision on the new side: the enum's own
+    // header says so, once, with its bridge — and `Reading.grade`, which names the enum on both
+    // sides, is no row at all, since a referent renamed is that enum's change and not the field's.
+    let respelled: Vec<&str> = report
+        .lines()
+        .filter(|line| line.contains("v2__grade"))
+        .collect();
+    assert_eq!(
+        respelled.len(),
+        1,
+        "the rename on the enum's header only: {report}"
+    );
+    assert!(
+        respelled[0].starts_with(" grade → v2__grade · climate.Grade")
+            && respelled[0].ends_with("~ renamed · bridge available"),
+        "{report}"
+    );
+    assert_eq!(masked(&report), CLIMATE_REPORT);
+}
+
+#[test]
+fn a_syntax_migration_shows_the_enum_flip_and_the_presence_deltas() {
+    // The telemetry pair through the `.proto` door — proto2 old, proto3 new: the enum whose
+    // openness flipped carries its descriptors old → new on its header, the once-`required` field
+    // and the `optional` scalars show their presence old → new as rows, the field that joined a
+    // oneof shows its form and its cell, and the maps and scalars spell their types in the
+    // manifest's words. No rename, so no bridge line and no hint.
+    let out = diff(
+        &fixtures().join("telemetry_v1.proto"),
+        &fixtures().join("telemetry_v2.proto"),
+        &[&fixtures()],
+        &["--color", "never"],
+    );
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    let report = stdout(&out);
+    assert!(!report.contains('\x1b'), "no escape sequence: {report:?}");
+    let flipped = report
+        .lines()
+        .find(|line| line.starts_with(" mode · telemetry.Mode"))
+        .expect("the enum's header");
+    assert!(
+        flipped.contains("(closed) → (open)") && flipped.ends_with("! changed · no bridge"),
+        "the openness flip on the header: {flipped}"
+    );
+    assert!(
+        report.contains("required → total") && report.contains("no oneof → oneof{4}"),
+        "the presence and the cell deltas: {report}"
+    );
+    assert!(
+        !report.contains("bridge") || report.contains("no bridge"),
+        "nothing bridged: {report}"
+    );
+    assert_eq!(masked(&report), TELEMETRY_REPORT);
+}
+
+#[test]
+fn a_single_package_report_names_the_transition_in_its_banner() {
+    // The thermal pair through the `.proto` door: one package, so the banner's second line is
+    // the version transition itself beside this build's keryx version; masked, the golden keeps
+    // the transition and drops the version.
+    let (old, new) = thermal_pair();
+    let out = diff(&old, &new, &[&fixtures()], &["--color", "never"]);
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    let report = stdout(&out);
+    let banner = report.lines().nth(1).expect("a banner line");
+    assert!(
+        banner.starts_with("   thermal.v1  →  thermal.v2") && banner.ends_with(&version()),
+        "the transition and the version: {banner}"
+    );
+    assert_eq!(masked(&report), EVOLUTION_REPORT);
+}
+
+#[test]
+fn an_identical_pair_reports_nothing_changed() {
+    // A schema against itself: every message and enum is still shown, each marked `unchanged`,
+    // no change row at all, and the footer says so — the report shows what stayed, not only what
+    // changed.
+    let (old, _) = thermal_pair();
+    let out = diff(&old, &old, &[&fixtures()], &["--color", "never"]);
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    let report = stdout(&out);
+    assert_eq!(
+        report
+            .lines()
+            .filter(|line| line.ends_with("unchanged"))
+            .count(),
+        3,
+        "two messages and one enum: {report}"
+    );
+    assert!(
+        !report.lines().any(|line| line.starts_with("  #")),
+        "no change row: {report}"
+    );
+    assert!(
+        report.lines().any(|line| line == "  no changes"),
+        "the footer: {report}"
+    );
 }
 
 #[test]
