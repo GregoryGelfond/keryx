@@ -112,5 +112,13 @@ keryx-test-support = { path = "../keryx-test-support" }
 # invariants the docs assert, made executable over generated input.
 proptest = "1"
 
+# The keryx Book's one checked Rust example (Part II, Getting started). Built and
+# run by `cargo test`, so the manual's library snippet cannot drift from the API;
+# the chapter embeds its `example` anchor with `{{#include}}`.
+[[example]]
+name = "book-inspect"
+path = "../../docs/book/examples/inspect.rs"
+test = true
+
 [lints]
 workspace = true
