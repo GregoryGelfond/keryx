@@ -24,7 +24,7 @@ use keryx_core::codec::{PayloadFormat, Root};
 let facts = codec.shred(
     "thermal.v1.ReadingBatch",   // the root type the payload instantiates
     &payload,                    // the bytes
-    PayloadFormat::Binary,       // Binary, Text, or Json
+    PayloadFormat::Binary,       // Binary, Textproto, or Json
     &Root::fresh(0),             // the root constant, r0
 )?;
 

@@ -8,7 +8,7 @@ A `Diagnostic` carries a *kind*, a *locus* (the field path or element where the 
 
 The taxonomy spans the doors:
 
-- **Input** — bytes that do not decode as the root type (`UndecodablePayload`), or nest past the ceiling (`PayloadTooDeep`).
+- **Payload** — bytes that do not decode as the root type (`UndecodablePayload`), or nest past the ceiling (`PayloadTooDeep`).
 - **Value** — a scalar keryx cannot represent in the dialect (`UnrepresentableText`), a float off its scale (`ValueNotOnScale`) or non-finite (`NonFiniteFloat`), an unknown enum value without `PRESERVE` (`UnknownEnumValue`).
 - **Schema** — an editions file (`UnsupportedEdition`), an option keryx cannot map (`UnmappableOptionKey`).
 - **Shape** — an answer set that cannot be a message (`ShapeViolation`), or one the reassembler cannot read (`UnreadableAnswerSet`); on the JSON output form, a well-known value canonical JSON cannot carry (`UnrepresentableJson`).

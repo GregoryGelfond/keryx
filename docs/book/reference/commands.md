@@ -21,7 +21,7 @@ Report the mapping verdict for a schema without writing artifacts — how each m
 Translate a message into ground facts over a schema's vocabulary. The payload may be the binary wire form, the Protocol Buffers text format, or the canonical JSON mapping.
 
 ```sh
-keryx facts schema.proto --message pkg.Msg payload.binpb
+keryx facts --root pkg.Msg=payload.binpb schema.proto
 ```
 
 ## `keryx emit`
@@ -29,7 +29,7 @@ keryx facts schema.proto --message pkg.Msg payload.binpb
 Reassemble an answer set — read from an `.lp` file — back into a message, serialized to the binary wire form, textproto, or JSON: a byte-for-byte round trip of what `facts` produced.
 
 ```sh
-keryx emit schema.proto --message pkg.Msg answer.lp --out message.binpb
+keryx emit --root pkg.Msg answer.lp schema.proto --out binpb > message.binpb
 ```
 
 ## `keryx diff`
