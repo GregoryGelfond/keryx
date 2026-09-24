@@ -1,0 +1,471 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Protocol Buffer support - The keryx Book</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Compiling Protocol Buffers into an Answer Set Programming vocabulary, and translating messages to ground facts and back.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-850aa159.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-cf1919ee.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The keryx Book</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/GregoryGelfond/keryx" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/GregoryGelfond/keryx/edit/main/docs/book/reference/proto-support.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="keryx-proto-support--versions-and-payload-formats"><a class="header" href="#keryx-proto-support--versions-and-payload-formats">keryx proto support — versions and payload formats</a></h1>
+<p>keryx branches on <em>resolved features</em>, never on syntax era (spec §5, §20), so
+supporting a proto version is a matter of the descriptor engine resolving its
+features — not of keryx logic. keryx supports every version its engine
+(prost-reflect) can ingest; new editions are a drop-in as the engine gains them.
+This ledger states the proto-version support keryx <em>delivers</em> as of the gen
+increment (Increment 2) — proto2 and proto3 golden-tested by the facts
+renderer, editions per the front-loaded capability verdict — not the state of
+any single commit along the way. The outbound direction is whole for both eras: a proto2 <code>required</code> field’s
+totality obligation is emitted and enforced (stated after the table) — full
+proto2/proto3 parity.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>version</th><th>status as of the gen increment (Increment 2)</th></tr>
+</thead>
+<tbody>
+<tr><td>proto2</td><td>supported (golden-tested)</td></tr>
+<tr><td>proto3</td><td>supported (golden-tested)</td></tr>
+<tr><td>edition 2023+</td><td>DEFERRED, and refused cleanly. Neither engine handles editions at these versions: protox 0.9.1 does not <em>compile</em> an editions <code>.proto</code> (→ <code>UncompilableSource</code>), and prost-reflect 0.16.5 has no editions <code>Syntax</code> and <em>panics</em> decoding an editions descriptor set. keryx detects an editions <code>FileDescriptorSet</code> up front and refuses each editions file with a specific <code>UnsupportedEdition</code> diagnostic at that file’s locus (§6 — total, no panic). <code>SchemaVersion</code> is <code>#[non_exhaustive]</code>, so a distinct <code>Edition</code> variant and the enum_type override are a later add, not a redesign</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Both routes fail on editions today, and keryx says so precisely.</strong> A measurement (protoc 36 →
+an edition-2023 descriptor set → keryx) confirmed prost-reflect 0.16.5 panics building a pool from
+an editions set — its <code>Syntax</code> carries only <code>Proto2</code>/<code>Proto3</code>. keryx therefore inspects a
+serialized set for <code>syntax = "editions"</code> <em>before</em> handing it to the engine (<code>descriptor::decode</code>),
+and returns a specific <code>UnsupportedEdition</code> diagnostic, one per editions file at that file’s locus
+(“editions … are not supported yet: keryx’s descriptor engine has no editions support, so neither
+a .proto source nor a protoc-compiled descriptor set is accepted”), rather than provoking the
+panic. This is §6 totality by construction: keryx pre-empts the editions panic rather than catching it. (An
+<em>unforeseen</em> engine fault on a foreign-input path is the different case — <em>contained</em> as a typed
+dependency fault at the descriptor door (its decode and its accessor walk), the threat model’s
+dependency boundary, not masked.) The
+prost-reflect panic-on-editions is worth reporting upstream.</p>
+<p>Editions support arrives when the engine does — prost-reflect gaining an editions syntax (a
+deliberate dependency bump) — at which point keryx’s own presence/<code>enum_type</code> logic, already
+feature-based rather than era-based, resolves editions with no redesign. Spec §31’s (M1)
+capability test is the tripwire; when it flips to SUPPORTED, add the editions fixture and golden
+and update this row.</p>
+<p><strong>Outbound, a proto2 <code>required</code> field’s totality obligation is emitted and enforced — full
+proto2/proto3 parity.</strong> The specification has the serializability theory oblige totality of every
+IMPLICIT and <code>LEGACY_REQUIRED</code> singular field (spec §5, §12.2). The mapping’s totality carries the
+distinction: <code>Totality::Required</code> for a proto2 <code>required</code> field, <code>Total</code> for IMPLICIT, <code>Partial</code>
+for EXPLICIT. So <code>emit.lp</code> emits the totality obligation for a <code>required</code> field exactly as for an
+IMPLICIT one — strict: UNSAT on an answer set that omits it; diagnostic: <code>violates</code> derived at the
+field’s path — and the reassembler, reading the same mapping, refuses an answer set that omits a
+<code>required</code> field with a <code>ShapeViolation</code>, so no incomplete proto2 message is produced: enforced at
+solve time and at reassembly alike. A <code>required</code> field’s presence is still read from the message
+inbound (partial, like <code>optional</code>); only the outbound obligation distinguishes it. proto3 has no
+<code>required</code>, and proto2’s <code>required</code> is now enforced outbound, so both eras have whole outbound
+support — for interconnect preservation and inbound↔outbound symmetry.</p>
+<h2 id="enum-openness-and-unknown-values"><a class="header" href="#enum-openness-and-unknown-values">Enum openness and unknown values</a></h2>
+<p>keryx branches on an enum’s <strong>resolved openness</strong>, never on syntax era (§5, §7.4). A proto3 enum is <strong>open</strong> — a wire value naming no declared constant is legal — and <code>(keryx.unknown) = PRESERVE</code> carries such a value through translation rather than refusing it: inbound, an unknown number <code>N</code> shreds to <code>unknown(N)</code>; outbound, <code>unknown(N)</code> re-encodes to <code>N</code>; without the annotation an unknown value is a structured refusal (<code>UnknownEnumValue</code>). A proto2 enum is <strong>closed</strong> — an unknown wire value is an error — so <code>PRESERVE</code> is inapplicable there (a mis-target diagnostic at the policy door). The inverse override — declaring a proto3 enum <em>closed</em> through the editions <code>enum_type = CLOSED</code> feature — is <strong>deferred</strong> with the rest of editions support (above): a resolved-feature drop-in when the descriptor engine gains editions, not a redesign.</p>
+<h2 id="payload-formats"><a class="header" href="#payload-formats">Payload formats</a></h2>
+<p>The inbound codec (<code>Codec::shred</code>; <code>keryx facts</code>) accepts a payload in each wire form spec §26
+names — binary, canonical JSON, textproto — through one <code>Codec</code>, one walk, and one admission
+policy: the same §6 refusals at the same field paths, the same uniform nesting ceiling of <strong>99</strong>
+message-typed levels below the root, and the same facts from the same message in any of the three
+forms. Where the three differ is in what each <em>admits</em> on the way to the walk, and in how its
+decoder’s own bound meets the ceiling — stated per form below. This ledger states what keryx
+<em>delivers</em> as of the inbound codec (Increment 3).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>format</th><th>status as of the inbound codec (Increment 3)</th></tr>
+</thead>
+<tbody>
+<tr><td>binary (<code>.binpb</code>)</td><td>supported (golden-tested on the thermal example). Compositional nesting is admitted to <strong>99</strong> message-typed levels below the root — spec §8’s door-admission policy, one below the descriptor engine’s decode recursion limit; a payload nesting deeper is refused whole — <code>PayloadTooDeep</code> from the walk at the 100th level, <code>UndecodablePayload</code> from the engine’s own limit past it. Every §6 refusal is a diagnostic at its field’s path; bytes that do not decode as the root type are <code>UndecodablePayload</code></td></tr>
+<tr><td>canonical JSON (<code>.json</code>)</td><td>supported (golden-tested on the thermal example: <code>batch.json</code> shreds to the facts <code>batch.binpb</code> does, three-way with <code>batch.txtpb</code>). The same <code>Codec</code>, walk, and §6 refusals, under the same ceiling of <strong>99</strong> — with no bound of keryx’s ahead of the engine: the deserializer bounds its own nesting, counting arrays and objects (127 nested containers admitted, the 128th refused), and the walk’s counter binds beneath that count for a chain of singular message fields, where a repeated or map-of-message chain meets the count first, at about 63 levels (below); either way a deeper payload is refused whole. A payload that is not one canonical JSON value of the root type — not UTF-8, a member the type does not declare, a value outside its kind, text after the value, or the empty text (the empty message is <code>{}</code>) — is <code>UndecodablePayload</code></td></tr>
+<tr><td>textproto (<code>.txtpb</code>)</td><td>supported (golden-tested on the thermal example: <code>batch.txtpb</code> shreds to the facts <code>batch.binpb</code> does). The same <code>Codec</code>, walk, and §6 refusals, under the same ceiling of <strong>99</strong> — bound <em>ahead</em> of the engine’s text parser by a pre-parse guard that counts message values, so a map entry or an expanded <code>Any</code> spends more of it than on the wire (below); a deeper payload is refused whole, <code>PayloadTooDeep</code>. Text that is not UTF-8, or does not parse as the root type, is <code>UndecodablePayload</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Textproto’s ceiling is counted in message values, the wire’s in occupants.</strong> The engine’s text
+parser recurses natively on every nested message value and bounds nothing, so keryx bounds a text
+payload <em>before</em> it: a pre-parse guard measures the text’s <code>{ }</code>/<code>&lt; &gt;</code> nesting (outside string
+literals and <code>#</code> comments) and refuses past 99 whole — <code>PayloadTooDeep</code>, naming the depth and the
+ceiling and nothing of the text — before the parser sees a token; the parse then runs on a thread
+keryx sizes for the deepest admitted payload (8 MiB), so no admitted payload overflows whatever
+thread the caller decodes on. The measure is exact for a singular or repeated message field (one
+opener, one occupant), so such a payload is admitted exactly as deep as its binary form; it is
+conservative for a map entry (two openers per occupant — the entry’s and its value’s) and an
+expanded <code>Any</code> (an opener the walk never enters, plus whatever it nests), which bind earlier in
+text than on the wire — a map-of-message chain is admitted to 49 levels as text where its wire
+form is admitted to 99 — and never later: the guard over-refuses, and never admits deeper than the
+walk would. Settled, a documented consequence of bounding the text parser lexically.</p>
+<p><strong>JSON’s ceiling is counted in containers by its deserializer, the wire’s in occupants.</strong> The JSON
+form has no guard: the deserializer keryx drives the engine’s JSON mapping with bounds its own
+nesting — its recursion limit, on by default and never lifted, counts arrays and objects and refuses
+the 128th nested one — and the engine’s mapping recurses natively beneath that count with no counter
+of its own, so the whole admitted payload (127 nested containers at most) is deserialized on a thread
+keryx sizes for that admit (8 MiB, <code>engine::JSON_DECODE_STACK</code>; the decode pays a thread spawn per
+payload, as the text parse does, the stack reserved address space committed as the deserialization
+descends), and the walk then applies the uniform ceiling. Which of the two binds goes by the
+field’s form. A chain of singular message fields spends one object a level and reaches the ceiling
+inside the count: 99 levels shred whole, to the facts the same chain shreds to from the wire; 100
+through 126 — every depth the deserializer admits past the ceiling — are the walk’s
+<code>PayloadTooDeep</code>; 127 is the deserializer’s own refusal, <code>UndecodablePayload</code>. A chain of repeated
+message fields spends an array and an object a level and meets the count first: 63 levels shred
+whole, to the facts the same chain shreds to from the wire and from text, and 64 — which the wire
+admits — is <code>UndecodablePayload</code>, 35 levels short of the ceiling. A map-of-message chain spends the
+map’s object and the value’s object a level and so meets the count at about the same depth, 63, by
+the same arithmetic; and a chain through <code>google.protobuf.Value</code>, <code>Struct</code>, or <code>ListValue</code> binds
+earlier still, at about 50 levels, at the engine’s own message-decode limit as it materialises the
+dynamic value. Those two bindings are documented from the engine’s measure of record, not
+instrumented: no fixture of the suite nests a recursive chain of maps of messages — its one map of
+messages, <code>maps.proto</code>’s <code>Inventory.items</code>, is a single level — or declares a <code>Value</code>. Every one is a
+refusal in the safe direction — a shallower message depth than the ceiling, never admission past it
+— and the mechanism is not the text form’s: there a lexical guard over-counts openers; here keryx
+scans nothing, and the deserializer counts containers. One asymmetry of reading, not of content: an
+empty payload is the empty message on the wire and as text, and no JSON value at all —
+<code>UndecodablePayload</code> for the JSON form, whose empty message is <code>{}</code>. Settled, a documented
+consequence of the deserializer bounding itself by container rather than by occupant.</p>
+<p>The codec has no proto-version branch of its own: presence is decided from the mapping’s totality
+(spec §5), which the descriptor door resolves from features, never from syntax era.</p>
+<h2 id="output-formats"><a class="header" href="#output-formats">Output formats</a></h2>
+<p>The outbound codec (<code>Codec::reassemble</code>; <code>keryx emit</code>) writes a reassembled message in each of the
+same three wire forms — binary (<code>--out binpb</code>), the protobuf text format (<code>--out txtpb</code>), and the
+canonical JSON mapping (<code>--out json</code>) — through one reassembly walk and one encode adapter, the
+inverse of the inbound read, as of the outbound codec (Increment 4). The three-way round-trip parity
+is exact and golden-tested: the thermal <code>ReadingBatch</code> reassembles to each form and shreds back to
+one fact set, and the composite forms — scalar and message-valued maps, enums, singular and repeated
+fields — round-trip in every form too (<code>tests/codec_roundtrip.rs</code>, <code>tests/codec_emit_shapes.rs</code>) — exact for every message all three forms can represent, the one class canonical JSON cannot documented below. A
+map’s entries are ordered by key in each form, so identical answer sets yield identical bytes (spec
+§12.3): the binary wire re-sort (<code>codec::canonical</code>), the textproto sorter (<code>codec::canonical_text</code>),
+and serde_json’s key-ordered map. <code>keryx emit</code> writes exactly one message to stdout; <code>--root Type</code>
+selects which when the answer set names more than one root (§25). The proto2 <code>required</code> totality obligation (above) is enforced at reassembly as at
+solve time, and the three output forms carry it identically — no proto-version asymmetry remains.</p>
+<p><strong>One documented limit of <code>--out json</code>: a well-known type it cannot represent.</strong> Canonical JSON
+mandates the resolved, range-validated form of a <code>Timestamp</code>, <code>Duration</code>, or <code>Any</code>, with no raw
+fallback — where the binary and text forms carry the two structural fields as they stand. keryx keeps
+well-known types opaque and structural on both ends (§10) and does not range-validate or resolve one
+at reassembly (that would special-case the model), so a value the reassembler admits but canonical
+JSON cannot represent — an out-of-range <code>Timestamp</code> or <code>Duration</code>, or an <code>Any</code> whose <code>type_url</code> the
+schema’s pool cannot resolve — is refused at the JSON encode with <code>UnrepresentableJson</code>, naming the
+forms that carry it (<code>--out binpb</code>/<code>txtpb</code>), rather than emitted as a non-conforming document. The
+model stays symmetric: each output form refuses only what it alone cannot represent (the outbound
+counterpart of the inbound dialect’s control-character refusal, <code>UnrepresentableText</code>), and the
+round-trip parity above is exact for every message all three forms can represent
+(<code>tests/codec_emit_wkt.rs</code>).</p>
+<p><strong>The thermal example’s outbound story closes both round trips.</strong> The worked example closes the
+<code>ReadingBatch</code> round trip solver-free — <code>examples/thermal/batch.binpb</code> → facts →
+<code>examples/thermal/answer.lp</code> (its facts under the <code>emit_reading_batch(r0)</code> marker) → <code>keryx emit</code> →
+<code>examples/thermal/batch.reassembled.binpb</code>, byte-for-byte the payload again (Increment 4). The §28
+story’s <em>alert</em> half — an <code>AlertSet</code> of alerts emitted from a batch — closes at Increment 5, when
+<code>(keryx.set)</code> gains meaning: <code>AlertSet.alerts</code> is generated as a <strong>membership relation</strong>, not a
+sequence, so a natural <code>overheating</code> model that names its alerts by their own provenance
+(<code>alerts(out, al(R))</code>, not the dense indices a sequence needs) reassembles, and <code>keryx emit</code> closes
+the <code>AlertSet</code> round trip byte-for-byte, its members in clingo’s total symbol order (§7.1).</p>
+<h2 id="schema-evolution"><a class="header" href="#schema-evolution">Schema evolution</a></h2>
+<p>The evolution instrument (<code>keryx diff</code>; spec §13.4, §27) compares two versions of one schema on
+the model side — what a model written against the old vocabulary survives, what it does not, and
+the bridge that carries it across the one kind of change a rule can alias — as of the evolution
+instrument (Increment 6). Both sides come in through the doors this ledger describes, so the
+proto-version support above is the instrument’s too: a proto2 side and a proto3 side compare
+alike (presence is read from each mapping’s totality, never from the syntax era), and an editions
+file is refused on either side with the same <code>UnsupportedEdition</code> diagnostic.</p>
+<p><strong>Both mappings are regenerated; no manifest is read.</strong> <code>keryx diff &lt;old&gt; &lt;new&gt;</code> compiles each
+side through the descriptor door <code>keryx gen</code> uses — a <code>.proto</code> source (with <code>-I</code> include roots,
+one list shared by both sides) or a <code>protoc</code>-compiled descriptor set (<code>.binpb</code>) — maps each as
+<code>gen</code> would, annotations included, and compares the two mappings. The manifest <code>gen</code> writes is a
+per-version record, never an input: the comparison sees exactly the vocabulary each side generates
+today, and nothing has to be kept in step with a stored file.</p>
+<p><strong>Matching is by protobuf identity, with the version stripped.</strong> Two versions of one schema are
+two packages under buf’s convention (<code>thermal.v1</code>, <code>thermal.v2</code>), so a package is matched by its
+name with the trailing version segment removed, a message or enum by its path within that package,
+and a field or enum value by its number. Names are free to change, so a renamed field is reported
+as a rename rather than as a removal beside an addition; a renumbered field is the reverse — a
+removal beside an addition, the wire-breaking act it is. Two schemas with no package in common
+once normalized are refused as not comparable (<code>NoComparableSchemas</code>, a usage error, no report),
+and a side that declares two versions of one package is refused as ambiguous
+(<code>AmbiguousVersionPackages</code>).</p>
+<p><strong>Only subject vocabulary is compared, and the door decides the subject.</strong> What a side <em>is</em>
+depends on how it came in:</p>
+<ul>
+<li>through the <code>.proto</code> door, a side is the one file named on the command line; what it imports is
+referent closure — resolved, and translated where a field references it, but not compared;</li>
+<li>through the <code>.binpb</code> door, a side is every file in the set except the well-known types
+(<code>google/protobuf/*</code>) and keryx’s option registry (<code>keryx/options.proto</code>).</li>
+</ul>
+<p>Both sides go through one door. A <code>.proto</code> on one side and a <code>.binpb</code> on the other would scope
+the two sides differently — one file against a whole set — so the mix is refused before either
+side is read, a usage error naming which side is which, rather than reported as a page of
+spurious additions and removals.</p>
+<p><strong>A schema of several files goes in as descriptor sets.</strong> Compile each revision with
+<code>--include_imports</code> to its own self-contained set, and diff the sets:</p>
+<pre><code class="language-sh">protoc -I v1 --include_imports --descriptor_set_out=v1.binpb v1/station.proto
+protoc -I v2 --include_imports --descriptor_set_out=v2.binpb v2/station.proto
+keryx diff v1.binpb v2.binpb
+</code></pre>
+<p>The comparison then spans every file of the schema, package by package; a package on one side
+only rides as a whole addition or removal, its elements as rows of their own.</p>
+<p><strong>Two revisions sharing a file name take that route, or distinct names.</strong> The <code>.proto</code> door
+reduces the path it is given to a name relative to an include root (<code>v1/station.proto</code> under
+<code>-I v1</code> is <code>station.proto</code>) and opens that name through the include roots in order — protoc’s
+own rule. So <code>keryx diff v1/station.proto v2/station.proto -I v1 -I v2</code> reduces <em>both</em> sides to
+<code>station.proto</code>, and both open under <code>v1</code>, the first root that holds it: the same file is loaded
+twice, and the report is a version diffed against itself — <code>no changes</code>, exit <code>0</code>. The banner
+exposes it: both sides show the same package (<code>station.v1  →  station.v1</code>), where two revisions
+would show the bump. For two revisions of one file name, compile each to its own descriptor set
+against its own root, as above, or name the files distinctly (<code>thermal-v1.proto</code>,
+<code>thermal-v2.proto</code>), as the worked example does.</p>
+<p><strong>The bridge is inbound-facing, and it aliases a predicate, never a term.</strong> For a clean rename — a
+field, message, or enum whose predicate changed with its identity and shape intact (the same
+number or path, arity, type, presence, form, and oneof membership) — <code>--bridge &lt;path&gt;</code> writes one
+rule, <code>old(…) :- new(…).</code>, under a <code>%!</code> provenance line: a generated module like any other, and
+loaded beside the new facts it lets a model written against the old vocabulary read them without
+a line of it changing. Two limits, stated on the row rather than papered over. The bridge lets an
+old model <em>read</em> new facts; a model that <em>asserts</em> the old atoms for <code>keryx emit</code> is not shimmed —
+the new theory obliges the new predicate, and the reassembler reads it. And a message-field bridge
+aliases the field’s relational view (<code>readings(P, I, E) :- samples(P, I, E).</code>, spec §13.2), not the
+occupant term: <code>samples(r0, 0)</code> inside <code>reading(samples(r0, 0))</code> is renamed too, and no rule can
+alias a term, so a model that spells the path term directly is not bridged. A renamed enum
+constant has no bridge either — a constant is not a predicate — and neither has a changed form
+(a <code>(keryx.set)</code> dropped turns <code>alerts/2</code> into <code>alerts/3</code>), a removal, or an enum whose openness or
+<code>(keryx.unknown)</code> setting flipped: each is breaking, and the report says so on the row.</p>
+<p><strong>The report, the changeset, and the exit.</strong> The migration report on stdout groups the changes by
+package, then by message or enum, then by field number, and shows what stayed beside what moved;
+<code>--json</code> writes the changeset instead — one array of records in a stable order, each carrying the
+change’s kind, its element’s path and rendered signature per side, and whether it breaks — for a
+review bot or a check of your own. A breaking change is a finding, not a failure: the exit is <code>0</code>
+whatever the comparison found, and <code>--exit-code</code> turns a breaking comparison into exit <code>9</code>
+(diverged), the report still on stdout and the bridge file still written, for a pipeline that
+should stop on one. An error on the way — a side that does not read, build, or map — keeps its
+own exit class.</p>
+<p><strong>Complementary to <code>buf breaking</code>.</strong> buf guards the wire: a field renumbered, a type changed. The
+protobuf contract lets a name change freely, so buf passes a rename — and on the ASP side a
+predicate’s identity <em>is</em> its name, so that rename silently forks the vocabulary; an annotation
+dropped, which the wire never sees, changes an arity. <code>keryx diff</code> catches both. Run the two
+together: buf for the wire, keryx for the model side.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../library/faults.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../vocabulary.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../library/faults.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../vocabulary.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

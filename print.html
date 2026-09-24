@@ -1,0 +1,825 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>The keryx Book</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Compiling Protocol Buffers into an Answer Set Programming vocabulary, and translating messages to ground facts and back.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-850aa159.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-cf1919ee.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">The keryx Book</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/GregoryGelfond/keryx" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="about-this-book"><a class="header" href="#about-this-book">About this book</a></h1>
+<p>keryx compiles a Protocol Buffers schema into an Answer Set Programming vocabulary and translates messages into ground facts — and answer sets back into messages. The message side never learns ASP; the model side never learns the wire. keryx does not solve: a consuming tool brings its own solver (clingo today) and composes keryx’s translation on both sides.</p>
+<p>This book covers using the <code>keryx</code> command, the translation model it implements, and embedding keryx as a Rust library.</p>
+<h2 id="start-here"><a class="header" href="#start-here">Start here</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>I want to…</th><th>Read</th></tr>
+</thead>
+<tbody>
+<tr><td>See the whole idea in one worked example</td><td><a href="#a-guided-tour">A guided tour</a></td></tr>
+<tr><td>Understand how a schema becomes a vocabulary</td><td><a href="#the-translation-model">The translation model</a></td></tr>
+<tr><td>Turn a message into facts</td><td><a href="#payloads-to-facts">Payloads to facts</a></td></tr>
+<tr><td>Turn an answer set back into a message</td><td><a href="#answer-sets-to-messages">Answer sets to messages</a></td></tr>
+<tr><td>Give a field or enum a precise ASP treatment</td><td><a href="#annotating-the-mapping">Annotating the mapping</a></td></tr>
+<tr><td>See what a schema change does to a model</td><td><a href="#schema-evolution">Schema evolution</a></td></tr>
+<tr><td>Call keryx from Rust</td><td><a href="#getting-started">Getting started</a></td></tr>
+<tr><td>Look up a command</td><td><a href="#using-the-keryx-command">Using the keryx command</a></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="the-two-parts"><a class="header" href="#the-two-parts">The two parts</a></h2>
+<p><strong>Part I — The bridge</strong> is for the ASP author and the schema owner: what keryx generates, how a message maps to facts, how an answer set maps back, and how annotations and schema evolution behave. It draws on the worked examples in <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples"><code>examples/</code></a>.</p>
+<p><strong>Part II — The Rust library</strong> is for the tool builder embedding keryx: the <code>Mapping</code> a schema compiles to, the <code>Codec</code> that shreds a message to facts and reassembles it, and the diagnostics and faults keryx returns.</p>
+<h2 id="results-and-limits"><a class="header" href="#results-and-limits">Results and limits</a></h2>
+<p>keryx is a translation library, and only that:</p>
+<ul>
+<li><strong>It never solves.</strong> keryx emits an ASP vocabulary and reads answer sets; running the solver is the consuming tool’s job. There is no solver inside keryx.</li>
+<li><strong>It parses no Protocol Buffers or ASP itself</strong> beyond two bounded, non-semantic nesting guards — a <code>FileDescriptorSet</code> is the schema interface, and answer-set text is read through the ASP layer’s parser.</li>
+<li><strong>Editions (2023, 2024) are refused</strong> with a specific diagnostic until the descriptor engine supports them; keryx branches on resolved features, not syntax era, so editions become a drop-in when the engine does.</li>
+</ul>
+<p>Every claim the book makes about generated output is shown from a committed, regression-tested example, so the manual cannot drift from the tool.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="using-the-keryx-command"><a class="header" href="#using-the-keryx-command">Using the keryx command</a></h1>
+<p><code>keryx</code> is a bidirectional bridge between Protocol Buffers and Answer Set Programming. It compiles schemas, translates messages to facts, reassembles answer sets into messages, and diffs schema versions. It never invokes a solver.</p>
+<p>Each command reads a <code>.proto</code> (with <code>-I</code> include roots) or a self-contained <code>.binpb</code> descriptor set.</p>
+<h2 id="keryx-gen"><a class="header" href="#keryx-gen"><code>keryx gen</code></a></h2>
+<p>Compile a schema into the ASP vocabulary a model is written against: <code>core.lp</code> (sorts and base-fact predicates as <code>#defined</code> declarations, each carrying its signature as a <code>%!</code> doc comment), <code>views.lp</code> (a relational view per message-typed field), <code>emit.lp</code> (the outbound theory), and a manifest.</p>
+<pre><code class="language-sh">keryx gen schema.proto -o out/
+</code></pre>
+<h2 id="keryx-explain"><a class="header" href="#keryx-explain"><code>keryx explain</code></a></h2>
+<p>Report the mapping verdict for a schema without writing artifacts — how each message, field, and enum lowers, and why.</p>
+<h2 id="keryx-facts"><a class="header" href="#keryx-facts"><code>keryx facts</code></a></h2>
+<p>Translate a message into ground facts over a schema’s vocabulary. The payload may be the binary wire form, the Protocol Buffers text format, or the canonical JSON mapping.</p>
+<pre><code class="language-sh">keryx facts --root pkg.Msg=payload.binpb schema.proto
+</code></pre>
+<h2 id="keryx-emit"><a class="header" href="#keryx-emit"><code>keryx emit</code></a></h2>
+<p>Reassemble an answer set — read from an <code>.lp</code> file — back into a message, serialized to the binary wire form, textproto, or JSON: a byte-for-byte round trip of what <code>facts</code> produced.</p>
+<pre><code class="language-sh">keryx emit --root pkg.Msg answer.lp schema.proto --out binpb &gt; message.binpb
+</code></pre>
+<h2 id="keryx-diff"><a class="header" href="#keryx-diff"><code>keryx diff</code></a></h2>
+<p>Compare two versions of a schema at the level of the ASP vocabulary: what a model written against the old vocabulary survives and what it does not. Emits a migration report, a JSON changeset (<code>--json</code>), and a bridge view per clean rename (<code>--bridge &lt;path&gt;</code>) through which the old model reads the new facts. <code>--exit-code</code> turns a breaking change into the process exit.</p>
+<pre><code class="language-sh">keryx diff old.proto new.proto
+keryx diff --json old.binpb new.binpb
+</code></pre>
+<h2 id="exit-codes"><a class="header" href="#exit-codes">Exit codes</a></h2>
+<p>keryx separates failure classes by exit code, so a script can branch on them: success, an internal error, a usage error, an unreadable input, a schema rejection, a shape violation, a translation refusal, a dependency fault, and — under <code>keryx diff --exit-code</code> — a breaking divergence are each their own class. The exact values are listed in the architecture (<code>docs/design/architecture.md</code>).</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="a-guided-tour"><a class="header" href="#a-guided-tour">A guided tour</a></h1>
+<p>keryx turns a <strong>schema</strong> into an ASP <em>vocabulary</em>, a <strong>message</strong> into ground <em>facts</em> over that vocabulary — and an <em>answer set</em> back into a message:</p>
+<pre><code class="language-text">message ──keryx facts──▶ facts ──your solver──▶ answer set ──keryx emit──▶ message
+                                (keryx runs none)
+</code></pre>
+<p>keryx never runs a solver. The solve in the middle is yours (clingo today), over the vocabulary keryx generated. This tour walks the whole motion on a small schema; the <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/thermal"><code>thermal</code></a> example is the same thing, runnable and golden-tested.</p>
+<h2 id="the-schema"><a class="header" href="#the-schema">The schema</a></h2>
+<p>Four messages in package <code>thermal.v1</code>:</p>
+<pre><code class="language-proto">syntax = "proto3";
+package thermal.v1;
+
+message Reading      { string sensor = 1; int32 temp_c = 2; }
+message ReadingBatch { repeated Reading readings = 1; }
+
+message Alert    { string sensor = 1; int32 temp_c = 2; }
+message AlertSet { repeated Alert alerts = 1 [(keryx.set) = true]; }
+</code></pre>
+<p><code>sensor</code> and <code>temp_c</code> are declared in both <code>Reading</code> and <code>Alert</code> — a shared field name, which keryx handles by <em>polymorphism-by-sort</em>: one predicate serves both. <code>AlertSet.alerts</code> carries <code>(keryx.set)</code>, marking it a membership relation rather than a sequence.</p>
+<h2 id="the-vocabulary--keryx-gen"><a class="header" href="#the-vocabulary--keryx-gen">The vocabulary — <code>keryx gen</code></a></h2>
+<pre><code class="language-sh">keryx gen thermal.proto -I . -o gen/
+</code></pre>
+<p><code>gen</code> writes one file set per package: <code>core.lp</code> (the sorts and base-fact predicates), <code>views.lp</code> (a relational view per message-typed field), <code>emit.lp</code> (the outbound theory), and a manifest. <code>core.lp</code> declares each sort and field with <code>#defined</code> and a readable <code>%!</code> signature, so a model is written <em>against</em> a vocabulary rather than handed a bare dump of facts:</p>
+<pre><code class="language-prolog">%! sort reading/1
+#defined reading/1.
+%! sensor : alert -&gt; string  (total)
+%! sensor : reading -&gt; string  (total)
+#defined sensor/2.
+</code></pre>
+<p><code>sensor/2</code> appears once, carrying both sorts’ signatures — the shared-field merge. A model that only ever <em>consumes</em> a predicate draws no “atom does not occur in any rule” warning, because the vocabulary declares its own shape.</p>
+<h2 id="the-facts--keryx-facts"><a class="header" href="#the-facts--keryx-facts">The facts — <code>keryx facts</code></a></h2>
+<p>Shred a batch of two readings into ground facts over that vocabulary:</p>
+<pre><code class="language-sh">keryx facts --root ReadingBatch=batch.binpb thermal.proto -I .
+</code></pre>
+<pre><code class="language-prolog">reading(readings(r0, 0)).
+reading(readings(r0, 1)).
+reading_batch(r0).
+sensor(readings(r0, 0), "s-101").
+sensor(readings(r0, 1), "s-107").
+temp_c(readings(r0, 0), 44).
+temp_c(readings(r0, 1), 21).
+</code></pre>
+<p>Each reading is the access-path term <code>readings(r0, i)</code> — its position in the sequence, hanging off the root — not a minted handle, and the very term the <code>readings/3</code> view in <code>views.lp</code> joins on. The same payload shreds to the same facts from binary, textproto, or JSON.</p>
+<h2 id="the-round-trip--keryx-emit"><a class="header" href="#the-round-trip--keryx-emit">The round trip — <code>keryx emit</code></a></h2>
+<p>Between <code>facts</code> and <code>emit</code> sits <strong>your</strong> solver, ranging over this vocabulary. Its answer set — the facts a model exports under a marker like <code>emit_reading_batch(r0)</code> — reassembles back to a message:</p>
+<pre><code class="language-sh">keryx emit --root ReadingBatch answer.lp thermal.proto -I . &gt; out.binpb
+</code></pre>
+<p><code>out.binpb</code> is byte-for-byte the payload you started from. <code>emit.lp</code> guarantees this can’t go wrong: an answer set that could not be a message is not an answer set (UNSAT under the strict theory) or is reported at the field path (under the diagnostic theory) — never garbage bytes.</p>
+<p>Read on for <a href="#the-translation-model">the translation model</a> — how each protobuf construct becomes vocabulary — or jump to <a href="#using-the-keryx-command">any command</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-translation-model"><a class="header" href="#the-translation-model">The translation model</a></h1>
+<p>keryx maps Protocol Buffers to Answer Set Programming by a few consistent rules. Knowing them, you can predict the vocabulary any schema generates.</p>
+<h2 id="a-message-is-a-sort"><a class="header" href="#a-message-is-a-sort">A message is a sort</a></h2>
+<p>Each message type becomes a <strong>sort</strong> — a unary membership predicate. <code>message Reading</code> becomes <code>reading/1</code>; <code>reading(x)</code> says <em>x is a reading</em>. <code>gen</code> declares it:</p>
+<pre><code class="language-prolog">%! sort reading/1
+#defined reading/1.
+</code></pre>
+<h2 id="a-scalar-or-enum-field-is-a-base-fact-predicate"><a class="header" href="#a-scalar-or-enum-field-is-a-base-fact-predicate">A scalar or enum field is a base-fact predicate</a></h2>
+<p>A scalar or enum field becomes a binary predicate over its sort: <code>string sensor</code> in <code>Reading</code> becomes <code>sensor/2</code>, a function from a <code>reading</code> to a string.</p>
+<pre><code class="language-prolog">%! sensor : reading -&gt; string  (total)
+#defined sensor/2.
+</code></pre>
+<p><strong>Polymorphism-by-sort.</strong> When a field name is shared across messages — <code>sensor</code> in both <code>Reading</code> and <code>Alert</code> — keryx declares the predicate <em>once</em>, its meaning fixed by the sort of the first argument. <code>sensor/2</code> carries both signatures; it is not mangled into <code>reading_sensor</code> and <code>alert_sensor</code>. Shared names cohere instead of colliding.</p>
+<h2 id="a-message-typed-field-is-an-occupant-term-with-a-view"><a class="header" href="#a-message-typed-field-is-an-occupant-term-with-a-view">A message-typed field is an occupant term with a view</a></h2>
+<p>A message-typed field has no base predicate. Its occupant is addressed by <em>where it sits</em> — a canonical <strong>access-path term</strong>, <code>readings(parent, index)</code>, not an identity minted per run. A nested reading is <code>readings(r0, 0)</code>, and <code>reading(readings(r0, 0))</code> says that occupant is a reading.</p>
+<p>So that a model can range over such occupants relationally, <code>views.lp</code> derives a <strong>view</strong> — one rule per message-typed field:</p>
+<pre><code class="language-prolog">readings(P, I, E) :- reading(E), E = readings(P, I).
+</code></pre>
+<p><code>views.lp</code> opens by including <code>core.lp</code>, so it is loadable on its own; a project that wants only the functional canon can exclude it.</p>
+<h2 id="canonical-identity-not-minted-handles"><a class="header" href="#canonical-identity-not-minted-handles">Canonical identity, not minted handles</a></h2>
+<p>Because occupants are access-path terms, two runs over the same message produce the same facts, and a model joins on stable, meaningful terms — the position in the tree — rather than opaque ids it must first correlate. This is what makes an answer set reassemblable: the term <em>is</em> the address.</p>
+<h2 id="presence-and-totality-come-from-resolved-features"><a class="header" href="#presence-and-totality-come-from-resolved-features">Presence and totality come from resolved features</a></h2>
+<p>Whether a field is total (always present), partial (optional), or required is read from the schema’s <em>resolved features</em>, never from the syntax era — so proto2 and proto3 sit on one uniform surface. A field’s totality drives both the <code>%!</code> signature and the outbound obligation (<a href="#answer-sets-to-messages">Answer sets to messages</a>).</p>
+<p>The <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/enum"><code>enum</code></a>, <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/oneof"><code>oneof</code></a>, <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/map"><code>map</code></a>, and <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/proto2"><code>proto2</code></a> examples each show one construct end to end.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="payloads-to-facts"><a class="header" href="#payloads-to-facts">Payloads to facts</a></h1>
+<p><code>keryx facts</code> shreds a message into ground facts over its schema’s vocabulary. A payload may arrive in any of the three wire forms Protocol Buffers defines, and all three shred to the <em>same</em> facts:</p>
+<ul>
+<li>the <strong>binary</strong> wire format (<code>.binpb</code>),</li>
+<li>the protobuf <strong>text</strong> format (<code>.txtpb</code>),</li>
+<li>the canonical <strong>JSON</strong> mapping (<code>.json</code>).</li>
+</ul>
+<pre><code class="language-sh">keryx facts --root ReadingBatch=batch.binpb thermal.proto -I .
+keryx facts --root ReadingBatch=batch.txtpb thermal.proto -I .   # the same facts
+keryx facts --root ReadingBatch=batch.json  thermal.proto -I .   # and again
+</code></pre>
+<p>One <code>Codec</code>, one walk, and one admission policy serve all three: the same field-path refusals, the same facts, the same uniform nesting ceiling of <strong>99</strong> message-typed levels below the root. The forms differ only in what each <em>admits</em> on the way in, and in how each decoder’s own bound meets that ceiling.</p>
+<h2 id="the-nesting-ceiling"><a class="header" href="#the-nesting-ceiling">The nesting ceiling</a></h2>
+<p>keryx bounds how deep a payload may nest, so no adversarial input can exhaust the stack:</p>
+<ul>
+<li><strong>binary</strong> is admitted to 99 message-typed levels; deeper is refused whole (<code>PayloadTooDeep</code>, then the engine’s own limit past it).</li>
+<li><strong>textproto</strong> is bounded <em>ahead</em> of the engine’s unbounded text parser by a pre-parse guard that measures <code>{ }</code>/<code>&lt; &gt;</code> nesting and refuses past 99 before a token is parsed. The measure is exact for singular and repeated message fields and conservative for map entries and expanded <code>Any</code> (it over-refuses, never admits deeper).</li>
+<li><strong>JSON</strong> carries no guard of keryx’s: the deserializer bounds its own nesting (128 containers), and the walk’s ceiling binds beneath that for a chain of singular message fields, while a repeated or map chain meets the deserializer’s count first — refusal always in the safe direction.</li>
+</ul>
+<p>These are the same conservative bound reached three ways; a payload keryx admits in one form shreds to the same facts as in the others.</p>
+<h2 id="what-is-refused"><a class="header" href="#what-is-refused">What is refused</a></h2>
+<p>A payload that does not decode as the named root type is <code>UndecodablePayload</code>. Everything else — a value outside a field’s type, a member the schema does not declare — is a structured diagnostic at that field’s path, never a silent coercion. keryx reads a payload as one canonical value of the root type or refuses it; it never reads it as the nearest thing.</p>
+<p>The full support matrix — per version, per format, with the exact bounds — is in <a href="#keryx-proto-support--versions-and-payload-formats">Protocol Buffer support</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="answer-sets-to-messages"><a class="header" href="#answer-sets-to-messages">Answer sets to messages</a></h1>
+<p>The outbound half of the bridge runs an answer set back to a message. It has two pieces: the theory <code>gen</code> emits so that only a <em>serializable</em> answer set is admitted, and <code>keryx emit</code>, which reassembles the message.</p>
+<h2 id="emitlp--the-serializability-theory"><a class="header" href="#emitlp--the-serializability-theory"><code>emit.lp</code> — the serializability theory</a></h2>
+<p>Inbound, the wire guaranteed a message’s invariants (a singular field appears once; a sequence is dense from zero). Outbound, those become <em>obligations</em> an answer set must meet before it can be a message. <code>gen</code> writes them into <code>emit.lp</code>, a client of <code>core.lp</code> that declares a root marker per message sort, closes <code>reach/1</code> over the message-typed slots beneath each asserted marker, and guards every obligation by <code>reach</code> and by sort:</p>
+<pre><code class="language-prolog">#include "thermal.v1.core.lp".
+reach(X) :- emit_reading_batch(X).
+%! functionality of sensor : reading -&gt; string  (total)
+:- reach(P), reading(P), sensor(P, V1), sensor(P, V2), V1 != V2.
+</code></pre>
+<p>A model asserts <code>emit_reading_batch(r0)</code> to export the tree under <code>r0</code>; every reading it reaches then owes one <code>sensor</code> and one <code>temp_c</code>, and a sequence owes indices dense from zero. Nothing unreached is constrained, so a model’s own working predicates stay free.</p>
+<p><strong>Strict or diagnostic.</strong> By default (<code>--shape strict</code>) each obligation is an integrity constraint: an answer set that would not serialize is simply not an answer set — UNSAT, never garbage bytes. <code>--shape diagnostic</code> writes <code>emit-diagnostic.lp</code> instead, where each obligation derives <code>violates(path, occupant)</code> and the model survives for the reassembler to report the field path; <code>--shape both</code> writes both. The manifest records the choice.</p>
+<h2 id="keryx-emit--reassembly"><a class="header" href="#keryx-emit--reassembly"><code>keryx emit</code> — reassembly</a></h2>
+<p><code>keryx emit</code> turns an answer set satisfying the theory back into a message:</p>
+<pre><code class="language-sh">keryx emit --root ReadingBatch answer.lp thermal.proto -I . --out binpb &gt; out.binpb
+</code></pre>
+<p>The reassembler keys only on the sort, field, and marker atoms (and reads <code>violates</code> where the diagnostic theory left it); a model’s working predicates and the theory’s scaffolding pass through untouched. The result is <strong>byte-for-byte</strong> the payload the facts came from — the round trip closes. <code>--root Type</code> names which message to write when the answer set could name several, since exactly one reaches stdout.</p>
+<h2 id="output-forms-and-one-json-limit"><a class="header" href="#output-forms-and-one-json-limit">Output forms, and one JSON limit</a></h2>
+<p><code>emit</code> writes the reassembled message in the same three forms <code>facts</code> reads: <code>--out binpb</code>, <code>--out txtpb</code>, <code>--out json</code>. A map’s entries are ordered by key in every form, so an identical answer set yields identical bytes.</p>
+<p>Canonical JSON is the one form that cannot represent everything the binary and text forms can: it mandates the resolved, range-validated form of a <code>Timestamp</code>, <code>Duration</code>, or <code>Any</code>, with no raw fallback. keryx keeps well-known types opaque and structural on both ends and does not resolve one at reassembly, so a value canonical JSON cannot represent — an out-of-range timestamp, an unresolvable <code>Any</code> — is refused at the JSON encode with <code>UnrepresentableJson</code>, naming the forms that carry it (<code>--out binpb</code>/<code>txtpb</code>), rather than emitted as a non-conforming document. Each form refuses only what it alone cannot represent; the round-trip parity is exact for every message all three forms can carry.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="annotating-the-mapping"><a class="header" href="#annotating-the-mapping">Annotating the mapping</a></h1>
+<p>Most fields need no annotation — keryx’s defaults lower a schema faithfully. Where a field or enum needs a <em>precise</em> ASP treatment, an annotation gives it one. Each is a custom Protocol Buffers option under <code>keryx/options.proto</code> (which keryx resolves from an embedded registry — no <code>-I</code> for it), and each is validated at the policy door: a mis-targeted or malformed annotation is a structured diagnostic, never a silent mis-lowering.</p>
+<h2 id="keryxset--membership-not-sequence"><a class="header" href="#keryxset--membership-not-sequence"><code>(keryx.set)</code> — membership, not sequence</a></h2>
+<p>A repeated field whose order is incidental is a <em>set</em>, not a sequence. <code>(keryx.set) = true</code> generates it as a membership relation — an arity-<code>n+1</code> base relation a model asserts, order- and multiplicity-insensitive — rather than the indexed sequence a plain <code>repeated</code> field becomes. It gets no <code>views.lp</code> projection (there is no occupancy to project), and on the outbound side a set’s members serialize in the solver’s total symbol order, so an identical answer set yields identical bytes.</p>
+<pre><code class="language-proto">message AlertSet { repeated Alert alerts = 1 [(keryx.set) = true]; }
+</code></pre>
+<h2 id="keryxnumeric--integer-width"><a class="header" href="#keryxnumeric--integer-width"><code>(keryx.numeric)</code> — integer width</a></h2>
+<p>Protocol Buffers has 64-bit integers that ASP’s numbers do not natively carry. <code>(keryx.numeric)</code> names how a field’s integer is represented: <code>NATIVE_CHECKED</code> keeps it a native ASP number with its range checked, <code>DECIMAL_STRING</code> carries it as a decimal string where the range would overflow.</p>
+<h2 id="keryxscale-and-keryxopaque--floats"><a class="header" href="#keryxscale-and-keryxopaque--floats"><code>(keryx.scale)</code> and <code>(keryx.opaque)</code> — floats</a></h2>
+<p>Floating-point fields need an explicit treatment. <code>(keryx.scale)</code> fixes a decimal scale (a value off the scale is refused, <code>ValueNotOnScale</code>; a non-finite value, <code>NonFiniteFloat</code>); <code>(keryx.opaque)</code> carries a <code>float</code>/<code>double</code> opaquely. A float field with neither is a mandatory-annotation error with a fix-it — keryx will not silently guess a float’s ASP form.</p>
+<h2 id="keryxunknown--open-enum-unknown-values"><a class="header" href="#keryxunknown--open-enum-unknown-values"><code>(keryx.unknown)</code> — open-enum unknown values</a></h2>
+<p>A proto3 enum is <em>open</em>: a wire value naming no declared constant is legal. <code>(keryx.unknown) = PRESERVE</code> carries such a value through translation — inbound, an unknown number <code>N</code> shreds to <code>unknown(N)</code>; outbound, <code>unknown(N)</code> re-encodes to <code>N</code> — rather than refusing it (<code>UnknownEnumValue</code>) as the default does. A proto2 enum is closed, so <code>PRESERVE</code> is inapplicable there (a mis-target diagnostic at the policy door).</p>
+<h2 id="presence-across-the-eras"><a class="header" href="#presence-across-the-eras">Presence across the eras</a></h2>
+<p>A proto2 <code>required</code> field carries its outbound totality obligation: <code>emit.lp</code> obliges it exactly as an implicit field, and the reassembler refuses an answer set that omits it. proto3 has no <code>required</code>; proto2’s is enforced outbound — full proto2/proto3 parity, for interconnect preservation and inbound↔outbound symmetry.</p>
+<p>See the <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/enum"><code>enum</code></a> and <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/oneof"><code>oneof</code></a> examples for enums and oneofs end to end.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="schema-evolution"><a class="header" href="#schema-evolution">Schema evolution</a></h1>
+<p><code>keryx diff</code> compares two versions of a schema at the level of the ASP vocabulary: what a model written against the old vocabulary survives, what it does not, and the bridge that carries it across the one kind of change a rule can alias. It complements <code>buf breaking</code> — buf guards the wire; <code>keryx diff</code> guards the model side.</p>
+<pre><code class="language-sh">keryx diff old.proto new.proto
+keryx diff --json old.binpb new.binpb
+</code></pre>
+<h2 id="both-mappings-are-regenerated-no-manifest-is-read"><a class="header" href="#both-mappings-are-regenerated-no-manifest-is-read">Both mappings are regenerated; no manifest is read</a></h2>
+<p><code>keryx diff</code> compiles each side through the same descriptor door <code>keryx gen</code> uses, maps each as <code>gen</code> would (annotations included), and compares the two mappings. The manifest <code>gen</code> writes is a per-version record, never an input: the comparison sees exactly the vocabulary each side generates today, so nothing has to be kept in step with a stored file. The instrument opens no new input door.</p>
+<h2 id="matching-is-by-protobuf-identity-version-stripped"><a class="header" href="#matching-is-by-protobuf-identity-version-stripped">Matching is by protobuf identity, version stripped</a></h2>
+<p>Two versions of one schema are two packages under buf’s convention (<code>thermal.v1</code>, <code>thermal.v2</code>), so a package is matched by name with the trailing version segment removed, a message or enum by its path, and a field or value by its number. Names are free to change: a renamed field is reported as a <strong>rename</strong>, not a removal beside an addition; a renumbered field is the reverse — a removal beside an addition, the wire-breaking act it is.</p>
+<p>Two schemas with no package in common once normalized are refused as not comparable (<code>NoComparableSchemas</code>); a side declaring two versions of one package is refused as ambiguous (<code>AmbiguousVersionPackages</code>).</p>
+<h2 id="two-doors-and-no-mixing"><a class="header" href="#two-doors-and-no-mixing">Two doors, and no mixing</a></h2>
+<p>A side’s subject depends on how it came in: through the <code>.proto</code> door, the side is the file named on the command line (its imports are referent closure — resolved and translated, but not compared); through the <code>.binpb</code> door, the side is every file in the set except the well-known types and keryx’s option registry. Both sides must come through <em>one</em> door — a <code>.proto</code> against a <code>.binpb</code> would scope the two sides differently, so the mix is refused before either side is read. A multi-file schema goes in as descriptor sets (<code>protoc --include_imports</code>), compared package by package.</p>
+<h2 id="the-bridge-aliases-a-predicate-never-a-term"><a class="header" href="#the-bridge-aliases-a-predicate-never-a-term">The bridge aliases a predicate, never a term</a></h2>
+<p>For a clean rename — a field, message, or enum whose predicate changed with its identity and shape intact — <code>--bridge &lt;path&gt;</code> writes one rule, <code>old(…) :- new(…).</code>, under a <code>%!</code> provenance line: a generated module loaded beside the new facts, through which a model written against the old vocabulary reads them without a line of it changing. It is themelios-constructed, never string-templated, and round-trips as valid ASP.</p>
+<p>Two limits, stated plainly. The bridge lets an old model <em>read</em> new facts; a model that <em>asserts</em> the old atoms for <code>keryx emit</code> is not shimmed (the new theory obliges the new predicate). And a message-field bridge aliases the field’s relational <em>view</em>, not the occupant term — a model that spells the path term directly is not bridged. A renamed enum constant, a changed form (a dropped <code>(keryx.set)</code> changes an arity), a removal, or a flipped openness has no bridge: each is breaking, and the report says so on the row.</p>
+<h2 id="the-report-the-changeset-and-the-exit"><a class="header" href="#the-report-the-changeset-and-the-exit">The report, the changeset, and the exit</a></h2>
+<p>The migration report on stdout groups changes by package, then message or enum, then field number, showing what stayed beside what moved. <code>--json</code> writes a flat changeset instead — one array of records in a stable order — for a review bot. A breaking change is a <em>finding</em>, not a failure: the exit is <code>0</code> whatever the comparison found, and <code>--exit-code</code> turns a breaking comparison into a distinct exit (with the report still on stdout and the bridge still written) for a pipeline that should stop on one.</p>
+<p>The <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/evolution"><code>evolution</code></a> example walks the thermal schema at v1 and v2 end to end.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
+<p>keryx is a library first: the <code>keryx</code> command is a thin shell over <code>keryx-core</code>, and a tool that embeds keryx gets the whole bridge without shelling out. This part is for that tool builder.</p>
+<h2 id="depending-on-keryx"><a class="header" href="#depending-on-keryx">Depending on keryx</a></h2>
+<p>keryx is not published on crates.io yet (its ASP layer is a git dependency). Depend on it by git, pinned to a release tag:</p>
+<pre><code class="language-toml">[dependencies]
+keryx-core = { git = "https://github.com/GregoryGelfond/keryx", tag = "v1.0.0" }
+</code></pre>
+<p>The build fetches the pinned ASP-layer dependency over HTTPS — no credentials, locally and in CI.</p>
+<h2 id="the-shape-of-the-api"><a class="header" href="#the-shape-of-the-api">The shape of the API</a></h2>
+<p>Everything a consuming tool needs is in <code>keryx_core</code>:</p>
+<ul>
+<li><a href="#the-mapping"><code>Mapping</code></a> — what a schema compiles to: how each message, field, and enum lowers. The stable interface.</li>
+<li><a href="#the-codec"><code>Codec</code></a> — the bidirectional payload codec: <code>shred</code> a message to facts, <code>reassemble</code> an answer set to a message.</li>
+<li>The <strong>value plane</strong> — <code>Symbol</code>, <code>Name</code>, and <code>Sign</code>, re-exported from the ASP layer so keryx’s public surface is self-contained. A payload’s facts <em>are</em> <code>Symbol</code>s; the library seam hands them to you directly, with no text in between.</li>
+<li><a href="#diagnostics-and-exit-codes">Diagnostics</a> — every foreign input crosses a <code>Result</code> boundary returning a typed diagnostic at a field-path locus, never a panic or a bare string.</li>
+<li>The <a href="#the-fault-boundary">fault boundary</a> — a dependency’s misbehavior on a foreign-input path is contained as a value, not a crash.</li>
+</ul>
+<h2 id="a-first-call"><a class="header" href="#a-first-call">A first call</a></h2>
+<p>Compile a schema and read the mapping it produced — no payload, no solver:</p>
+<pre><code class="language-rust ignore">use keryx_core::codec::Codec;
+
+fn main() {
+    // Compile a `.proto` schema into a self-contained descriptor set. Here a test
+    // fixture stands in for your own schema; a tool would read its own bytes.
+    let descriptor_set = keryx_test_support::compile_fixture("proto3.proto");
+
+    // Build a Codec — one per schema — which holds the compiled Mapping.
+    let codec = Codec::new(&amp;descriptor_set).expect("the schema compiles into a mapping");
+
+    // The Mapping is keryx's account of how the schema lowers to ASP: the stable
+    // interface `gen`, `facts`, `emit`, and `diff` all build on. Inspect it, render
+    // it, shred a payload against it — whatever your tool needs.
+    let _mapping = codec.mapping();
+}</code></pre>
+<p>The <a href="#the-codec"><code>codec</code></a> chapter takes it further — shredding a message to facts and reassembling one back.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-mapping"><a class="header" href="#the-mapping">The mapping</a></h1>
+<p>A schema compiles to a <code>Mapping</code> — keryx’s account of how every message, field, and enum in the schema lowers to the ASP vocabulary. It is the stable interface between the compiler and everything downstream: <code>gen</code> renders it to <code>.lp</code> modules, <code>explain</code> reports it, the codec shreds and reassembles against it, and <code>diff</code> compares two of them.</p>
+<h2 id="producing-a-mapping"><a class="header" href="#producing-a-mapping">Producing a mapping</a></h2>
+<p><code>policy::map</code> takes a validated <code>Schema</code> and returns a <code>Mapping</code> or a diagnostic:</p>
+<pre><code class="language-rust ignore">use keryx_core::policy::{self, Mapping};
+
+let mapping: Mapping = policy::map(&amp;schema)?;</code></pre>
+<p>A <code>Codec</code> holds one too — <code>codec.mapping()</code> — so a tool that already has a codec need not map separately.</p>
+<h2 id="what-it-carries"><a class="header" href="#what-it-carries">What it carries</a></h2>
+<p>For each subject in the schema, the mapping records the lowering keryx decided: a message’s sort predicate, a scalar or enum field’s base-fact predicate and its totality, a message-typed field’s occupant term and relational view, and the treatment any annotation set (a <code>(keryx.set)</code> membership relation, a numeric width, a float scale). Because the mapping is a value — not rendered text — two mappings can be <em>compared</em> directly, which is exactly what <a href="#schema-evolution"><code>keryx diff</code></a> does: it never re-parses generated <code>.lp</code>, it compares the models.</p>
+<h2 id="why-a-value-not-text"><a class="header" href="#why-a-value-not-text">Why a value, not text</a></h2>
+<p>Keeping the mapping a structured value is what lets keryx guarantee its outputs cohere. The report, the JSON changeset, and a rename bridge are each a pure view of the same mapping, so they cannot disagree; and no keryx output is produced by string-templating — the emission layer constructs ASP syntax values from the mapping and renders them, never assembles text by hand.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-codec"><a class="header" href="#the-codec">The codec</a></h1>
+<p><code>Codec</code> is the bidirectional payload codec: it shreds a message into ground facts and reassembles an answer set back into a message. One <code>Codec</code> is built per schema and drives both directions.</p>
+<h2 id="building-a-codec"><a class="header" href="#building-a-codec">Building a codec</a></h2>
+<p>From a compiled descriptor set, or from <code>.proto</code> source with its include roots:</p>
+<pre><code class="language-rust ignore">use keryx_core::codec::Codec;
+
+let codec = Codec::new(&amp;descriptor_set)?;         // a self-contained .binpb
+// or
+let codec = Codec::from_source(&amp;protos, &amp;includes)?;</code></pre>
+<h2 id="shredding--message-to-facts"><a class="header" href="#shredding--message-to-facts">Shredding — message to facts</a></h2>
+<p><code>shred</code> reads a payload as an instance of a named root type, from a fresh root constant, and returns the facts:</p>
+<pre><code class="language-rust ignore">use keryx_core::codec::{PayloadFormat, Root};
+
+let facts = codec.shred(
+    "thermal.v1.ReadingBatch",   // the root type the payload instantiates
+    &amp;payload,                    // the bytes
+    PayloadFormat::Binary,       // Binary, Textproto, or Json
+    &amp;Root::fresh(0),             // the root constant, r0
+)?;
+
+for symbol in facts.symbols() {  // the facts, as Symbols — no text between
+    // hand them to your solver
+}
+let lp: String = facts.render()?; // or render them as an .lp module</code></pre>
+<p>The same payload shreds to the same facts in any of the three formats, under the same field-path refusals and the same nesting ceiling (<a href="#payloads-to-facts">Payloads to facts</a>).</p>
+<h2 id="reassembling--answer-set-to-message"><a class="header" href="#reassembling--answer-set-to-message">Reassembling — answer set to message</a></h2>
+<p><code>reassemble</code> takes an answer set — a <code>Vec&lt;Symbol&gt;</code>, which you can read from <code>.lp</code> text with <code>raise_answer_set</code> — and rebuilds the messages its markers export:</p>
+<pre><code class="language-rust ignore">use keryx_core::codec::{Codec, raise_answer_set};
+
+let symbols = raise_answer_set(&amp;lp_text)?;        // .lp → Vec&lt;Symbol&gt;
+let reassembled = codec.reassemble(&amp;symbols, out_format)?;
+for message in reassembled.messages() {
+    let _ = message.type_name();
+    let _ = message.bytes();                      // the canonical wire bytes
+}</code></pre>
+<p>An answer set that could not be a message is refused at its field path (<code>ShapeViolation</code>), never serialized as the nearest thing — the outbound counterpart of the inbound refusals. The round trip is byte-for-byte: a payload shredded and then reassembled is the payload again.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="diagnostics-and-exit-codes"><a class="header" href="#diagnostics-and-exit-codes">Diagnostics and exit codes</a></h1>
+<p>Every foreign input keryx reads crosses a <code>Result</code> boundary that returns a typed diagnostic — never a panic, never a bare string. A tool embedding keryx can therefore handle every refusal as a value, and the <code>keryx</code> command maps those values to distinct exit codes.</p>
+<h2 id="a-diagnostic-is-a-typed-value-at-a-locus"><a class="header" href="#a-diagnostic-is-a-typed-value-at-a-locus">A diagnostic is a typed value at a locus</a></h2>
+<p>A <code>Diagnostic</code> carries a <em>kind</em>, a <em>locus</em> (the field path or element where the refusal occurred), and a human-readable message. Refusals come back as <code>Diagnostics</code> — a collection, because one input can fail in more than one place, each named at its own path. A tool reads the kind to branch, the locus to point a user at the problem, and the message to show.</p>
+<p>The taxonomy spans the doors:</p>
+<ul>
+<li><strong>Payload</strong> — bytes that do not decode as the root type (<code>UndecodablePayload</code>), or nest past the ceiling (<code>PayloadTooDeep</code>).</li>
+<li><strong>Value</strong> — a scalar keryx cannot represent in the dialect (<code>UnrepresentableText</code>), a float off its scale (<code>ValueNotOnScale</code>) or non-finite (<code>NonFiniteFloat</code>), an unknown enum value without <code>PRESERVE</code> (<code>UnknownEnumValue</code>).</li>
+<li><strong>Schema</strong> — an editions file (<code>UnsupportedEdition</code>), an option keryx cannot map (<code>UnmappableOptionKey</code>).</li>
+<li><strong>Shape</strong> — an answer set that cannot be a message (<code>ShapeViolation</code>), or one the reassembler cannot read (<code>UnreadableAnswerSet</code>); on the JSON output form, a well-known value canonical JSON cannot carry (<code>UnrepresentableJson</code>).</li>
+<li><strong>Diff</strong> — two schemas with no comparable package (<code>NoComparableSchemas</code>), or a side with two versions of one package (<code>AmbiguousVersionPackages</code>).</li>
+</ul>
+<h2 id="exit-codes-1"><a class="header" href="#exit-codes-1">Exit codes</a></h2>
+<p>The <code>keryx</code> command turns those classes into exit codes, so a script can branch on the <em>kind</em> of failure: success, an internal error, a usage error, an unreadable input, a schema rejection, a shape violation, a translation refusal, a dependency fault, and — under <code>keryx diff --exit-code</code> — a breaking divergence are each their own class. A breaking diff is a <em>finding</em>, not an error: it only becomes a non-zero exit under <code>--exit-code</code>. The exact values are listed in the architecture (<code>docs/design/architecture.md</code>).</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-fault-boundary"><a class="header" href="#the-fault-boundary">The fault boundary</a></h1>
+<p>keryx depends on foreign code — the descriptor engine, the <code>.proto</code> compiler, the JSON deserializer, the ASP layer. It trusts each on the input it <em>admits</em>, but not on arbitrary input. The fault boundary is what keeps a dependency’s misbehavior on an adversarial input path from becoming a crash in the tool that embeds keryx.</p>
+<h2 id="faults-are-contained-as-values"><a class="header" href="#faults-are-contained-as-values">Faults are contained as values</a></h2>
+<p>A refusal keryx <em>foresees</em> is a <a href="#diagnostics-and-exit-codes">diagnostic</a>. A fault keryx does <em>not</em> foresee — an unexpected panic from a dependency on a foreign-input path — is <strong>contained</strong>: caught at the door it crossed and returned as a typed dependency fault, not allowed to unwind through the caller. So a tool calling <code>keryx-core</code> sees a <code>Result</code>, never a process abort, even on input crafted to break a dependency.</p>
+<p>This is defense-in-depth. Where a specific dependency misbehavior is known, keryx pre-empts it before the call (an editions descriptor set, for instance, is refused with <code>UnsupportedEdition</code> rather than handed to an engine that would panic on it). The containment catches the <em>un</em>foreseen residual.</p>
+<h2 id="cooperating-with-a-panic-hook"><a class="header" href="#cooperating-with-a-panic-hook">Cooperating with a panic hook</a></h2>
+<p>Because containment uses a caught unwind, a process-wide panic hook would otherwise print a scary backtrace for a fault keryx is handling deliberately. keryx exposes one flag for this:</p>
+<pre><code class="language-rust ignore">if keryx_core::is_containing() {
+    // a fault keryx is turning into a value — stay quiet
+    return;
+}</code></pre>
+<p>A consuming tool’s panic hook may consult <code>is_containing()</code> to stay silent for a fault keryx returns as a value. It is the one public window into the containment machinery; everything else about the boundary is internal.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="keryx-proto-support--versions-and-payload-formats"><a class="header" href="#keryx-proto-support--versions-and-payload-formats">keryx proto support — versions and payload formats</a></h1>
+<p>keryx branches on <em>resolved features</em>, never on syntax era (spec §5, §20), so
+supporting a proto version is a matter of the descriptor engine resolving its
+features — not of keryx logic. keryx supports every version its engine
+(prost-reflect) can ingest; new editions are a drop-in as the engine gains them.
+This ledger states the proto-version support keryx <em>delivers</em> as of the gen
+increment (Increment 2) — proto2 and proto3 golden-tested by the facts
+renderer, editions per the front-loaded capability verdict — not the state of
+any single commit along the way. The outbound direction is whole for both eras: a proto2 <code>required</code> field’s
+totality obligation is emitted and enforced (stated after the table) — full
+proto2/proto3 parity.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>version</th><th>status as of the gen increment (Increment 2)</th></tr>
+</thead>
+<tbody>
+<tr><td>proto2</td><td>supported (golden-tested)</td></tr>
+<tr><td>proto3</td><td>supported (golden-tested)</td></tr>
+<tr><td>edition 2023+</td><td>DEFERRED, and refused cleanly. Neither engine handles editions at these versions: protox 0.9.1 does not <em>compile</em> an editions <code>.proto</code> (→ <code>UncompilableSource</code>), and prost-reflect 0.16.5 has no editions <code>Syntax</code> and <em>panics</em> decoding an editions descriptor set. keryx detects an editions <code>FileDescriptorSet</code> up front and refuses each editions file with a specific <code>UnsupportedEdition</code> diagnostic at that file’s locus (§6 — total, no panic). <code>SchemaVersion</code> is <code>#[non_exhaustive]</code>, so a distinct <code>Edition</code> variant and the enum_type override are a later add, not a redesign</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Both routes fail on editions today, and keryx says so precisely.</strong> A measurement (protoc 36 →
+an edition-2023 descriptor set → keryx) confirmed prost-reflect 0.16.5 panics building a pool from
+an editions set — its <code>Syntax</code> carries only <code>Proto2</code>/<code>Proto3</code>. keryx therefore inspects a
+serialized set for <code>syntax = "editions"</code> <em>before</em> handing it to the engine (<code>descriptor::decode</code>),
+and returns a specific <code>UnsupportedEdition</code> diagnostic, one per editions file at that file’s locus
+(“editions … are not supported yet: keryx’s descriptor engine has no editions support, so neither
+a .proto source nor a protoc-compiled descriptor set is accepted”), rather than provoking the
+panic. This is §6 totality by construction: keryx pre-empts the editions panic rather than catching it. (An
+<em>unforeseen</em> engine fault on a foreign-input path is the different case — <em>contained</em> as a typed
+dependency fault at the descriptor door (its decode and its accessor walk), the threat model’s
+dependency boundary, not masked.) The
+prost-reflect panic-on-editions is worth reporting upstream.</p>
+<p>Editions support arrives when the engine does — prost-reflect gaining an editions syntax (a
+deliberate dependency bump) — at which point keryx’s own presence/<code>enum_type</code> logic, already
+feature-based rather than era-based, resolves editions with no redesign. Spec §31’s (M1)
+capability test is the tripwire; when it flips to SUPPORTED, add the editions fixture and golden
+and update this row.</p>
+<p><strong>Outbound, a proto2 <code>required</code> field’s totality obligation is emitted and enforced — full
+proto2/proto3 parity.</strong> The specification has the serializability theory oblige totality of every
+IMPLICIT and <code>LEGACY_REQUIRED</code> singular field (spec §5, §12.2). The mapping’s totality carries the
+distinction: <code>Totality::Required</code> for a proto2 <code>required</code> field, <code>Total</code> for IMPLICIT, <code>Partial</code>
+for EXPLICIT. So <code>emit.lp</code> emits the totality obligation for a <code>required</code> field exactly as for an
+IMPLICIT one — strict: UNSAT on an answer set that omits it; diagnostic: <code>violates</code> derived at the
+field’s path — and the reassembler, reading the same mapping, refuses an answer set that omits a
+<code>required</code> field with a <code>ShapeViolation</code>, so no incomplete proto2 message is produced: enforced at
+solve time and at reassembly alike. A <code>required</code> field’s presence is still read from the message
+inbound (partial, like <code>optional</code>); only the outbound obligation distinguishes it. proto3 has no
+<code>required</code>, and proto2’s <code>required</code> is now enforced outbound, so both eras have whole outbound
+support — for interconnect preservation and inbound↔outbound symmetry.</p>
+<h2 id="enum-openness-and-unknown-values"><a class="header" href="#enum-openness-and-unknown-values">Enum openness and unknown values</a></h2>
+<p>keryx branches on an enum’s <strong>resolved openness</strong>, never on syntax era (§5, §7.4). A proto3 enum is <strong>open</strong> — a wire value naming no declared constant is legal — and <code>(keryx.unknown) = PRESERVE</code> carries such a value through translation rather than refusing it: inbound, an unknown number <code>N</code> shreds to <code>unknown(N)</code>; outbound, <code>unknown(N)</code> re-encodes to <code>N</code>; without the annotation an unknown value is a structured refusal (<code>UnknownEnumValue</code>). A proto2 enum is <strong>closed</strong> — an unknown wire value is an error — so <code>PRESERVE</code> is inapplicable there (a mis-target diagnostic at the policy door). The inverse override — declaring a proto3 enum <em>closed</em> through the editions <code>enum_type = CLOSED</code> feature — is <strong>deferred</strong> with the rest of editions support (above): a resolved-feature drop-in when the descriptor engine gains editions, not a redesign.</p>
+<h2 id="payload-formats"><a class="header" href="#payload-formats">Payload formats</a></h2>
+<p>The inbound codec (<code>Codec::shred</code>; <code>keryx facts</code>) accepts a payload in each wire form spec §26
+names — binary, canonical JSON, textproto — through one <code>Codec</code>, one walk, and one admission
+policy: the same §6 refusals at the same field paths, the same uniform nesting ceiling of <strong>99</strong>
+message-typed levels below the root, and the same facts from the same message in any of the three
+forms. Where the three differ is in what each <em>admits</em> on the way to the walk, and in how its
+decoder’s own bound meets the ceiling — stated per form below. This ledger states what keryx
+<em>delivers</em> as of the inbound codec (Increment 3).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>format</th><th>status as of the inbound codec (Increment 3)</th></tr>
+</thead>
+<tbody>
+<tr><td>binary (<code>.binpb</code>)</td><td>supported (golden-tested on the thermal example). Compositional nesting is admitted to <strong>99</strong> message-typed levels below the root — spec §8’s door-admission policy, one below the descriptor engine’s decode recursion limit; a payload nesting deeper is refused whole — <code>PayloadTooDeep</code> from the walk at the 100th level, <code>UndecodablePayload</code> from the engine’s own limit past it. Every §6 refusal is a diagnostic at its field’s path; bytes that do not decode as the root type are <code>UndecodablePayload</code></td></tr>
+<tr><td>canonical JSON (<code>.json</code>)</td><td>supported (golden-tested on the thermal example: <code>batch.json</code> shreds to the facts <code>batch.binpb</code> does, three-way with <code>batch.txtpb</code>). The same <code>Codec</code>, walk, and §6 refusals, under the same ceiling of <strong>99</strong> — with no bound of keryx’s ahead of the engine: the deserializer bounds its own nesting, counting arrays and objects (127 nested containers admitted, the 128th refused), and the walk’s counter binds beneath that count for a chain of singular message fields, where a repeated or map-of-message chain meets the count first, at about 63 levels (below); either way a deeper payload is refused whole. A payload that is not one canonical JSON value of the root type — not UTF-8, a member the type does not declare, a value outside its kind, text after the value, or the empty text (the empty message is <code>{}</code>) — is <code>UndecodablePayload</code></td></tr>
+<tr><td>textproto (<code>.txtpb</code>)</td><td>supported (golden-tested on the thermal example: <code>batch.txtpb</code> shreds to the facts <code>batch.binpb</code> does). The same <code>Codec</code>, walk, and §6 refusals, under the same ceiling of <strong>99</strong> — bound <em>ahead</em> of the engine’s text parser by a pre-parse guard that counts message values, so a map entry or an expanded <code>Any</code> spends more of it than on the wire (below); a deeper payload is refused whole, <code>PayloadTooDeep</code>. Text that is not UTF-8, or does not parse as the root type, is <code>UndecodablePayload</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Textproto’s ceiling is counted in message values, the wire’s in occupants.</strong> The engine’s text
+parser recurses natively on every nested message value and bounds nothing, so keryx bounds a text
+payload <em>before</em> it: a pre-parse guard measures the text’s <code>{ }</code>/<code>&lt; &gt;</code> nesting (outside string
+literals and <code>#</code> comments) and refuses past 99 whole — <code>PayloadTooDeep</code>, naming the depth and the
+ceiling and nothing of the text — before the parser sees a token; the parse then runs on a thread
+keryx sizes for the deepest admitted payload (8 MiB), so no admitted payload overflows whatever
+thread the caller decodes on. The measure is exact for a singular or repeated message field (one
+opener, one occupant), so such a payload is admitted exactly as deep as its binary form; it is
+conservative for a map entry (two openers per occupant — the entry’s and its value’s) and an
+expanded <code>Any</code> (an opener the walk never enters, plus whatever it nests), which bind earlier in
+text than on the wire — a map-of-message chain is admitted to 49 levels as text where its wire
+form is admitted to 99 — and never later: the guard over-refuses, and never admits deeper than the
+walk would. Settled, a documented consequence of bounding the text parser lexically.</p>
+<p><strong>JSON’s ceiling is counted in containers by its deserializer, the wire’s in occupants.</strong> The JSON
+form has no guard: the deserializer keryx drives the engine’s JSON mapping with bounds its own
+nesting — its recursion limit, on by default and never lifted, counts arrays and objects and refuses
+the 128th nested one — and the engine’s mapping recurses natively beneath that count with no counter
+of its own, so the whole admitted payload (127 nested containers at most) is deserialized on a thread
+keryx sizes for that admit (8 MiB, <code>engine::JSON_DECODE_STACK</code>; the decode pays a thread spawn per
+payload, as the text parse does, the stack reserved address space committed as the deserialization
+descends), and the walk then applies the uniform ceiling. Which of the two binds goes by the
+field’s form. A chain of singular message fields spends one object a level and reaches the ceiling
+inside the count: 99 levels shred whole, to the facts the same chain shreds to from the wire; 100
+through 126 — every depth the deserializer admits past the ceiling — are the walk’s
+<code>PayloadTooDeep</code>; 127 is the deserializer’s own refusal, <code>UndecodablePayload</code>. A chain of repeated
+message fields spends an array and an object a level and meets the count first: 63 levels shred
+whole, to the facts the same chain shreds to from the wire and from text, and 64 — which the wire
+admits — is <code>UndecodablePayload</code>, 35 levels short of the ceiling. A map-of-message chain spends the
+map’s object and the value’s object a level and so meets the count at about the same depth, 63, by
+the same arithmetic; and a chain through <code>google.protobuf.Value</code>, <code>Struct</code>, or <code>ListValue</code> binds
+earlier still, at about 50 levels, at the engine’s own message-decode limit as it materialises the
+dynamic value. Those two bindings are documented from the engine’s measure of record, not
+instrumented: no fixture of the suite nests a recursive chain of maps of messages — its one map of
+messages, <code>maps.proto</code>’s <code>Inventory.items</code>, is a single level — or declares a <code>Value</code>. Every one is a
+refusal in the safe direction — a shallower message depth than the ceiling, never admission past it
+— and the mechanism is not the text form’s: there a lexical guard over-counts openers; here keryx
+scans nothing, and the deserializer counts containers. One asymmetry of reading, not of content: an
+empty payload is the empty message on the wire and as text, and no JSON value at all —
+<code>UndecodablePayload</code> for the JSON form, whose empty message is <code>{}</code>. Settled, a documented
+consequence of the deserializer bounding itself by container rather than by occupant.</p>
+<p>The codec has no proto-version branch of its own: presence is decided from the mapping’s totality
+(spec §5), which the descriptor door resolves from features, never from syntax era.</p>
+<h2 id="output-formats"><a class="header" href="#output-formats">Output formats</a></h2>
+<p>The outbound codec (<code>Codec::reassemble</code>; <code>keryx emit</code>) writes a reassembled message in each of the
+same three wire forms — binary (<code>--out binpb</code>), the protobuf text format (<code>--out txtpb</code>), and the
+canonical JSON mapping (<code>--out json</code>) — through one reassembly walk and one encode adapter, the
+inverse of the inbound read, as of the outbound codec (Increment 4). The three-way round-trip parity
+is exact and golden-tested: the thermal <code>ReadingBatch</code> reassembles to each form and shreds back to
+one fact set, and the composite forms — scalar and message-valued maps, enums, singular and repeated
+fields — round-trip in every form too (<code>tests/codec_roundtrip.rs</code>, <code>tests/codec_emit_shapes.rs</code>) — exact for every message all three forms can represent, the one class canonical JSON cannot documented below. A
+map’s entries are ordered by key in each form, so identical answer sets yield identical bytes (spec
+§12.3): the binary wire re-sort (<code>codec::canonical</code>), the textproto sorter (<code>codec::canonical_text</code>),
+and serde_json’s key-ordered map. <code>keryx emit</code> writes exactly one message to stdout; <code>--root Type</code>
+selects which when the answer set names more than one root (§25). The proto2 <code>required</code> totality obligation (above) is enforced at reassembly as at
+solve time, and the three output forms carry it identically — no proto-version asymmetry remains.</p>
+<p><strong>One documented limit of <code>--out json</code>: a well-known type it cannot represent.</strong> Canonical JSON
+mandates the resolved, range-validated form of a <code>Timestamp</code>, <code>Duration</code>, or <code>Any</code>, with no raw
+fallback — where the binary and text forms carry the two structural fields as they stand. keryx keeps
+well-known types opaque and structural on both ends (§10) and does not range-validate or resolve one
+at reassembly (that would special-case the model), so a value the reassembler admits but canonical
+JSON cannot represent — an out-of-range <code>Timestamp</code> or <code>Duration</code>, or an <code>Any</code> whose <code>type_url</code> the
+schema’s pool cannot resolve — is refused at the JSON encode with <code>UnrepresentableJson</code>, naming the
+forms that carry it (<code>--out binpb</code>/<code>txtpb</code>), rather than emitted as a non-conforming document. The
+model stays symmetric: each output form refuses only what it alone cannot represent (the outbound
+counterpart of the inbound dialect’s control-character refusal, <code>UnrepresentableText</code>), and the
+round-trip parity above is exact for every message all three forms can represent
+(<code>tests/codec_emit_wkt.rs</code>).</p>
+<p><strong>The thermal example’s outbound story closes both round trips.</strong> The worked example closes the
+<code>ReadingBatch</code> round trip solver-free — <code>examples/thermal/batch.binpb</code> → facts →
+<code>examples/thermal/answer.lp</code> (its facts under the <code>emit_reading_batch(r0)</code> marker) → <code>keryx emit</code> →
+<code>examples/thermal/batch.reassembled.binpb</code>, byte-for-byte the payload again (Increment 4). The §28
+story’s <em>alert</em> half — an <code>AlertSet</code> of alerts emitted from a batch — closes at Increment 5, when
+<code>(keryx.set)</code> gains meaning: <code>AlertSet.alerts</code> is generated as a <strong>membership relation</strong>, not a
+sequence, so a natural <code>overheating</code> model that names its alerts by their own provenance
+(<code>alerts(out, al(R))</code>, not the dense indices a sequence needs) reassembles, and <code>keryx emit</code> closes
+the <code>AlertSet</code> round trip byte-for-byte, its members in clingo’s total symbol order (§7.1).</p>
+<h2 id="schema-evolution-1"><a class="header" href="#schema-evolution-1">Schema evolution</a></h2>
+<p>The evolution instrument (<code>keryx diff</code>; spec §13.4, §27) compares two versions of one schema on
+the model side — what a model written against the old vocabulary survives, what it does not, and
+the bridge that carries it across the one kind of change a rule can alias — as of the evolution
+instrument (Increment 6). Both sides come in through the doors this ledger describes, so the
+proto-version support above is the instrument’s too: a proto2 side and a proto3 side compare
+alike (presence is read from each mapping’s totality, never from the syntax era), and an editions
+file is refused on either side with the same <code>UnsupportedEdition</code> diagnostic.</p>
+<p><strong>Both mappings are regenerated; no manifest is read.</strong> <code>keryx diff &lt;old&gt; &lt;new&gt;</code> compiles each
+side through the descriptor door <code>keryx gen</code> uses — a <code>.proto</code> source (with <code>-I</code> include roots,
+one list shared by both sides) or a <code>protoc</code>-compiled descriptor set (<code>.binpb</code>) — maps each as
+<code>gen</code> would, annotations included, and compares the two mappings. The manifest <code>gen</code> writes is a
+per-version record, never an input: the comparison sees exactly the vocabulary each side generates
+today, and nothing has to be kept in step with a stored file.</p>
+<p><strong>Matching is by protobuf identity, with the version stripped.</strong> Two versions of one schema are
+two packages under buf’s convention (<code>thermal.v1</code>, <code>thermal.v2</code>), so a package is matched by its
+name with the trailing version segment removed, a message or enum by its path within that package,
+and a field or enum value by its number. Names are free to change, so a renamed field is reported
+as a rename rather than as a removal beside an addition; a renumbered field is the reverse — a
+removal beside an addition, the wire-breaking act it is. Two schemas with no package in common
+once normalized are refused as not comparable (<code>NoComparableSchemas</code>, a usage error, no report),
+and a side that declares two versions of one package is refused as ambiguous
+(<code>AmbiguousVersionPackages</code>).</p>
+<p><strong>Only subject vocabulary is compared, and the door decides the subject.</strong> What a side <em>is</em>
+depends on how it came in:</p>
+<ul>
+<li>through the <code>.proto</code> door, a side is the one file named on the command line; what it imports is
+referent closure — resolved, and translated where a field references it, but not compared;</li>
+<li>through the <code>.binpb</code> door, a side is every file in the set except the well-known types
+(<code>google/protobuf/*</code>) and keryx’s option registry (<code>keryx/options.proto</code>).</li>
+</ul>
+<p>Both sides go through one door. A <code>.proto</code> on one side and a <code>.binpb</code> on the other would scope
+the two sides differently — one file against a whole set — so the mix is refused before either
+side is read, a usage error naming which side is which, rather than reported as a page of
+spurious additions and removals.</p>
+<p><strong>A schema of several files goes in as descriptor sets.</strong> Compile each revision with
+<code>--include_imports</code> to its own self-contained set, and diff the sets:</p>
+<pre><code class="language-sh">protoc -I v1 --include_imports --descriptor_set_out=v1.binpb v1/station.proto
+protoc -I v2 --include_imports --descriptor_set_out=v2.binpb v2/station.proto
+keryx diff v1.binpb v2.binpb
+</code></pre>
+<p>The comparison then spans every file of the schema, package by package; a package on one side
+only rides as a whole addition or removal, its elements as rows of their own.</p>
+<p><strong>Two revisions sharing a file name take that route, or distinct names.</strong> The <code>.proto</code> door
+reduces the path it is given to a name relative to an include root (<code>v1/station.proto</code> under
+<code>-I v1</code> is <code>station.proto</code>) and opens that name through the include roots in order — protoc’s
+own rule. So <code>keryx diff v1/station.proto v2/station.proto -I v1 -I v2</code> reduces <em>both</em> sides to
+<code>station.proto</code>, and both open under <code>v1</code>, the first root that holds it: the same file is loaded
+twice, and the report is a version diffed against itself — <code>no changes</code>, exit <code>0</code>. The banner
+exposes it: both sides show the same package (<code>station.v1  →  station.v1</code>), where two revisions
+would show the bump. For two revisions of one file name, compile each to its own descriptor set
+against its own root, as above, or name the files distinctly (<code>thermal-v1.proto</code>,
+<code>thermal-v2.proto</code>), as the worked example does.</p>
+<p><strong>The bridge is inbound-facing, and it aliases a predicate, never a term.</strong> For a clean rename — a
+field, message, or enum whose predicate changed with its identity and shape intact (the same
+number or path, arity, type, presence, form, and oneof membership) — <code>--bridge &lt;path&gt;</code> writes one
+rule, <code>old(…) :- new(…).</code>, under a <code>%!</code> provenance line: a generated module like any other, and
+loaded beside the new facts it lets a model written against the old vocabulary read them without
+a line of it changing. Two limits, stated on the row rather than papered over. The bridge lets an
+old model <em>read</em> new facts; a model that <em>asserts</em> the old atoms for <code>keryx emit</code> is not shimmed —
+the new theory obliges the new predicate, and the reassembler reads it. And a message-field bridge
+aliases the field’s relational view (<code>readings(P, I, E) :- samples(P, I, E).</code>, spec §13.2), not the
+occupant term: <code>samples(r0, 0)</code> inside <code>reading(samples(r0, 0))</code> is renamed too, and no rule can
+alias a term, so a model that spells the path term directly is not bridged. A renamed enum
+constant has no bridge either — a constant is not a predicate — and neither has a changed form
+(a <code>(keryx.set)</code> dropped turns <code>alerts/2</code> into <code>alerts/3</code>), a removal, or an enum whose openness or
+<code>(keryx.unknown)</code> setting flipped: each is breaking, and the report says so on the row.</p>
+<p><strong>The report, the changeset, and the exit.</strong> The migration report on stdout groups the changes by
+package, then by message or enum, then by field number, and shows what stayed beside what moved;
+<code>--json</code> writes the changeset instead — one array of records in a stable order, each carrying the
+change’s kind, its element’s path and rendered signature per side, and whether it breaks — for a
+review bot or a check of your own. A breaking change is a finding, not a failure: the exit is <code>0</code>
+whatever the comparison found, and <code>--exit-code</code> turns a breaking comparison into exit <code>9</code>
+(diverged), the report still on stdout and the bridge file still written, for a pipeline that
+should stop on one. An error on the way — a side that does not read, build, or map — keeps its
+own exit class.</p>
+<p><strong>Complementary to <code>buf breaking</code>.</strong> buf guards the wire: a field renumbered, a type changed. The
+protobuf contract lets a name change freely, so buf passes a rename — and on the ASP side a
+predicate’s identity <em>is</em> its name, so that rename silently forks the vocabulary; an annotation
+dropped, which the wire never sees, changes an arity. <code>keryx diff</code> catches both. Run the two
+together: buf for the wire, keryx for the model side.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="vocabulary"><a class="header" href="#vocabulary">Vocabulary</a></h1>
+<p>One concept, one name. This page is the registry the rest of the book and the source hold to.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Concept</th><th>keryx term</th></tr>
+</thead>
+<tbody>
+<tr><td>A message type, as an ASP domain</td><td><strong>sort</strong> — a unary predicate <code>sort_name/1</code></td></tr>
+<tr><td>A scalar or enum field, as a fact</td><td><strong>base-fact predicate</strong> — <code>field/2</code> over its sort</td></tr>
+<tr><td>A message-typed field’s occupant, addressed by where it sits</td><td><strong>occupant term</strong> — the access-path term <code>field(parent, …)</code>, never a minted handle</td></tr>
+<tr><td>The relation a message-typed field derives, for a model to join on</td><td><strong>view</strong> — a rule in <code>views.lp</code></td></tr>
+<tr><td>Turning a message into ground facts</td><td><strong>shred</strong></td></tr>
+<tr><td>Turning an answer set back into a message</td><td><strong>reassemble</strong></td></tr>
+<tr><td>A value occupying a field position in the reassembled tree</td><td><strong>occupant</strong></td></tr>
+<tr><td>A boundary that admits external input (a schema, a payload, an answer set)</td><td><strong>door</strong></td></tr>
+<tr><td>The atom that marks a reassembly root</td><td><strong>marker</strong></td></tr>
+<tr><td>The per-version record <code>gen</code> writes and never reads back</td><td><strong>manifest</strong></td></tr>
+<tr><td>A field or enum’s precise ASP treatment, set by option</td><td><strong>annotation</strong> — <code>(keryx.set)</code>, <code>(keryx.numeric)</code>, <code>(keryx.scale)</code>, <code>(keryx.opaque)</code>, <code>(keryx.unknown)</code></td></tr>
+<tr><td>A structured refusal reported at a field-path locus</td><td><strong>diagnostic</strong></td></tr>
+<tr><td>An insulated failure on a dependency’s input path</td><td><strong>fault</strong></td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="building-the-documentation"><a class="header" href="#building-the-documentation">Building the documentation</a></h1>
+<p>The book is built with mdBook 0.5.4, pinned so the rendered output matches what the checks build.</p>
+<p>Install the exact version:</p>
+<pre><code class="language-sh">cargo install --locked --version '=0.5.4' mdbook
+</code></pre>
+<p>Build the book — output lands under the git-ignored <code>target/book/</code>:</p>
+<pre><code class="language-sh">mdbook build
+</code></pre>
+<p>Or run it through the project’s check entry point, which also compiles and tests the book’s embedded examples:</p>
+<pre><code class="language-sh">scripts/check.sh book
+</code></pre>
+<p>The Markdown sources live under <a href=""><code>docs/book/</code></a>; <code>book.toml</code> at the repository root configures the build. The design-of-record documents (<code>docs/specification.md</code>, <code>docs/design/</code>) are kept outside the book and linked from <a href="#about-this-book">About this book</a>.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>
