@@ -5,6 +5,8 @@ description = "The keryx command-line frontend: a thin satellite over keryx-core
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+publish = false
 
 [[bin]]
 name = "keryx"

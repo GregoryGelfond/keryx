@@ -5,6 +5,8 @@ description = "Test-only helpers shared across keryx's suites: compile a fixture
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+publish = false
 
 [dependencies]
 # The pure-Rust .proto compiler, to turn a fixture into a serialized FileDescriptorSet.
