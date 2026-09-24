@@ -2,6 +2,13 @@
 
 κῆρυξ, *herald* — a bidirectional bridge between Protocol Buffers and Answer Set Programming.
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+![Rust 1.97+](https://img.shields.io/badge/rust-1.97%2B-orange?style=flat-square)
+[![Coverage 97%](https://img.shields.io/badge/coverage-97%25-brightgreen?style=flat-square)](CONTRIBUTING.md#verification-and-review)
+[![Documentation](https://img.shields.io/badge/docs-the%20keryx%20book-blue?style=flat-square)](https://gregorygelfond.github.io/keryx/)
+
+**Documentation: [the keryx Book](https://gregorygelfond.github.io/keryx/).**
+
 keryx compiles a `.proto` schema into an ASP vocabulary and translates messages
 into ground facts — and answer sets back into messages. The message side never
 learns ASP; the model side never learns the wire.
@@ -59,6 +66,28 @@ hot(B, R) :- readings(B, _, R), temp_c(R, T), T > 100.   % ⊢ hot(b, readings(b
 Solve that with **your own clingo**, and keryx turns the answer set **back into a
 `Batch`** — byte-for-byte the payload you started from. keryx never runs the solver.
 
+## Install
+
+keryx is not on crates.io yet (its ASP layer is a git dependency). Install the CLI from the tagged release:
+
+```sh
+cargo install --git https://github.com/GregoryGelfond/keryx --tag v1.0.0 keryx-cli
+keryx --help
+```
+
+The build fetches the pinned ASP-layer dependency over HTTPS — no credentials needed.
+
+## Documentation
+
+- **[The keryx Book](https://gregorygelfond.github.io/keryx/)** — the manual: the bridge, the Rust library, and the command reference.
+- [`examples/`](examples/) — seven runnable, golden-tested worked examples, schema to vocabulary to facts and back, plus a schema's evolution.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — the standard the work is held to.
+- The design of record: [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/specification.md`](docs/specification.md), and [`docs/design/threat-model.md`](docs/design/threat-model.md).
+
+## Use from Rust
+
+keryx is a library first; the command is a thin shell over `keryx-core`. A tool embeds the bridge directly — `Mapping`, `Codec::shred`/`reassemble`, and the value plane (`Symbol`/`Name`/`Sign`) — with no text between it and its solver. See the Book's [Rust library](https://gregorygelfond.github.io/keryx/library/getting-started.html) part.
+
 ## Status
 
 keryx translates **proto2 and proto3** schemas and messages in both directions, on all
@@ -90,12 +119,6 @@ three wire forms:
   since keryx's descriptor engine has no editions support yet; it becomes a drop-in when the
   engine does. keryx branches on *resolved features*, not syntax era, so editions land
   without a redesign. See [`docs/proto-support.md`](docs/proto-support.md).
-
-The worked [`examples/`](examples/) are a guided tour — seven runnable examples covering schema
-to vocabulary, payloads to facts, and a schema's evolution, with the thermal and config
-walkthroughs closing the round trip and the evolution walkthrough diffing thermal v1 against
-v2. See [`docs/design/architecture.md`](docs/design/architecture.md) for the design
-overview and [`docs/specification.md`](docs/specification.md) for the full specification.
 
 ## Built on
 
