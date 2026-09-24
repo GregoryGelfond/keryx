@@ -1,5 +1,5 @@
 keryx-manifest v0
-schema-hash -  package orders.v1  target clingo  profile -  shape strict  keryx 0.1.0
+schema-hash -  package orders.v1  target clingo  profile -  shape strict  keryx 1.0.0
 orders.v1.Ledger  sort  ledger/1
 orders.v1.Ledger.orders #1 fam  orders/2 -> order  order  seq ; view orders/3
 orders.v1.Order  sort  order/1

@@ -1,6 +1,6 @@
 [package]
 name = "keryx-protoc"
-version = "0.1.0"
+version.workspace = true
 description = "The keryx protoc/buf plugin: the protoc-gen-keryx shim, a bytes-to-bytes CodeGeneratorRequest/Response frontend over keryx-core."
 edition.workspace = true
 rust-version.workspace = true

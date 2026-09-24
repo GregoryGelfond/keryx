@@ -1,6 +1,6 @@
 [package]
 name = "keryx-test-support"
-version = "0.1.0"
+version.workspace = true
 description = "Test-only helpers shared across keryx's suites: compile a fixture .proto to a FileDescriptorSet through protox, keeping the custom-option bytes (§20)."
 edition.workspace = true
 rust-version.workspace = true
