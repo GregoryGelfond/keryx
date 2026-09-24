@@ -178,7 +178,7 @@ The `rel` kind and `set` descriptor mark `alerts/2` a `(keryx.set)` membership r
 §7.1) — arity 2, and no `; view` clause, a set having no `views.lp` projection. This is the
 contract a later revision of the schema is checked against — the record of what each element
 *became*, so a rename, a renumber, or a treatment change (a sequence becoming a set, say) is a
-visible, reviewable diff rather than a silent break (schema-diff checking is a later increment).
+visible, reviewable diff rather than a silent break — the check `keryx diff` performs (see the [evolution](../evolution/) example).
 
 ### `thermal.v1.facts.lp` — the ground facts (spec §11)
 

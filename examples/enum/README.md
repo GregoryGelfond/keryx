@@ -89,10 +89,11 @@ error by default (§7.4) — annotate the field `(keryx.unknown) = PRESERVE` to 
 `unknown(99)`
 ```
 
-The refusal is the default; carrying an unknown as `unknown(99)` under `(keryx.unknown) =
-PRESERVE` is planned (a later increment). Either way, a hand-rolled shim that maps the raw
-integer straight through would pass a value it cannot mean — keryx names the number, the
-enum, and the field. The regression suite pins both the constant lowering and this refusal.
+The refusal is the default; annotating the field `(keryx.unknown) = PRESERVE` carries an
+unknown as `unknown(99)` through translation instead, and re-encodes it outbound. Either way, a
+hand-rolled shim that maps the raw integer straight through would pass a value it cannot mean —
+keryx names the number, the enum, and the field. The regression suite pins both the constant
+lowering and this refusal.
 
 ## Scope at this stage
 
