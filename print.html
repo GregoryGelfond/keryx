@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-850aa159.js";
+            window.path_to_searchindex_js = "searchindex-6c48e935.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-cf1919ee.js"></script>
+        <script src="toc-b401267b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -388,6 +388,315 @@ keryx diff --json old.binpb new.binpb
 <h2 id="the-report-the-changeset-and-the-exit"><a class="header" href="#the-report-the-changeset-and-the-exit">The report, the changeset, and the exit</a></h2>
 <p>The migration report on stdout groups changes by package, then message or enum, then field number, showing what stayed beside what moved. <code>--json</code> writes a flat changeset instead — one array of records in a stable order — for a review bot. A breaking change is a <em>finding</em>, not a failure: the exit is <code>0</code> whatever the comparison found, and <code>--exit-code</code> turns a breaking comparison into a distinct exit (with the report still on stdout and the bridge still written) for a pipeline that should stop on one.</p>
 <p>The <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/evolution"><code>evolution</code></a> example walks the thermal schema at v1 and v2 end to end.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="configuration-validation--solve-a-problem-get-protobuf-back"><a class="header" href="#configuration-validation--solve-a-problem-get-protobuf-back">Configuration validation — solve a problem, get protobuf back</a></h1>
+<p>The other examples show the proto→asp direction. This one closes the loop: a Protocol Buffers message in, a <strong>solve</strong>, and a <em>different</em> Protocol Buffers message out — the whole motion a one-way shim cannot do.</p>
+<p>The runnable example, with every file and golden, is in <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/config"><code>examples/config/</code></a>.</p>
+<p>keryx never runs the solver. It wires the two ends — <code>keryx facts</code> (proto→asp) and <code>keryx emit</code> (asp→proto). The solve in between is <em>your</em> clingo, over the vocabulary keryx generated. Here that solve is a small configuration validator.</p>
+<h2 id="the-two-messages"><a class="header" href="#the-two-messages">The two messages</a></h2>
+<p><code>deployment.proto</code> declares the message that goes <strong>in</strong> and the one that comes <strong>out</strong>:</p>
+<pre><code class="language-proto">syntax = "proto3";
+package deploy.v1;
+
+message Deployment { repeated Service services = 1; }   // in
+message Service { string name = 1; int32 replicas = 2; int32 max_per_node = 3; }
+
+message Report  { map&lt;string, Finding&gt; findings = 1; }  // out, keyed by service name
+message Finding { string reason = 1; int32 code = 2; }
+</code></pre>
+<h2 id="the-pipeline"><a class="header" href="#the-pipeline">The pipeline</a></h2>
+<pre><code class="language-text">Deployment ──keryx facts──▶ facts.lp ──your clingo (model.lp)──▶ answer set ──keryx emit──▶ Report
+ (protobuf in)              (proto→asp)   (keryx runs no solver)                (asp→proto)  (protobuf out)
+</code></pre>
+<ol>
+<li><strong><code>keryx facts</code></strong> shreds the <code>Deployment</code> into flat ground facts.</li>
+<li><strong>your clingo</strong> runs <code>model.lp</code> — the <em>consuming tool’s</em> invariants — over those facts, deriving a <code>Report</code>.</li>
+<li><strong><code>keryx emit</code></strong> reassembles that <code>Report</code> into protobuf.</li>
+</ol>
+<h2 id="the-model-yours-not-keryxs"><a class="header" href="#the-model-yours-not-keryxs">The model (yours, not keryx’s)</a></h2>
+<p><code>model.lp</code> is written against the vocabulary <code>keryx gen</code> produced. It has no choice rules, so it is deterministic — one <code>Deployment</code> in, one <code>Report</code> out:</p>
+<pre><code class="language-prolog">% Invariants over the shredded Deployment facts:
+bad_replicas(S) :- replicas(S, R), R &lt; 1.
+bad_capacity(S) :- replicas(S, R), max_per_node(S, M), R &gt; M.
+
+finding_for(S, "replicas must be at least 1", 1) :- bad_replicas(S).
+finding_for(S, "replicas exceeds max_per_node", 2) :- bad_capacity(S), not bad_replicas(S).
+
+% Build the Report keryx will emit, keyed by service name:
+report(v0).
+finding(findings(v0, N)) :- finding_for(S, _, _), name(S, N).
+reason(findings(v0, N), R) :- finding_for(S, R, _), name(S, N).
+code(findings(v0, N), C) :- finding_for(S, _, C), name(S, N).
+emit_report(v0).
+</code></pre>
+<h2 id="run-it"><a class="header" href="#run-it">Run it</a></h2>
+<pre><code class="language-sh">keryx gen deployment.proto -I . -o gen/
+keryx facts --root Deployment=config.bad.txtpb deployment.proto -I . &gt; facts.bad.lp
+clingo gen/deploy.v1.core.lp facts.bad.lp model.lp        # your solver, not keryx
+keryx emit --root Report answer.bad.lp deployment.proto -I . &gt; report.bad.binpb
+</code></pre>
+<p><code>config.bad.txtpb</code> has three services — <code>web</code> (0 replicas), <code>cache</code> (5 replicas, max 2), and a valid <code>api</code>. clingo derives a <code>Report</code>, and <code>keryx emit</code> reassembles it — here in the <code>--out txtpb</code> and <code>--out json</code> forms:</p>
+<pre><code class="language-textproto">findings:[{key:"cache",value{reason:"replicas exceeds max_per_node",code:2}},{key:"web",value{reason:"replicas must be at least 1",code:1}}]
+</code></pre>
+<pre><code class="language-json">{"findings":{"cache":{"code":2,"reason":"replicas exceeds max_per_node"},"web":{"code":1,"reason":"replicas must be at least 1"}}}
+</code></pre>
+<p>A <code>Deployment</code> went in; a <code>Report</code> came out — a different message, computed by your model and serialized by keryx. The map entries are ordered by key, so the bytes are deterministic and golden-comparable. A valid config derives an empty <code>Report</code> — no findings.</p>
+<h2 id="two-layers-kept-apart"><a class="header" href="#two-layers-kept-apart">Two layers, kept apart</a></h2>
+<p>keryx has its own <code>violates(path, occupant)</code> atom — but that is about <strong>serializability</strong> (“is this answer set even a valid message?”, see <a href="#answer-sets-to-messages">Answer sets to messages</a>), not your domain. Your validator’s findings are its own vocabulary (<code>Finding</code>, <code>reason</code>, <code>code</code>), distinct from keryx’s. keryx guarantees the <code>Report</code> is a well-formed message; <em>what</em> the report says is your model’s.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="an-enum-in-asp"><a class="header" href="#an-enum-in-asp">An enum in ASP</a></h1>
+<p>How keryx renders a Protocol Buffers <strong>enum</strong> into Answer Set Programming: a proto3 open enum, the sort and constants <code>keryx gen</code> mints from it, and a payload <code>keryx facts</code> shreds to atoms that name those constants.</p>
+<p>The runnable example is in <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/enum"><code>examples/enum/</code></a>.</p>
+<h2 id="the-schema-1"><a class="header" href="#the-schema-1">The schema</a></h2>
+<pre><code class="language-proto">syntax = "proto3";
+package signals.v1;
+
+// A traffic signal's phase — a proto3 (open) enum: each value maps to a constant.
+enum Phase { PHASE_UNSPECIFIED = 0; PHASE_GO = 1; PHASE_CAUTION = 2; PHASE_STOP = 3; }
+
+message Light    { string intersection = 1; Phase phase = 2; }
+message Corridor { repeated Light lights = 1; }
+</code></pre>
+<h2 id="the-enum-is-a-sort-each-value-is-a-constant"><a class="header" href="#the-enum-is-a-sort-each-value-is-a-constant">The enum is a sort; each value is a constant</a></h2>
+<p><code>gen</code> writes the enum as a sort of its own, and each field of that type as a total function into it:</p>
+<pre><code class="language-prolog">%! enum phase/1  (open)
+#defined phase/1.
+%! phase : light -&gt; phase  (total)
+#defined phase/2.
+</code></pre>
+<p><code>phase/1</code> is the enum as an <strong>open</strong> sort — a proto3 enum is open, so the sort admits members beyond the declared ones, which a model may range over. <code>phase/2</code> is the field, a total function from a <code>light</code> to a <code>phase</code>.</p>
+<p>Shredding a payload names the constants:</p>
+<pre><code class="language-prolog">phase(lights(r0, 0), go).
+phase(lights(r0, 1), stop).
+</code></pre>
+<p><code>PHASE_GO</code> lowers to <code>go</code> and <code>PHASE_STOP</code> to <code>stop</code> — the enum’s name prefix is stripped and the rest lowercased. Not the integer <code>1</code>, not the string <code>"PHASE_GO"</code>: a <strong>constant</strong> a rule can pattern-match on. (Where a stripped remainder would open with a digit, keryx keeps the unstripped form for the whole enum, so every constant is a legal identifier.)</p>
+<h2 id="the-membership-the-theory-keeps"><a class="header" href="#the-membership-the-theory-keeps">The membership the theory keeps</a></h2>
+<p>Outbound, <code>emit.lp</code> declares the enum’s members and holds an emitted value to one of them:</p>
+<pre><code class="language-prolog">ok_phase(caution).  ok_phase(go).  ok_phase(stop).  ok_phase(unspecified).
+:- light(P), phase(P, V), reach(P), not ok_phase(V).
+</code></pre>
+<p>The manifest records the number↔name↔constant binding, so a renamed value or a renumber becomes a reviewable diff, not a silent break.</p>
+<h2 id="an-undeclared-number-is-refused"><a class="header" href="#an-undeclared-number-is-refused">An undeclared number is refused</a></h2>
+<p>A proto3 enum is open, so a payload may carry a number the schema never declared. keryx cannot name a constant for such a value, so it <strong>refuses</strong> at the field’s path rather than inventing one — a light carrying phase <code>99</code> shreds to a single structured diagnostic:</p>
+<pre><code class="language-text">keryx: unknown_enum_value at signals.v1.Light.phase: the value 99 matches no declared
+value of the enum `signals.v1.Phase`; an unknown number of an open enum is a translation
+error by default (§7.4) — annotate the field `(keryx.unknown) = PRESERVE` to carry it as
+`unknown(99)`
+</code></pre>
+<p>The refusal is the default; annotating the field <code>(keryx.unknown) = PRESERVE</code> carries an unknown as <code>unknown(99)</code> through translation instead, and re-encodes it outbound (see <a href="#annotating-the-mapping">Annotating the mapping</a>). Either way, a hand-rolled shim that maps the raw integer straight through would pass a value it cannot mean — keryx names the number, the enum, and the field.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="a-oneof-in-asp"><a class="header" href="#a-oneof-in-asp">A oneof in ASP</a></h1>
+<p>How keryx renders a Protocol Buffers <strong><code>oneof</code></strong> into Answer Set Programming: a message with a two-armed oneof, and a payload <code>keryx facts</code> shreds so that <strong>only the arm actually set</strong> appears. Presence is exactly where a hand-rolled shim tends to go wrong.</p>
+<p>The runnable example is in <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/oneof"><code>examples/oneof/</code></a>.</p>
+<h2 id="the-schema-2"><a class="header" href="#the-schema-2">The schema</a></h2>
+<pre><code class="language-proto">syntax = "proto3";
+package dispatch.v1;
+
+message Notice {
+  string subject = 1;
+  oneof channel {
+    string email = 2;
+    string sms = 3;
+  }
+}
+message Outbox { repeated Notice notices = 1; }
+</code></pre>
+<h2 id="the-arms-are-partial-functions"><a class="header" href="#the-arms-are-partial-functions">The arms are partial functions</a></h2>
+<p><code>gen</code> writes each arm of the oneof as a <strong>partial</strong> function, tagged with the oneof it belongs to:</p>
+<pre><code class="language-prolog">%! email : notice -&gt; string  (oneof channel, partial)
+#defined email/2.
+%! sms : notice -&gt; string  (oneof channel, partial)
+#defined sms/2.
+%! subject : notice -&gt; string  (total)
+#defined subject/2.
+</code></pre>
+<p><code>subject</code> is total (always present); <code>email</code> and <code>sms</code> are partial — each may or may not hold, and both belong to the oneof <code>channel</code>.</p>
+<h2 id="only-the-present-arm-shreds"><a class="header" href="#only-the-present-arm-shreds">Only the present arm shreds</a></h2>
+<p>A payload with two notices — the first sets <code>email</code>, the second <code>sms</code> — shreds to:</p>
+<pre><code class="language-prolog">email(notices(r0, 0), "ops@example.com").
+sms(notices(r0, 1), "+15551234").
+subject(notices(r0, 0), "Deploy complete").
+subject(notices(r0, 1), "Disk 90% full").
+</code></pre>
+<p>Notice 0 has an <code>email</code> atom and <strong>no</strong> <code>sms</code> atom; notice 1 the reverse. Absence is honest absence — not a null, not an empty string, not both arms. A rule that joins on <code>email</code> sees exactly the notices that have one.</p>
+<h2 id="the-exclusivity-the-theory-keeps"><a class="header" href="#the-exclusivity-the-theory-keeps">The exclusivity the theory keeps</a></h2>
+<p>Outbound, <code>emit.lp</code> holds a notice to <strong>at most one</strong> arm of the oneof:</p>
+<pre><code class="language-prolog">%! exclusivity of email | sms : notice  (oneof channel)
+:- email(P, _), notice(P), reach(P), sms(P, _).
+</code></pre>
+<p>An answer set that set both arms of a <code>channel</code> is simply not a message — UNSAT under the strict theory. The manifest records each arm as a member of the oneof, so a rearranged or renamed arm is a reviewable diff.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="a-map-and-a-cross-package-field"><a class="header" href="#a-map-and-a-cross-package-field">A map and a cross-package field</a></h1>
+<p>How keryx renders a Protocol Buffers <strong><code>map</code></strong> and a <strong>cross-package</strong> message field into Answer Set Programming: a warehouse with a <code>map&lt;string, Bin&gt;</code> and a reference into another package, and a payload <code>keryx facts</code> shreds to atoms keyed by the map key. Two things a hand-rolled shim usually flattens or re-mints — keyed identity, and identity across a package boundary — keryx keeps.</p>
+<p>The runnable example is in <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/map"><code>examples/map/</code></a>.</p>
+<h2 id="the-schema-3"><a class="header" href="#the-schema-3">The schema</a></h2>
+<p><code>inventory.proto</code> imports <code>catalog.proto</code>:</p>
+<pre><code class="language-proto">// inventory.proto
+syntax = "proto3";
+package inventory.v1;
+import "catalog.proto";
+
+message Warehouse {
+  map&lt;string, Bin&gt; bins = 1;   // map&lt;string, message&gt;
+  catalog.v1.Sku featured = 2; // a field into another package
+}
+message Bin { uint32 quantity = 1; }
+</code></pre>
+<pre><code class="language-proto">// catalog.proto
+syntax = "proto3";
+package catalog.v1;
+message Sku { uint32 code = 1; }
+</code></pre>
+<p><code>gen inventory.proto -o gen/</code> writes <strong>one file set per package</strong> — here two, <code>inventory.v1.*</code> and <code>catalog.v1.*</code> — because a schema that spans packages generates a module per package that load together.</p>
+<h2 id="the-map-is-a-keyed-family"><a class="header" href="#the-map-is-a-keyed-family">The map is a keyed family</a></h2>
+<p><code>gen</code> writes the map as a family keyed by the map key:</p>
+<pre><code class="language-prolog">%! bins : warehouse × string -&gt; bin  (map)
+</code></pre>
+<p>Each entry is an <strong>access-path term</strong> — the value’s address in the message, <code>bins(r0, "a-1")</code> (the warehouse <code>r0</code> and the map key <code>"a-1"</code>). Shredding a warehouse:</p>
+<pre><code class="language-prolog">bin(bins(r0, "a-1")).
+bin(bins(r0, "b-2")).
+quantity(bins(r0, "a-1"), 12).
+quantity(bins(r0, "b-2"), 7).
+</code></pre>
+<p>The key <code>"a-1"</code> is part of the term itself — a rule can join on it, range over the map, or select an entry by key. Not a synthesized row id: the key <em>is</em> the identity.</p>
+<h2 id="identity-survives-the-package-boundary"><a class="header" href="#identity-survives-the-package-boundary">Identity survives the package boundary</a></h2>
+<p><code>Warehouse.featured</code> points into <code>catalog.v1</code>. keryx keeps the reference’s identity across the boundary: <code>inventory.v1.core.lp</code> declares</p>
+<pre><code class="language-prolog">%! featured : warehouse -&gt; sku  (partial)
+</code></pre>
+<p>where <code>sku</code> is <code>catalog.v1</code>’s sort, generated in its own file set (which declares <code>sku/1</code> and <code>code : sku -&gt; uint32 (total)</code>). Shredding the warehouse yields the <code>featured</code> occupant carrying catalog’s predicates:</p>
+<pre><code class="language-prolog">sku(featured(r0)).
+code(featured(r0), 4090).
+</code></pre>
+<p><code>featured(r0)</code> is the identity term; it <em>is</em> a <code>sku</code>, and <code>code</code> — catalog’s field — applies to it. A model over <code>inventory.v1</code> includes <code>catalog.v1</code>’s vocabulary and reasons across both packages on the same terms.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="proto2-alongside-proto3"><a class="header" href="#proto2-alongside-proto3">proto2 alongside proto3</a></h1>
+<p>keryx ingests <strong>proto2</strong> as well as proto3. This example compiles a proto2 schema, shreds a payload over it, and shows how proto2’s presence labels and its <strong>closed</strong> enum render — the same vocabulary shape a proto3 schema produces, so a codebase mixing proto2 and proto3 reasons over one uniform surface.</p>
+<p>The runnable example is in <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/proto2"><code>examples/proto2/</code></a>.</p>
+<h2 id="the-schema-4"><a class="header" href="#the-schema-4">The schema</a></h2>
+<pre><code class="language-proto">syntax = "proto2";
+package orders.v1;
+
+message Order {
+  required string id = 1;      // presence: always
+  optional int32 quantity = 2; // presence: maybe
+  repeated string tags = 3;    // a sequence
+  optional Grade grade = 4;    // a closed enum
+}
+enum Grade { GRADE_UNSPECIFIED = 0; GRADE_A = 1; GRADE_B = 2; }
+message Ledger { repeated Order orders = 1; }
+</code></pre>
+<h2 id="presence-and-a-closed-enum"><a class="header" href="#presence-and-a-closed-enum">Presence, and a closed enum</a></h2>
+<p>The field declarations <code>gen</code> writes:</p>
+<pre><code class="language-prolog">%! enum grade/1  (closed)
+#defined grade/1.
+%! grade : order -&gt; grade  (partial)
+#defined grade/2.
+%! id : order -&gt; string  (required)
+#defined id/2.
+%! quantity : order -&gt; int32  (partial)
+#defined quantity/2.
+%! tags : order × index -&gt; string  (sequence)
+#defined tags/3.
+</code></pre>
+<ul>
+<li><strong>A closed enum.</strong> <code>grade/1</code> is marked <code>(closed)</code> — a proto2 enum is closed, so a number it does not declare is invalid (contrast the proto3 <a href="#an-enum-in-asp">enum</a> example, whose <code>phase/1</code> is <code>(open)</code>). The membership <code>emit.lp</code> keeps is exact.</li>
+<li><strong><code>repeated</code> is a sequence</strong> (<code>tags/3</code>) and <strong><code>optional</code> is partial</strong> (<code>quantity/2</code>), exactly as in proto3.</li>
+</ul>
+<h3 id="required-presence-and-the-outbound-obligation"><a class="header" href="#required-presence-and-the-outbound-obligation"><code>required</code> presence, and the outbound obligation</a></h3>
+<p><code>id</code> is <code>required</code> in proto2 — explicit presence, like an <code>optional</code> field, but with a must-be-present contract. keryx marks that with a totality of its own: the <code>(required)</code> label, distinct from both the <code>(partial)</code> of <code>optional</code> and the <code>(total)</code> of a proto3 implicit-presence scalar. The contract is enforced <strong>outbound</strong>, in <code>emit.lp</code> — the mapping carries <code>Totality::Required</code>, and an answer set describing an order with no <code>id</code> is refused: UNSAT under the generated theory (<code>:- order(P), reach(P), not has_id(P).</code>), and rejected at reassembly (<code>ShapeViolation</code>) — full proto2/proto3 outbound parity. Inbound is unaffected: a <code>required</code> field is always on the wire, so <code>id</code> shreds for both orders below.</p>
+<h2 id="the-facts"><a class="header" href="#the-facts">The facts</a></h2>
+<p>Shredding a ledger of two orders — the second omitting <code>quantity</code> and <code>grade</code>:</p>
+<pre><code class="language-prolog">grade(orders(r0, 0), a).
+id(orders(r0, 0), "PO-1001").
+id(orders(r0, 1), "PO-1002").
+ledger(r0).
+order(orders(r0, 0)).
+order(orders(r0, 1)).
+quantity(orders(r0, 0), 5).
+tags(orders(r0, 0), 0, "rush").
+tags(orders(r0, 0), 1, "fragile").
+tags(orders(r0, 1), 0, "bulk").
+</code></pre>
+<p><code>id</code> is present for both orders; <code>quantity</code> only for the one that set it (partial presence); <code>tags</code> is an indexed sequence; the closed enum value <code>GRADE_A</code> lowers to the constant <code>a</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="schema-evolution-with-keryx-diff"><a class="header" href="#schema-evolution-with-keryx-diff">Schema evolution with <code>keryx diff</code></a></h1>
+<p>A worked run of the evolution instrument: the thermal schema at two versions, and what <code>keryx diff</code> says about the move from one to the other — which changes a model written against v1 survives, which it does not, and the <strong>bridge</strong> keryx writes for the one kind of change it can carry a model across.</p>
+<p>The runnable example — both schemas, the goldens, and a live bridge demonstration — is in <a href="https://github.com/GregoryGelfond/keryx/tree/main/examples/evolution"><code>examples/evolution/</code></a>. The concepts are in <a href="#schema-evolution">Schema evolution</a>; this is the worked case.</p>
+<h2 id="the-two-versions"><a class="header" href="#the-two-versions">The two versions</a></h2>
+<p><code>thermal-v1.proto</code> and <code>thermal-v2.proto</code>, versioned as buf recommends — package <code>thermal.v1</code> becomes <code>thermal.v2</code>, which is how keryx knows the two are one schema. Between them, seven kinds of change, each chosen because it says something different to a model:</p>
+<ul>
+<li><code>temp_c</code> → <code>celsius</code> — a field <strong>renamed</strong> at its number, shape intact.</li>
+<li><code>humidity</code> — a field <strong>added</strong>.</li>
+<li><code>alerts</code> — its <strong>form changed</strong>: a <code>(keryx.set)</code> membership relation in v1, a plain sequence in v2.</li>
+<li><code>Calibration</code> <strong>removed</strong>, <code>Site</code> <strong>added</strong>.</li>
+<li><code>Level</code> — an enum with a value renamed (<code>LEVEL_HIGH</code> → <code>LEVEL_CRITICAL</code>), one removed (<code>LEVEL_TEST</code>), one added (<code>LEVEL_ADVISORY</code>), and <code>(keryx.unknown) = PRESERVE</code> switched on.</li>
+</ul>
+<h2 id="the-report"><a class="header" href="#the-report">The report</a></h2>
+<pre><code class="language-sh">keryx diff thermal-v1.proto thermal-v2.proto -I .
+</code></pre>
+<p>Each version goes through keryx’s compiler, is mapped as <code>keryx gen</code> would map it, and the two mappings are compared. Captured plain (<code>--color never</code>):</p>
+<pre><code class="language-text">━━ keryx diff ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   thermal.v1  →  thermal.v2                               keryx 1.0.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ alert · thermal.Alert                                       unchanged
+ ─────────────────────────────────────────────────────────────────────
+
+ alert_set · thermal.AlertSet
+ ─────────────────────────────────────────────────────────────────────
+  #1  ! changed   alerts            set → seq, /2 → /3  no bridge
+
+ calibration · thermal.Calibration               - removed · no bridge
+ ─────────────────────────────────────────────────────────────────────
+  #1  - removed   sensor/2          string,total  no bridge
+  #2  - removed   offset/2          int32,total   no bridge
+
+ reading · thermal.Reading
+ ─────────────────────────────────────────────────────────────────────
+  #2  ~ renamed   temp_c → celsius  /2            bridge available
+  #3  + added     humidity/2        int32,total
+
+ reading_batch · thermal.ReadingBatch                        unchanged
+ ─────────────────────────────────────────────────────────────────────
+
+ site · thermal.Site                                           + added
+ ─────────────────────────────────────────────────────────────────────
+  #1  + added     name/2            string,total
+  #2  + added     region/2          string,total
+
+ level · thermal.Level  (open) → (open, preserve)  ! changed · no bridge
+ ─────────────────────────────────────────────────────────────────────
+  #2  ~ renamed   high → critical                 no bridge · constant
+  #3  - removed   test                            no bridge
+  #4  + added     advisory
+
+ ─────────────────────────────────────────────────────────────────────
+  7 breaking   2 removed · 1 changed · 1 message removed · 1 value removed · 1 value renamed · 1 preserve change
+  1 bridged    1 renamed (inbound-facing)
+  5 additive   3 added · 1 message added · 1 value added
+  → rerun with --bridge &lt;path&gt;  to write the 1 bridge view
+</code></pre>
+<p>One block per message and per enum, headed by its sort predicate and its version-free path, the messages first. Beneath a header, one row per changed field in <strong>field-number order</strong> — the gutter <code>#2</code> is the number, the identity keryx matched by. What did not change is shown too (<code>alert</code>, <code>reading_batch</code> are marked <code>unchanged</code>). Each change is classed by what it does to a model:</p>
+<ul>
+<li><strong><code>temp_c → celsius</code> is bridged, not breaking</strong> — the field kept its number, type, arity, and presence; only its name, and so its predicate, changed. That is the one change a rule can alias.</li>
+<li><strong><code>alerts</code> <code>set → seq</code> is breaking</strong> — dropping <code>(keryx.set)</code> turns a membership relation <code>alerts(P, E)</code> into a sequence view <code>alerts(P, I, E)</code>: a different arity and meaning, and buf would never have said a word (an option changed, the wire did not).</li>
+<li><strong>The <code>level</code> enum header is itself a change</strong> — switching on <code>(keryx.unknown) = PRESERVE</code> admits the escape term <code>unknown(N)</code> to the sort, a vocabulary v1 never saw; and <code>high → critical</code> is a rename <strong>without</strong> a bridge (a constant is not a predicate, so no rule can alias it).</li>
+</ul>
+<p>The exit code is <code>0</code> — a breaking change is a finding, not a failure. <code>--exit-code</code> exits <code>9</code> when any change is breaking, for a pipeline that should stop on one. <code>--json</code> writes the same comparison as a flat changeset for a review bot.</p>
+<h2 id="the-bridge"><a class="header" href="#the-bridge">The bridge</a></h2>
+<pre><code class="language-sh">keryx diff thermal-v1.proto thermal-v2.proto -I . --bridge thermal.bridge.lp
+</code></pre>
+<p>writes the report, then one rule per clean rename:</p>
+<pre><code class="language-prolog">%! temp_c/2 reads celsius/2  (inbound-facing bridge: thermal.v1.Reading.temp_c renamed thermal.v2.Reading.celsius)
+temp_c(A, B) :- celsius(A, B).
+</code></pre>
+<p>A generated module like any other keryx writes — a <code>%!</code> provenance line over a rule, valid clingo (it grounds clean beside v2’s <code>core.lp</code>) — saying: wherever v2 facts assert <code>celsius</code>, <code>temp_c</code> holds too. <strong>A v1 model reads v2 facts through it</strong> — load it beside the shredded v2 facts and a v1 rule (<code>hot(R) :- temp_c(R, T), T &gt; 40.</code>) fires again, without a line of the model changing.</p>
+<p>Two limits, stated plainly: the bridge is <strong>inbound-facing</strong> (it lets a v1 model <em>read</em> v2 facts; a model that <em>asserts</em> <code>temp_c</code> for <code>keryx emit</code> is not shimmed — v2’s theory obliges <code>celsius</code>), and a message-field bridge <strong>aliases the view, not the occupant term</strong> (a model spelling the path term directly is not bridged).</p>
+<h2 id="two-doors-two-scopes"><a class="header" href="#two-doors-two-scopes">Two doors, two scopes</a></h2>
+<p>What counts as <em>the schema</em> on a side depends on how it came in. A <strong><code>.proto</code> source</strong> side is the one file named; what it imports is closure — resolved and translated, not compared (the thermal pair’s <code>keryx/options.proto</code> is closure). A <strong><code>.binpb</code> descriptor set</strong> side is every file in the set except the well-known types and keryx’s option registry — the route for a schema of several files (<code>protoc --include_imports</code>), compared package by package. Both sides go through one door; a mix is refused before either is read.</p>
+<p>The example also shows two smaller cases: two schemas with no package in common (refused <code>no_comparable_schemas</code>, naming each side’s own package, never <code>google.protobuf</code>), and a multi-file station schema compared as descriptor sets, package by package (<code>package_added</code> / <code>package_removed</code>).</p>
+<h2 id="complementary-to-buf-breaking"><a class="header" href="#complementary-to-buf-breaking">Complementary to <code>buf breaking</code></a></h2>
+<p>buf guards the wire: a field renumbered, a type changed. The protobuf contract lets a name change freely, so buf passes a rename — and on the ASP side a predicate’s identity <em>is</em> its name, so that rename silently forks the vocabulary; an annotation dropped, which the wire never sees, changes an arity. <code>keryx diff</code> catches both. Run the two together: buf for the wire, keryx for the model side.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
 <p>keryx is a library first: the <code>keryx</code> command is a thin shell over <code>keryx-core</code>, and a tool that embeds keryx gets the whole bridge without shelling out. This part is for that tool builder.</p>
