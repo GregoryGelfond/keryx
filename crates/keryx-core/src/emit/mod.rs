@@ -4,8 +4,8 @@
 //! golden-comparable). The honorary signature (§13.1) rides as `%!` docs on the statement
 //! carrying each line — a base-fact field's line on its own `#defined`, a message-typed field's
 //! on its parent sort's `#defined` in `core.lp` (its `views.lp` rule carries the same line for
-//! a standalone reader; architecture §4 — themelios has no free-standing `%` block at
-//! `86c7dfb`). This module emits `core.lp` (§13.1), `views.lp` (§13.2), and `emit.lp` (§13.3);
+//! a standalone reader; architecture §4 — themelios has no free-standing `%` block).
+//! This module emits `core.lp` (§13.1), `views.lp` (§13.2), and `emit.lp` (§13.3);
 //! the manifest (§13.4) is generated elsewhere.
 //! Submodules: `build` (themelios constructors — crate-visible, since the evolution
 //! instrument's bridge views (`diff`, §13.4) are built through the same one construction site and

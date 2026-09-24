@@ -42,4 +42,4 @@ The coverage floor follows themelios's method — measure line coverage, round d
 
 ## Repository presentation
 
-The GitHub description, topics, badges, and release metadata state what is true and no more. Badges are static and cited: license, Rust version, and a coverage figure that names the revision it was measured at. There is **no CI badge** — a CI badge must identify an active workflow, and keryx's is paused. A release tag corresponds to what was released; historical or archival tags are not releases.
+The GitHub description, topics, badges, and release metadata state what is true and no more. Badges are static and honest: license, Rust version, and a coverage figure measured locally by `scripts/check.sh coverage` (its floor and method are under *Verification and review* above). There is **no CI badge** — a CI badge must identify an active workflow, and keryx's is paused. A release tag corresponds to what was released; historical or archival tags are not releases.

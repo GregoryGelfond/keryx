@@ -80,7 +80,7 @@ The build fetches the pinned ASP-layer dependency over HTTPS — no credentials 
 ## Documentation
 
 - **[The keryx Book](https://gregorygelfond.github.io/keryx/)** — the manual: the bridge, the Rust library, and the command reference.
-- [`examples/`](examples/) — seven runnable, golden-tested worked examples, schema to vocabulary to facts and back, plus a schema's evolution.
+- [`examples/`](examples/) — seven runnable, golden-tested worked examples: schema to vocabulary, payloads to facts and back, and a schema's evolution.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — the standard the work is held to.
 - The design of record: [`docs/design/architecture.md`](docs/design/architecture.md), [`docs/specification.md`](docs/specification.md), and [`docs/design/threat-model.md`](docs/design/threat-model.md).
 
