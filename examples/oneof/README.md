@@ -80,6 +80,6 @@ of the oneof, so a rearranged or renamed arm is a reviewable diff.
 ## Scope at this stage
 
 This example demonstrates the inbound (proto→asp) direction. The asp→proto (outbound)
-direction is being finalized; the generated `emit.lp` above already grounds clean under
-clingo (the repository's grounding gate proves it), and this example will gain a round trip
-as outbound lands.
+direction is complete — the generated `emit.lp` above grounds clean under clingo (the
+repository's grounding gate proves it), and the [thermal](../thermal/) and
+[config](../config/) examples close the round trip end to end.

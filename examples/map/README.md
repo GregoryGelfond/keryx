@@ -89,6 +89,6 @@ map's treatment so a change to the key or value type is a reviewable diff.
 ## Scope at this stage
 
 This example demonstrates the inbound (proto→asp) direction. The asp→proto (outbound)
-direction is being finalized; the generated `emit.lp` above already grounds clean under
-clingo — alongside `catalog.v1`'s module, the way the two load together (the repository's
-grounding gate proves it) — and this example will gain a round trip as outbound lands.
+direction is complete — the generated `emit.lp` above grounds clean under clingo, alongside
+`catalog.v1`'s module, the way the two load together (the repository's grounding gate proves
+it); the [thermal](../thermal/) and [config](../config/) examples close the round trip end to end.

@@ -93,7 +93,7 @@ are its own vocabulary (`Finding`, `reason`, `code`), distinct from keryx's. ker
 
 ## Scope at this stage
 
-This example demonstrates the full round trip. The asp→proto (outbound) direction is being
-finalized; the generated `emit.lp` grounds clean under clingo, and the repository's grounding
-gate runs this very solve — as test infrastructure, driving the `clingo` on `PATH`; keryx spawns
-no solver — with the walkthrough extended as outbound lands.
+This example demonstrates the full round trip. The asp→proto (outbound) direction is complete —
+the generated `emit.lp` grounds clean under clingo, and the repository's grounding gate runs this
+very solve as test infrastructure, driving the `clingo` on `PATH` (keryx spawns no solver); the
+round trip closes, a `Deployment` in and the computed `Report` out.
