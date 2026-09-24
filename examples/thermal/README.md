@@ -207,9 +207,6 @@ mapping; each shreds to this very file — so the file is golden-comparable like
 
 ## Reassembling a payload — `keryx emit`
 
-*The asp→proto (outbound) direction is being finalized; this section will be extended as
-it lands.*
-
 The outbound half runs an answer set back to a payload. [`answer.lp`](answer.lp) is the seven
 facts above plus the one marker a model asserts to export a tree — `emit_reading_batch(r0)` —
 and `keryx emit` reassembles the message it names:
