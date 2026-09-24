@@ -5,6 +5,10 @@ description = "The solver-free core of keryx: the protobuf-schema-to-ASP-vocabul
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+# Not published to crates.io while themelios is a git dependency (crates.io forbids
+# git deps in a published crate); the release ships as a git-tagged GitHub release.
+publish = false
 
 # The arm's-length dependency on the themelios program tier, pinned to the
 # consolidated rev. themelios is a public repo, so this fetches over HTTPS with

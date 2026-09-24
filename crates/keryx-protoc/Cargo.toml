@@ -5,6 +5,8 @@ description = "The keryx protoc/buf plugin: the protoc-gen-keryx shim, a bytes-t
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+readme = "README.md"
+publish = false
 
 # protoc/buf discover a plugin by binary name (`protoc --keryx_out` runs `protoc-gen-keryx`),
 # so the binary keeps that required name while the crate takes keryx's own `keryx-*` voice.

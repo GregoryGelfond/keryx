@@ -1,0 +1,6 @@
+# The toolchain keryx builds and checks against, so a local build matches CI
+# (rust-version = "1.97" in Cargo.toml is the floor; this pin is at or above it).
+[toolchain]
+channel = "1.97.1"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
