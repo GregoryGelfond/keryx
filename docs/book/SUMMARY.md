@@ -12,6 +12,15 @@
 - [Annotating the mapping](guide/annotations.md)
 - [Schema evolution](guide/evolution.md)
 
+# keryx by example
+
+- [Configuration validation](by-example/config.md)
+- [Enums](by-example/enum.md)
+- [Oneofs](by-example/oneof.md)
+- [Maps and cross-package fields](by-example/map.md)
+- [proto2](by-example/proto2.md)
+- [Schema evolution with keryx diff](by-example/evolution.md)
+
 # Part II — The Rust library
 
 - [Getting started](library/getting-started.md)
