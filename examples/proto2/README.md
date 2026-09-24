@@ -39,7 +39,7 @@ The field declarations in [`gen/orders.v1.core.lp`](gen/orders.v1.core.lp):
 #defined grade/1.
 %! grade : order -> grade  (partial)
 #defined grade/2.
-%! id : order -> string  (partial)
+%! id : order -> string  (required)
 #defined id/2.
 %! quantity : order -> int32  (partial)
 #defined quantity/2.
@@ -55,13 +55,14 @@ The field declarations in [`gen/orders.v1.core.lp`](gen/orders.v1.core.lp):
 
 ### `required` presence, and the outbound obligation
 
-`id` is `required` in proto2. keryx renders it as a **partial** function — and that is correct:
-spec §5 treats `required` as EXPLICIT presence (a partial signature). A required field's
-*completeness* is enforced separately, by an **outbound** totality obligation in `emit.lp` (the
-mapping carries `Totality::Required`): an answer set that omits a `required` field is refused, at
-solve time and at reassembly (`ShapeViolation`) alike — full proto2/proto3 outbound parity. This
-inbound example is unaffected: a `required` field is always on the wire, so `id` is present for
-both orders above.
+`id` is `required` in proto2 — spec §5 explicit presence, like an `optional` field, but with a
+must-be-present contract. keryx marks that with a totality of its own: the `(required)` label,
+distinct from both the `(partial)` of `optional` and the `(total)` of a proto3 implicit-presence
+scalar. The contract is enforced **outbound**, in `emit.lp` (the mapping carries
+`Totality::Required`): an answer set that omits a `required` field is refused — UNSAT under the
+generated theory (`:- order(P), reach(P), not has_id(P).`) and rejected at reassembly
+(`ShapeViolation`) alike — full proto2/proto3 outbound parity. This inbound example is
+unaffected: a `required` field is always on the wire, so `id` is present for both orders above.
 
 ## The facts
 
