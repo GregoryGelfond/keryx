@@ -1,5 +1,5 @@
 keryx-manifest v0
-schema-hash -  package dispatch.v1  target clingo  profile -  shape strict  keryx 0.1.0
+schema-hash -  package dispatch.v1  target clingo  profile -  shape strict  keryx 1.0.0
 dispatch.v1.Notice  sort  notice/1
 dispatch.v1.Notice.subject #1 fn  subject/2  string  total
 dispatch.v1.Notice.email #2 oneof  email/2  string  partial

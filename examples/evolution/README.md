@@ -110,7 +110,7 @@ redirected):
 
 ```
 ━━ keryx diff ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   thermal.v1  →  thermal.v2                               keryx 0.1.0
+   thermal.v1  →  thermal.v2                               keryx 1.0.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
  alert · thermal.Alert                                       unchanged
@@ -302,7 +302,7 @@ keryx diff station/v1.binpb station/v2.binpb
 
 ```
 ━━ keryx diff ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   3 packages                                              keryx 0.1.0
+   3 packages                                              keryx 1.0.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
  station.v1  →  station.v2

@@ -1,6 +1,6 @@
 [package]
 name = "keryx-cli"
-version = "0.1.0"
+version.workspace = true
 description = "The keryx command-line frontend: a thin satellite over keryx-core."
 edition.workspace = true
 rust-version.workspace = true

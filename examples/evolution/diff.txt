@@ -1,5 +1,5 @@
 ━━ keryx diff ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   thermal.v1  →  thermal.v2                               keryx 0.1.0
+   thermal.v1  →  thermal.v2                               keryx 1.0.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
  alert · thermal.Alert                                       unchanged

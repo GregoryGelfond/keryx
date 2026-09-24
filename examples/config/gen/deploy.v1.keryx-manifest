@@ -1,5 +1,5 @@
 keryx-manifest v0
-schema-hash -  package deploy.v1  target clingo  profile -  shape strict  keryx 0.1.0
+schema-hash -  package deploy.v1  target clingo  profile -  shape strict  keryx 1.0.0
 deploy.v1.Deployment  sort  deployment/1
 deploy.v1.Deployment.services #1 fam  services/2 -> service  service  seq ; view services/3
 deploy.v1.Finding  sort  finding/1
